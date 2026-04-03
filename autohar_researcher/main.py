@@ -53,6 +53,7 @@ def main() -> None:
     git_actions = results["git_actions"]
     round_states = results["round_states"]
     run_outputs = results["run_outputs"]
+    planner_name = results["planner_name"]
     ranked = sorted(history, key=lambda item: item.val_score, reverse=True)
 
     print("AutoHARResearcher git-first demo")
@@ -61,6 +62,7 @@ def main() -> None:
     print(f"Candidates evaluated: {len(history)}")
     print(f"Materialize git: {args.materialize_git}")
     print(f"Auto-push non-main: {args.auto_push_non_main}")
+    print(f"Planner: {planner_name}")
     print()
     print("Agent workspaces:")
     for workspace in workspaces.values():

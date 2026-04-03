@@ -425,6 +425,7 @@ class HierarchicalOrchestrator:
             "git_actions": actions,
             "round_states": round_states,
             "run_outputs": run_outputs,
+            "planner_name": getattr(self.planner, "name", "unknown"),
         }
 
     def _build_workspaces(self) -> dict[str, AgentWorkspace]:
