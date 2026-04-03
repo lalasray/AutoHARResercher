@@ -73,6 +73,11 @@ class HierarchicalOrchestrator:
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
         self.workspaces = self._build_workspaces()
         self.git_runtime = GitRuntime()
+        self.orchestrator_workspace = AgentWorkspace(
+            agent_name="orchestrator",
+            branch_name="orchestrator-main",
+            worktree_path=str(Path.cwd() / ".worktrees" / "orchestrator_main"),
+        )
 
     def run(self, rounds: int = 3, materialize_git: bool = False) -> dict[str, object]:
         history: list[CandidateResult] = []
@@ -82,6 +87,10 @@ class HierarchicalOrchestrator:
 
         if materialize_git:
             self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
+            self.git_runtime.bootstrap_orchestrator_workspace(
+                orchestrator_branch=self.orchestrator_workspace.branch_name,
+                orchestrator_worktree=self.orchestrator_workspace.worktree_path,
+            )
 
         for round_id in range(1, rounds + 1):
             round_plan = self.plan_round(round_id=round_id, best_result=best_result)
@@ -186,8 +195,8 @@ class HierarchicalOrchestrator:
             GitAction(
                     label=f"Round {round_id}: compose unified candidate",
                     command=(
-                        f"git checkout -b orchestrator-round-{round_id} {baseline_branch} "
-                        f"# combine model, augmentation, and data changes"
+                        f"git -C {self.orchestrator_workspace.worktree_path} commit -am "
+                        f"\"round {round_id}: orchestrator candidate on top of {baseline_branch}\""
                     ),
                 )
             )
@@ -265,8 +274,8 @@ class HierarchicalOrchestrator:
         }
         workspace = AgentWorkspace(
             agent_name="orchestrator",
-            branch_name=round_state.orchestrator_branch or f"orchestrator-round-{round_id}",
-            worktree_path=round_state.orchestrator_worktree or str(Path.cwd()),
+            branch_name=round_state.orchestrator_branch or self.orchestrator_workspace.branch_name,
+            worktree_path=round_state.orchestrator_worktree or self.orchestrator_workspace.worktree_path,
         )
         return self.harness.evaluate(
             round_id=round_id,
@@ -317,7 +326,7 @@ class HierarchicalOrchestrator:
             proposal for proposal in proposals if isinstance(proposal, DataProposal)
         )
         composed_payload = {
-            "branch_name": f"orchestrator-round-{round_id}",
+            "branch_name": self.orchestrator_workspace.branch_name,
             "source_branches": {
                 "model_agent": self.workspaces["model_agent"].branch_name,
                 "augmentation_agent": self.workspaces["augmentation_agent"].branch_name,
@@ -339,6 +348,8 @@ class HierarchicalOrchestrator:
             round_id=round_id,
             proposal_artifacts=proposal_artifacts,
             composed_artifact=composed_artifact,
+            orchestrator_branch=self.orchestrator_workspace.branch_name,
+            orchestrator_worktree=self.orchestrator_workspace.worktree_path,
         )
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:

@@ -59,7 +59,7 @@ This is the bridge between the current dummy prototype and a real Git-based syst
 - today: agent branches produce structured proposal files
 - now: agent branches can also receive real committed round files in their worktrees
 - next: agent branches produce real code diffs instead of JSON-only files
-- later: the orchestrator composes an actual round branch from richer commits
+- later: the orchestrator composes richer commits on its persistent branch
 
 ## Git-First Mental Model
 
@@ -74,9 +74,15 @@ The orchestrator does not need to "be" a branch. It is better thought of as a co
 - creates or tracks the agent branches
 - creates one worktree per agent
 - tells each agent when to make its aspect-specific change
-- composes those partial changes into an orchestrator branch for the round
-- runs the harness on the composed candidate branch
+- keeps one persistent orchestrator branch and adds one commit per round
+- runs the harness on the latest orchestrator commit
 - selects the best branch to merge back into `main`
+
+In the current Git model:
+
+- each agent branch accumulates that agent's own research commits
+- the orchestrator branch accumulates one composed commit per round
+- `main` stays the stable branch that can later merge the orchestrator branch
 
 ## Run
 
@@ -147,7 +153,7 @@ autohar_researcher/
 - [ ] Let agents edit real files in their own worktrees
 - [ ] Let the harness launch actual training jobs from each worktree
 - [ ] Let the orchestrator read metrics from branch-specific outputs
-- [ ] Let the orchestrator create a real round branch by combining selected agent commits
+- [ ] Let the orchestrator create richer composed commits by combining selected agent commits
 - [ ] Let the orchestrator merge or reject branches based on validation score
 - [ ] Add mutation of the current best experiment rather than static handcrafted proposals
 - [ ] Persist all runs in a lightweight experiment registry

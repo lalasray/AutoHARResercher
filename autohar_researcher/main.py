@@ -57,6 +57,10 @@ def main() -> None:
             f"- {workspace.agent_name}: branch={workspace.branch_name} "
             f"worktree={workspace.worktree_path}"
         )
+    print(
+        f"- orchestrator: branch=orchestrator-main "
+        f"worktree={orchestrator.orchestrator_workspace.worktree_path}"
+    )
     print()
     print("Round artifacts:")
     for round_state in round_states:

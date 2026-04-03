@@ -23,6 +23,14 @@ class GitRuntime:
             self.ensure_branch(workspace.branch_name, start_point="main")
             self.ensure_worktree(workspace.worktree_path, workspace.branch_name)
 
+    def bootstrap_orchestrator_workspace(
+        self,
+        orchestrator_branch: str,
+        orchestrator_worktree: str,
+    ) -> None:
+        self.ensure_branch(orchestrator_branch, start_point="main")
+        self.ensure_worktree(orchestrator_worktree, orchestrator_branch)
+
     def materialize_round(
         self,
         round_id: int,
@@ -59,9 +67,9 @@ class GitRuntime:
             )
             round_state.materialized_agent_files[agent_name] = str(abs_path)
 
-        orchestrator_branch = f"orchestrator-round-{round_id}"
-        orchestrator_worktree = self.repo_root / ".worktrees" / f"orchestrator_round_{round_id}"
-        self.ensure_branch(orchestrator_branch, start_point=baseline_branch)
+        orchestrator_branch = round_state.orchestrator_branch
+        orchestrator_worktree = Path(round_state.orchestrator_worktree)
+        self.ensure_branch(orchestrator_branch, start_point="main")
         self.ensure_worktree(str(orchestrator_worktree), orchestrator_branch)
 
         source_payload = {}
@@ -86,8 +94,6 @@ class GitRuntime:
             rel_path=orchestrator_rel,
             message=f"round {round_id}: composed orchestrator candidate",
         )
-        round_state.orchestrator_branch = orchestrator_branch
-        round_state.orchestrator_worktree = str(orchestrator_worktree)
         round_state.materialized_orchestrator_file = str(orchestrator_abs)
         return round_state
 

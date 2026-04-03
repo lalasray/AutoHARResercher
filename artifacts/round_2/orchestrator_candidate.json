@@ -1,5 +1,5 @@
 {
-  "branch_name": "orchestrator-round-2",
+  "branch_name": "orchestrator-main",
   "composed_config": {
     "augmentation": "rotation",
     "learning_rate": 0.0003,

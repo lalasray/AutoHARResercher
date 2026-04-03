@@ -1,5 +1,5 @@
 {
-  "branch_name": "orchestrator-round-1",
+  "branch_name": "orchestrator-main",
   "composed_config": {
     "augmentation": "time_warp",
     "learning_rate": 0.0003,
