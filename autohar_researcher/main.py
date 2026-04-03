@@ -81,6 +81,8 @@ def main() -> None:
         for agent_name, artifact_path in round_state.proposal_artifacts.items():
             print(f"  {agent_name} proposal -> {artifact_path}")
         print(f"  orchestrator candidate -> {round_state.composed_artifact}")
+        if round_state.promotion_artifact:
+            print(f"  promotion decision -> {round_state.promotion_artifact}")
         if round_state.synced_branches:
             print(f"  synced branches -> {', '.join(round_state.synced_branches)}")
         if round_state.pushed_branches:
@@ -91,6 +93,8 @@ def main() -> None:
     print(f"- trial history svg: {run_outputs.trial_history_svg}")
     print(f"- accepted history csv: {run_outputs.accepted_history_csv}")
     print(f"- accepted history svg: {run_outputs.accepted_history_svg}")
+    if run_outputs.latest_promotion_artifact:
+        print(f"- latest promotion artifact: {run_outputs.latest_promotion_artifact}")
     print()
     print("Top candidates:")
     for rank, result in enumerate(ranked[:5], start=1):

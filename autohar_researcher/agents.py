@@ -385,6 +385,7 @@ class HierarchicalOrchestrator:
             )
 
         for round_id in range(1, rounds + 1):
+            previous_best = None if best_result is None else self._clone_result(best_result)
             round_plan = self.plan_round(
                 round_id=round_id,
                 best_result=best_result,
@@ -410,6 +411,14 @@ class HierarchicalOrchestrator:
                 accepted_history.append(self._clone_result(accepted_candidate))
 
             history.extend(round_results)
+            round_state.promotion_artifact = self._write_promotion_artifact(
+                round_id=round_id,
+                round_results=round_results,
+                round_best=round_best,
+                previous_best=previous_best,
+                accepted_candidate=accepted_candidate,
+                current_best=best_result,
+            )
             round_states.append(round_state)
             if best_result is None:
                 best_result = round_best
@@ -890,7 +899,62 @@ class HierarchicalOrchestrator:
             trial_history_svg=trial_svg_path,
             accepted_history_csv=accepted_csv_path,
             accepted_history_svg=accepted_svg_path,
+            latest_promotion_artifact=(
+                str(Path.cwd() / "artifacts" / f"round_{history[-1].round_id}" / "promotion.json")
+                if history
+                else ""
+            ),
         )
+
+    def _write_promotion_artifact(
+        self,
+        round_id: int,
+        round_results: list[CandidateResult],
+        round_best: CandidateResult,
+        previous_best: CandidateResult | None,
+        accepted_candidate: CandidateResult | None,
+        current_best: CandidateResult | None,
+    ) -> str:
+        payload = {
+            "round_id": round_id,
+            "previous_baseline": None
+            if previous_best is None
+            else {
+                "agent_name": previous_best.agent_name,
+                "branch_name": previous_best.branch_name,
+                "val_score": round(previous_best.val_score, 4),
+            },
+            "round_winner": {
+                "agent_name": round_best.agent_name,
+                "branch_name": round_best.branch_name,
+                "val_score": round(round_best.val_score, 4),
+                "selected_combination": round_best.artifact_paths.get("selected_combination", ""),
+            },
+            "accepted_new_baseline": accepted_candidate is not None,
+            "promoted_baseline": None
+            if current_best is None
+            else {
+                "agent_name": current_best.agent_name,
+                "branch_name": current_best.branch_name,
+                "val_score": round(current_best.val_score, 4),
+            },
+            "rejected_because_not_better_than_baseline": (
+                accepted_candidate is None and previous_best is not None
+            ),
+            "candidates": [
+                {
+                    "agent_name": result.agent_name,
+                    "branch_name": result.branch_name,
+                    "val_score": round(result.val_score, 4),
+                    "accepted": result.accepted,
+                    "summary": result.summary,
+                    "selected_combination": result.artifact_paths.get("selected_combination", ""),
+                }
+                for result in sorted(round_results, key=lambda item: item.val_score, reverse=True)
+            ],
+        }
+        round_dir = ensure_round_dir(round_id)
+        return write_json_artifact(round_dir / "promotion.json", payload)
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [

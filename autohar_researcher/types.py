@@ -71,6 +71,7 @@ class RunOutputs:
     trial_history_svg: str
     accepted_history_csv: str
     accepted_history_svg: str
+    latest_promotion_artifact: str = ""
 
 
 @dataclass(frozen=True)

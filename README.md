@@ -103,10 +103,20 @@ Each round now materializes concrete files:
 - `artifacts/round_N/agent_proposals/augmentation_agent.json`
 - `artifacts/round_N/agent_proposals/data_agent.json`
 - `artifacts/round_N/orchestrator_candidate.json`
+- `artifacts/round_N/promotion.json`
 - `artifacts/round_N/results/model_agent.json`
 - `artifacts/round_N/results/augmentation_agent.json`
 - `artifacts/round_N/results/data_agent.json`
 - `artifacts/round_N/results/orchestrator.json`
+
+`promotion.json` is the easiest file to inspect if you want to know what really happened in a round:
+
+- what the previous accepted baseline was
+- which candidate actually won the round
+- whether that winner was promoted
+- all round candidates sorted by score
+
+This is important because `results/orchestrator.json` is only the orchestrator candidate's score for that round. It is not automatically the accepted baseline.
 
 And in the Git materialized flow, each branch now owns a real shared experiment file:
 

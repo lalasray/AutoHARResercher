@@ -8,6 +8,7 @@ class RoundState:
     round_id: int
     proposal_artifacts: dict[str, str] = field(default_factory=dict)
     composed_artifact: str = ""
+    promotion_artifact: str = ""
     baseline_branch: str = ""
     synced_branches: list[str] = field(default_factory=list)
     materialized_agent_files: dict[str, str] = field(default_factory=dict)
