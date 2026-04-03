@@ -8,6 +8,7 @@ class CandidateConfig:
     model_name: str
     preprocessing: str
     augmentation: str
+    augmentation_strength: str
     learning_rate: float
     window_size: int
     notes: str = ""
@@ -40,6 +41,7 @@ class ModelProposal:
 @dataclass(frozen=True)
 class AugmentationProposal:
     augmentation: str
+    strength: str
     notes: str = ""
 
 

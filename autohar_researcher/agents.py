@@ -100,7 +100,18 @@ class ModelAgent:
 
 class AugmentationAgent:
     name = "augmentation_agent"
-    AUGMENTATIONS = ["none", "rotation", "time_warp", "jitter", "mixup"]
+    AUGMENTATIONS = [
+        "none",
+        "rotation",
+        "time_warp",
+        "jitter",
+        "mixup",
+        "scaling",
+        "drift",
+        "permutation",
+        "magnitude_warp",
+    ]
+    STRENGTHS = ["weak", "medium", "strong"]
 
     def propose(
         self,
@@ -113,36 +124,42 @@ class AugmentationAgent:
         del best_score
         best_config = best_result.config if best_result else None
         accepted_aug = best_config.augmentation if best_config else "none"
+        accepted_strength = best_config.augmentation_strength if best_config else "medium"
         context_key = self._context_key(best_config)
         tried = {
-            result.config.augmentation
+            (result.config.augmentation, result.config.augmentation_strength)
             for result in history
             if result.agent_name == self.name
             and self._context_key(result.config) == context_key
         }
+        candidates = [
+            (augmentation, strength)
+            for augmentation in self.AUGMENTATIONS
+            for strength in self.STRENGTHS
+        ]
         context_ranked = sorted(
-            self.AUGMENTATIONS,
-            key=lambda augmentation: (
-                self._contextual_score(history, accepted_history, augmentation, context_key),
-                self._global_score(history, accepted_history, augmentation),
+            candidates,
+            key=lambda candidate: (
+                self._contextual_score(history, accepted_history, candidate[0], candidate[1], context_key),
+                self._global_score(history, accepted_history, candidate[0], candidate[1]),
             ),
             reverse=True,
         )
         global_ranked = sorted(
-            self.AUGMENTATIONS,
-            key=lambda augmentation: self._global_score(history, accepted_history, augmentation),
+            candidates,
+            key=lambda candidate: self._global_score(history, accepted_history, candidate[0], candidate[1]),
             reverse=True,
         )
-        ranked = [accepted_aug]
+        ranked = [(accepted_aug, accepted_strength)]
         if accepted_aug == "none":
-            ranked.extend(augmentation for augmentation in context_ranked if augmentation != "none")
-            ranked.append("none")
+            ranked.extend(candidate for candidate in context_ranked if candidate[0] != "none")
+            ranked.extend([("none", strength) for strength in self.STRENGTHS if ("none", strength) != (accepted_aug, accepted_strength)])
         else:
             ranked.extend(context_ranked)
         ranked.extend(global_ranked)
-        ranked.extend(self.AUGMENTATIONS)
+        ranked.extend(candidates)
         ranked = _dedupe_preserve_order(ranked)
-        augmentation = self._pick_option(ranked, tried, round_id)
+        augmentation, strength = self._pick_option(ranked, tried, round_id)
         note_prefix = (
             "Use context-aware augmentation ranking around the accepted baseline."
             if accepted_history
@@ -150,7 +167,11 @@ class AugmentationAgent:
         )
         return AugmentationProposal(
             augmentation=augmentation,
-            notes=f"{note_prefix} Testing augmentation={augmentation} for context={context_key}.",
+            strength=strength,
+            notes=(
+                f"{note_prefix} Testing augmentation={augmentation} "
+                f"strength={strength} for context={context_key}."
+            ),
         )
 
     def _context_key(self, config: CandidateConfig | None) -> str:
@@ -163,6 +184,7 @@ class AugmentationAgent:
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
         augmentation: str,
+        strength: str,
         context_key: str,
     ) -> float:
         scores = [
@@ -170,6 +192,7 @@ class AugmentationAgent:
             for result in [*history, *accepted_history]
             if self._context_key(result.config) == context_key
             and result.config.augmentation == augmentation
+            and result.config.augmentation_strength == strength
             and result.agent_name in {self.name, "orchestrator"}
         ]
         return max(scores, default=float("-inf"))
@@ -179,21 +202,29 @@ class AugmentationAgent:
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
         augmentation: str,
+        strength: str,
     ) -> float:
         scores = [
             result.val_score
             for result in history
             if result.config.augmentation == augmentation
+            and result.config.augmentation_strength == strength
             and result.agent_name in {self.name, "orchestrator"}
         ]
         scores.extend(
             result.val_score
             for result in accepted_history
             if result.config.augmentation == augmentation
+            and result.config.augmentation_strength == strength
         )
         return max(scores, default=float("-inf"))
 
-    def _pick_option(self, ranked: list[str], tried: set[str], round_id: int) -> str:
+    def _pick_option(
+        self,
+        ranked: list[tuple[str, str]],
+        tried: set[tuple[str, str]],
+        round_id: int,
+    ) -> tuple[str, str]:
         for option in ranked:
             if option not in tried:
                 return option
@@ -651,6 +682,7 @@ class HierarchicalOrchestrator:
                 "model_name": model_proposal.model_name,
                 "learning_rate": model_proposal.learning_rate,
                 "augmentation": augmentation_proposal.augmentation,
+                "augmentation_strength": augmentation_proposal.strength,
                 "preprocessing": data_proposal.preprocessing,
                 "window_size": data_proposal.window_size,
             },

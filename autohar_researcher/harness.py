@@ -35,6 +35,7 @@ class DummyHARHarness:
             config.model_name,
             config.preprocessing,
             config.augmentation,
+            config.augmentation_strength,
             float(config.learning_rate),
             int(config.window_size),
         )
@@ -88,7 +89,8 @@ class DummyHARHarness:
         cached = self._evaluation_cache[cache_key]
         summary = (
             f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
-            f"{config.augmentation}, lr={config.learning_rate}, window={config.window_size}"
+            f"{config.augmentation}:{config.augmentation_strength}, "
+            f"lr={config.learning_rate}, window={config.window_size}"
         )
         details = dict(cached["details"])
         score_breakdown = {
@@ -154,7 +156,12 @@ class DummyHARHarness:
         processed = self._preprocess(processed, config.preprocessing)
         if split == "train":
             rng = random.Random(config.window_size + len(window))
-            processed = self._augment(processed, config.augmentation, rng=rng)
+            processed = self._augment(
+                processed,
+                config.augmentation,
+                config.augmentation_strength,
+                rng=rng,
+            )
         return processed
 
     def _select_channels(self, window: list[list[float]], mode: str) -> list[list[float]]:
@@ -211,14 +218,30 @@ class DummyHARHarness:
             normalized.append([(row[i] - means[i]) / stds[i] for i in range(channels)])
         return normalized
 
-    def _augment(self, window: list[list[float]], mode: str, rng: random.Random) -> list[list[float]]:
+    def _augment(
+        self,
+        window: list[list[float]],
+        mode: str,
+        strength: str,
+        rng: random.Random,
+    ) -> list[list[float]]:
         augmented = [row[:] for row in window]
+        strength_scale = {
+            "weak": 0.5,
+            "medium": 1.0,
+            "strong": 1.5,
+        }.get(strength, 1.0)
         if mode == "none":
             return augmented
         if mode == "jitter":
-            return [[value + rng.uniform(-0.02, 0.02) for value in row] for row in augmented]
+            radius = 0.02 * strength_scale
+            return [[value + rng.uniform(-radius, radius) for value in row] for row in augmented]
+        if mode == "scaling":
+            span = 0.1 * strength_scale
+            scales = [rng.uniform(1.0 - span, 1.0 + span) for _ in range(len(augmented[0]))]
+            return [[value * scales[index] for index, value in enumerate(row)] for row in augmented]
         if mode == "rotation":
-            angle = math.pi / 18.0
+            angle = (math.pi / 18.0) * strength_scale
             cos_a = math.cos(angle)
             sin_a = math.sin(angle)
             rotated: list[list[float]] = []
@@ -238,15 +261,55 @@ class DummyHARHarness:
             return rotated
         if mode == "time_warp":
             warped = []
+            compression = max(0.7, 1.0 - (0.08 * strength_scale))
             for index in range(len(augmented)):
-                source_index = min(len(augmented) - 1, int(index * 0.92))
+                source_index = min(len(augmented) - 1, int(index * compression))
                 warped.append(augmented[source_index][:])
             return warped
+        if mode == "permutation":
+            if len(augmented) < 8:
+                return augmented
+            segment_count = min(6, max(3, int(round(2 + (2 * strength_scale)))))
+            segment_size = max(len(augmented) // segment_count, 1)
+            segments = [
+                augmented[index : index + segment_size]
+                for index in range(0, len(augmented), segment_size)
+            ]
+            rng.shuffle(segments)
+            return [row[:] for segment in segments for row in segment]
+        if mode == "drift":
+            drift_radius = 0.015 * strength_scale
+            drifts = [rng.uniform(-drift_radius, drift_radius) for _ in range(len(augmented[0]))]
+            drifted: list[list[float]] = []
+            for step, row in enumerate(augmented):
+                alpha = step / max(len(augmented) - 1, 1)
+                drifted.append(
+                    [value + (alpha * drifts[index]) for index, value in enumerate(row)]
+                )
+            return drifted
+        if mode == "magnitude_warp":
+            anchors = [0.0, 0.33, 0.66, 1.0]
+            span = 0.15 * strength_scale
+            knots = [rng.uniform(1.0 - span, 1.0 + span) for _ in anchors]
+            warped: list[list[float]] = []
+            for step, row in enumerate(augmented):
+                alpha = step / max(len(augmented) - 1, 1)
+                left = max(index for index, anchor in enumerate(anchors) if anchor <= alpha)
+                right = min(left + 1, len(anchors) - 1)
+                if left == right:
+                    scale = knots[left]
+                else:
+                    span = anchors[right] - anchors[left]
+                    mix = 0.0 if span == 0 else (alpha - anchors[left]) / span
+                    scale = ((1.0 - mix) * knots[left]) + (mix * knots[right])
+                warped.append([value * scale for value in row])
+            return warped
         if mode == "mixup":
+            blend = min(0.45, 0.15 + (0.15 * strength_scale))
             mixed = []
             reversed_window = list(reversed(augmented))
             for left, right in zip(augmented, reversed_window):
-                mixed.append([(0.7 * a) + (0.3 * b) for a, b in zip(left, right)])
+                mixed.append([((1.0 - blend) * a) + (blend * b) for a, b in zip(left, right)])
             return mixed
         return augmented
 
@@ -395,6 +458,7 @@ class DummyHARHarness:
                     "model_name": config.model_name,
                     "preprocessing": config.preprocessing,
                     "augmentation": config.augmentation,
+                    "augmentation_strength": config.augmentation_strength,
                     "learning_rate": config.learning_rate,
                     "window_size": config.window_size,
                     "notes": config.notes,

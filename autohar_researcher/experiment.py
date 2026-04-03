@@ -24,6 +24,7 @@ def base_experiment_config() -> dict[str, object]:
         },
         "augmentation": {
             "name": "none",
+            "strength": "medium",
         },
         "training": {
             "epochs": 5,
@@ -49,6 +50,7 @@ def apply_augmentation_proposal(
 ) -> dict[str, object]:
     updated = clone_experiment(experiment)
     updated["augmentation"]["name"] = proposal.augmentation
+    updated["augmentation"]["strength"] = proposal.strength
     updated["augmentation"]["notes"] = proposal.notes
     return updated
 
@@ -69,6 +71,7 @@ def experiment_to_candidate_config(experiment: dict[str, object], notes: str) ->
         model_name=str(experiment["model"]["name"]),
         preprocessing=str(experiment["data"]["preprocessing"]),
         augmentation=str(experiment["augmentation"]["name"]),
+        augmentation_strength=str(experiment["augmentation"].get("strength", "medium")),
         learning_rate=float(experiment["model"]["learning_rate"]),
         window_size=int(experiment["data"]["window_size"]),
         notes=notes,
