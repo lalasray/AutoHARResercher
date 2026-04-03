@@ -130,6 +130,10 @@ def main() -> None:
             print(f"- labels: {', '.join(labels)}")
         for row in best_result.details["confusion_matrix"]:
             print(f"- {' '.join(str(value) for value in row)}")
+    if best_result.details.get("training_report"):
+        print("Training report:")
+        for key, value in best_result.details["training_report"].items():
+            print(f"- {key}: {value}")
 
     if args.show_git_plan:
         print()

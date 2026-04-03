@@ -5,6 +5,11 @@ import math
 import random
 from pathlib import Path
 
+try:
+    import torch
+except Exception:  # pragma: no cover - optional dependency path
+    torch = None
+
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
 from autohar_researcher.datasets import UCIHARDataset
 from autohar_researcher.types import CandidateConfig, CandidateResult
@@ -18,6 +23,7 @@ class DummyHARHarness:
     def __init__(self) -> None:
         self._dataset: UCIHARDataset | None = None
         self._evaluation_cache: dict[tuple[str, str, str, float, int], dict[str, object]] = {}
+        self._torch = torch
 
     def evaluate(
         self,
@@ -41,6 +47,7 @@ class DummyHARHarness:
         )
         if cache_key not in self._evaluation_cache:
             dataset = self._load_dataset(experiment)
+            training = self._training_config(experiment)
             train_samples = [
                 (self._prepare_window(window, config, split="train"), label)
                 for window, label in dataset.load_split("train")
@@ -54,13 +61,22 @@ class DummyHARHarness:
             train_labels = [self.LABELS.index(label) for _, label in train_samples]
             val_features = [self._extract_features(window, config) for window, _ in val_samples]
             val_labels = [self.LABELS.index(label) for _, label in val_samples]
+            inner_train_features, inner_train_labels, stop_features, stop_labels = self._split_inner_validation(
+                train_features,
+                train_labels,
+            )
 
-            model = self._train_model(
+            model, training_report = self._train_model(
                 model_name=config.model_name,
-                train_features=train_features,
-                train_labels=train_labels,
+                train_features=inner_train_features,
+                train_labels=inner_train_labels,
+                stop_features=stop_features,
+                stop_labels=stop_labels,
                 learning_rate=config.learning_rate,
-                epochs=int(experiment["training"]["epochs"]),
+                epochs=training["epochs"],
+                patience=training["early_stopping_patience"],
+                min_epochs=training["min_epochs"],
+                device_preference=training["device"],
             )
             predictions = [self._predict(model, features) for features in val_features]
             confusion_matrix = self._confusion_matrix(predictions, val_labels)
@@ -81,10 +97,13 @@ class DummyHARHarness:
                 "val_samples": float(len(val_samples)),
                 "estimated_parameter_count": float(parameter_count),
                 "feature_dim": float(feature_dim),
+                "epochs_trained": float(training_report["epochs_trained"]),
+                "best_epoch": float(training_report["best_epoch"]),
                 "details": {
                     "labels": list(self.LABELS),
                     "confusion_matrix": confusion_matrix,
                     "per_class_f1": per_class_f1,
+                    "training_report": training_report,
                 },
             }
         cached = self._evaluation_cache[cache_key]
@@ -123,6 +142,15 @@ class DummyHARHarness:
             component_summaries=component_summaries or {},
             artifact_paths=merged_artifacts,
         )
+
+    def _training_config(self, experiment: dict[str, object]) -> dict[str, int | str]:
+        training = experiment.get("training", {})
+        return {
+            "epochs": int(training.get("epochs", 12)),
+            "min_epochs": int(training.get("min_epochs", 4)),
+            "early_stopping_patience": int(training.get("early_stopping_patience", 3)),
+            "device": str(training.get("device", "auto")),
+        }
 
     def _load_experiment(self, worktree_path: Path) -> dict[str, object]:
         experiment_path = worktree_path / "research" / "experiment.json"
@@ -358,38 +386,72 @@ class DummyHARHarness:
         model_name: str,
         train_features: list[list[float]],
         train_labels: list[int],
+        stop_features: list[list[float]],
+        stop_labels: list[int],
         learning_rate: float,
         epochs: int,
-    ) -> dict[str, object]:
+        patience: int,
+        min_epochs: int,
+        device_preference: str,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        if self._torch is not None:
+            return self._train_torch_model(
+                model_name=model_name,
+                train_features=train_features,
+                train_labels=train_labels,
+                stop_features=stop_features,
+                stop_labels=stop_labels,
+                learning_rate=learning_rate,
+                epochs=epochs,
+                patience=patience,
+                min_epochs=min_epochs,
+                device_preference=device_preference,
+            )
         if model_name in {"deepconvlstm", "hart", "tinierhar"}:
             hidden_dim = 48 if model_name in {"deepconvlstm", "hart"} else 24
             return self._train_mlp_model(
                 train_features=train_features,
                 train_labels=train_labels,
+                stop_features=stop_features,
+                stop_labels=stop_labels,
                 learning_rate=learning_rate,
                 epochs=epochs,
                 hidden_dim=hidden_dim,
+                patience=patience,
+                min_epochs=min_epochs,
             )
         weights = self._train_linear_model(
             train_features=train_features,
             train_labels=train_labels,
+            stop_features=stop_features,
+            stop_labels=stop_labels,
             learning_rate=learning_rate,
             epochs=epochs,
+            patience=patience,
+            min_epochs=min_epochs,
         )
-        return {"kind": "linear", "weights": weights}
+        return weights
 
     def _train_linear_model(
         self,
         train_features: list[list[float]],
         train_labels: list[int],
+        stop_features: list[list[float]],
+        stop_labels: list[int],
         learning_rate: float,
         epochs: int,
-    ) -> list[list[float]]:
+        patience: int,
+        min_epochs: int,
+    ) -> tuple[dict[str, object], dict[str, object]]:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         weights = [[0.0 for _ in range(feature_dim + 1)] for _ in range(num_classes)]
         scaled_lr = max(0.01, min(learning_rate * 500.0, 0.18))
         order = list(range(len(train_features)))
+        best_weights = [row[:] for row in weights]
+        best_score = float("-inf")
+        best_epoch = 0
+        stale_epochs = 0
 
         for epoch in range(max(epochs * 4, 8)):
             random.Random(epochs + epoch).shuffle(order)
@@ -403,16 +465,40 @@ class DummyHARHarness:
                     for feature_index, value in enumerate(features):
                         weights[class_index][feature_index] -= scaled_lr * error * value
                     weights[class_index][-1] -= scaled_lr * error
-        return weights
+            stop_predictions = [self._predict({"kind": "linear", "weights": weights}, features) for features in stop_features]
+            stop_score = self._macro_f1(stop_predictions, stop_labels)
+            if stop_score > best_score:
+                best_score = stop_score
+                best_epoch = epoch + 1
+                stale_epochs = 0
+                best_weights = [row[:] for row in weights]
+            else:
+                stale_epochs += 1
+            if (epoch + 1) >= min_epochs and stale_epochs >= patience:
+                break
+        return (
+            {"kind": "linear", "weights": best_weights},
+            {
+                "device": "cpu",
+                "epochs_trained": epoch + 1,
+                "best_epoch": best_epoch,
+                "best_stop_macro_f1": round(best_score, 4),
+                "stopped_early": stale_epochs >= patience,
+            },
+        )
 
     def _train_mlp_model(
         self,
         train_features: list[list[float]],
         train_labels: list[int],
+        stop_features: list[list[float]],
+        stop_labels: list[int],
         learning_rate: float,
         epochs: int,
         hidden_dim: int,
-    ) -> dict[str, object]:
+        patience: int,
+        min_epochs: int,
+    ) -> tuple[dict[str, object], dict[str, object]]:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         rng = random.Random(feature_dim + hidden_dim + epochs)
@@ -426,6 +512,11 @@ class DummyHARHarness:
         ]
         scaled_lr = max(0.003, min(learning_rate * 60.0, 0.03))
         order = list(range(len(train_features)))
+        best_hidden = [row[:] for row in hidden]
+        best_output = [row[:] for row in output]
+        best_score = float("-inf")
+        best_epoch = 0
+        stale_epochs = 0
         for epoch in range(max(epochs * 3, 6)):
             random.Random(hidden_dim + epoch).shuffle(order)
             for sample_index in order:
@@ -454,11 +545,112 @@ class DummyHARHarness:
                     for feature_index, value in enumerate(features):
                         hidden[hidden_index][feature_index] -= scaled_lr * hidden_errors[hidden_index] * value
                     hidden[hidden_index][-1] -= scaled_lr * hidden_errors[hidden_index]
-        return {"kind": "mlp", "hidden": hidden, "output": output}
+            stop_model = {"kind": "mlp", "hidden": hidden, "output": output}
+            stop_predictions = [self._predict(stop_model, features) for features in stop_features]
+            stop_score = self._macro_f1(stop_predictions, stop_labels)
+            if stop_score > best_score:
+                best_score = stop_score
+                best_epoch = epoch + 1
+                stale_epochs = 0
+                best_hidden = [row[:] for row in hidden]
+                best_output = [row[:] for row in output]
+            else:
+                stale_epochs += 1
+            if (epoch + 1) >= min_epochs and stale_epochs >= patience:
+                break
+        return (
+            {"kind": "mlp", "hidden": best_hidden, "output": best_output},
+            {
+                "device": "cpu",
+                "epochs_trained": epoch + 1,
+                "best_epoch": best_epoch,
+                "best_stop_macro_f1": round(best_score, 4),
+                "stopped_early": stale_epochs >= patience,
+            },
+        )
+
+    def _train_torch_model(
+        self,
+        model_name: str,
+        train_features: list[list[float]],
+        train_labels: list[int],
+        stop_features: list[list[float]],
+        stop_labels: list[int],
+        learning_rate: float,
+        epochs: int,
+        patience: int,
+        min_epochs: int,
+        device_preference: str,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        assert self._torch is not None
+        feature_dim = len(train_features[0])
+        num_classes = len(self.LABELS)
+        device = self._resolve_device(device_preference)
+        if model_name in {"deepconvlstm", "hart", "tinierhar"}:
+            hidden_dim = 64 if model_name in {"deepconvlstm", "hart"} else 32
+            module = self._torch.nn.Sequential(
+                self._torch.nn.Linear(feature_dim, hidden_dim),
+                self._torch.nn.ReLU(),
+                self._torch.nn.Linear(hidden_dim, num_classes),
+            )
+        else:
+            module = self._torch.nn.Linear(feature_dim, num_classes)
+        module = module.to(device)
+        optimizer = self._torch.optim.Adam(module.parameters(), lr=max(learning_rate, 1e-4))
+        criterion = self._torch.nn.CrossEntropyLoss()
+        train_x = self._torch.tensor(train_features, dtype=self._torch.float32, device=device)
+        train_y = self._torch.tensor(train_labels, dtype=self._torch.long, device=device)
+        stop_x = self._torch.tensor(stop_features, dtype=self._torch.float32, device=device)
+        batch_size = min(128, len(train_features))
+        best_state = {key: value.detach().cpu().clone() for key, value in module.state_dict().items()}
+        best_score = float("-inf")
+        best_epoch = 0
+        stale_epochs = 0
+        for epoch in range(epochs):
+            module.train()
+            permutation = self._torch.randperm(train_x.shape[0], device=device)
+            for start in range(0, train_x.shape[0], batch_size):
+                indices = permutation[start : start + batch_size]
+                logits = module(train_x[indices])
+                loss = criterion(logits, train_y[indices])
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            module.eval()
+            with self._torch.no_grad():
+                stop_logits = module(stop_x)
+                stop_predictions = stop_logits.argmax(dim=1).detach().cpu().tolist()
+            stop_score = self._macro_f1(stop_predictions, stop_labels)
+            if stop_score > best_score:
+                best_score = stop_score
+                best_epoch = epoch + 1
+                stale_epochs = 0
+                best_state = {key: value.detach().cpu().clone() for key, value in module.state_dict().items()}
+            else:
+                stale_epochs += 1
+            if (epoch + 1) >= min_epochs and stale_epochs >= patience:
+                break
+        module.load_state_dict(best_state)
+        module = module.to("cpu")
+        return (
+            {"kind": "torch", "module": module},
+            {
+                "device": str(device),
+                "epochs_trained": epoch + 1,
+                "best_epoch": best_epoch,
+                "best_stop_macro_f1": round(best_score, 4),
+                "stopped_early": stale_epochs >= patience,
+            },
+        )
 
     def _predict(self, model: dict[str, object], features: list[float]) -> int:
         if model["kind"] == "linear":
             logits = [self._dot(weight, features) for weight in model["weights"]]
+        elif model["kind"] == "torch":
+            assert self._torch is not None
+            with self._torch.no_grad():
+                tensor = self._torch.tensor(features, dtype=self._torch.float32).unsqueeze(0)
+                logits = model["module"](tensor).squeeze(0).tolist()
         else:
             hidden = [math.tanh(self._dot(weight, features)) for weight in model["hidden"]]
             logits = [self._dot(weight, hidden) for weight in model["output"]]
@@ -467,9 +659,44 @@ class DummyHARHarness:
     def _parameter_count(self, model: dict[str, object]) -> int:
         if model["kind"] == "linear":
             return len(model["weights"]) * len(model["weights"][0])
+        if model["kind"] == "torch":
+            return sum(parameter.numel() for parameter in model["module"].parameters())
         hidden = model["hidden"]
         output = model["output"]
         return (len(hidden) * len(hidden[0])) + (len(output) * len(output[0]))
+
+    def _resolve_device(self, device_preference: str) -> str:
+        if self._torch is None:
+            return "cpu"
+        if device_preference == "cuda" and self._torch.cuda.is_available():
+            return "cuda"
+        if device_preference == "cpu":
+            return "cpu"
+        return "cuda" if self._torch.cuda.is_available() else "cpu"
+
+    def _split_inner_validation(
+        self,
+        features: list[list[float]],
+        labels: list[int],
+    ) -> tuple[list[list[float]], list[int], list[list[float]], list[int]]:
+        grouped: dict[int, list[tuple[list[float]], int]] = {}
+        for feature, label in zip(features, labels):
+            grouped.setdefault(label, []).append((feature, label))
+        train_features: list[list[float]] = []
+        train_labels: list[int] = []
+        stop_features: list[list[float]] = []
+        stop_labels: list[int] = []
+        for items in grouped.values():
+            split_index = max(1, len(items) // 5)
+            stop_items = items[:split_index]
+            train_items = items[split_index:] or items[:1]
+            for feature, label in train_items:
+                train_features.append(feature)
+                train_labels.append(label)
+            for feature, label in stop_items:
+                stop_features.append(feature)
+                stop_labels.append(label)
+        return train_features, train_labels, stop_features, stop_labels
 
     def _multiscale_features(self, window: list[list[float]]) -> list[float]:
         channels = len(window[0])

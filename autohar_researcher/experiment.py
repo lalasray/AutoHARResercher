@@ -27,7 +27,10 @@ def base_experiment_config() -> dict[str, object]:
             "strength": "medium",
         },
         "training": {
-            "epochs": 5,
+            "epochs": 12,
+            "min_epochs": 4,
+            "early_stopping_patience": 3,
+            "device": "auto",
             "metric": "macro_f1",
         },
     }
