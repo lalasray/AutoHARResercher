@@ -21,10 +21,11 @@ class DummyHARHarness:
         branch_name: str,
         worktree_path: str,
         config: CandidateConfig,
+        experiment: dict[str, object] | None = None,
         component_summaries: dict[str, str] | None = None,
         artifact_paths: dict[str, str] | None = None,
     ) -> CandidateResult:
-        experiment = self._load_experiment(Path(worktree_path))
+        experiment = experiment or self._load_experiment(Path(worktree_path))
         dataset = self._load_dataset(experiment)
         train_samples = [
             (self._prepare_window(window, config, split="train"), label)

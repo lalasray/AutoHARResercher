@@ -4,9 +4,17 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
-from autohar_researcher.experiment import experiment_to_candidate_config
+from autohar_researcher.experiment import (
+    apply_augmentation_proposal,
+    apply_data_proposal,
+    apply_model_proposal,
+    base_experiment_config,
+    clone_experiment,
+    experiment_to_candidate_config,
+)
 from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
+from autohar_researcher.reporting import write_history_csv, write_history_svg
 from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
     AgentWorkspace,
@@ -16,6 +24,7 @@ from autohar_researcher.types import (
     DataProposal,
     GitAction,
     ModelProposal,
+    RunOutputs,
 )
 
 
@@ -115,12 +124,14 @@ class HierarchicalOrchestrator:
 
         assert best_result is not None
         actions.extend(self.finalize_actions(best_result=best_result))
+        run_outputs = self._write_run_outputs(history)
         return {
             "best_result": best_result,
             "history": history,
             "workspaces": self.workspaces,
             "git_actions": actions,
             "round_states": round_states,
+            "run_outputs": run_outputs,
         }
 
     def _build_workspaces(self) -> dict[str, AgentWorkspace]:
@@ -240,12 +251,19 @@ class HierarchicalOrchestrator:
                 round_state=round_state,
                 auto_push_non_main=auto_push_non_main,
             )
+        agent_results = self._evaluate_agent_results(
+            round_id=round_id,
+            proposals=proposals,
+            round_state=round_state,
+            baseline_branch=str(round_plan["baseline_branch"]),
+        )
         result = self._compose_round_result(
             round_id=round_id,
             proposals=proposals,
             round_state=round_state,
+            baseline_branch=str(round_plan["baseline_branch"]),
         )
-        return [result], round_state
+        return [*agent_results, result], round_state
 
     def evaluate_round(self, round_results: list[CandidateResult]) -> CandidateResult:
         return max(round_results, key=lambda result: result.val_score)
@@ -255,6 +273,7 @@ class HierarchicalOrchestrator:
         round_id: int,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         round_state: RoundState,
+        baseline_branch: str,
     ) -> CandidateResult:
         model_proposal = next(
             proposal for proposal in proposals if isinstance(proposal, ModelProposal)
@@ -282,6 +301,12 @@ class HierarchicalOrchestrator:
                 composed_payload["experiment"],
                 notes="Composed by orchestrator from model, augmentation, and data proposals.",
             )
+            experiment = composed_payload["experiment"]
+        else:
+            experiment = self._compose_experiment_from_proposals(
+                proposals=proposals,
+                baseline_experiment=self._baseline_experiment_from_branch(baseline_branch),
+            )
         component_summaries = {
             "model_agent": model_proposal.notes,
             "augmentation_agent": augmentation_proposal.notes,
@@ -298,6 +323,7 @@ class HierarchicalOrchestrator:
             branch_name=workspace.branch_name,
             worktree_path=workspace.worktree_path,
             config=config,
+            experiment=experiment,
             component_summaries=component_summaries,
             artifact_paths={
                 **round_state.proposal_artifacts,
@@ -309,6 +335,50 @@ class HierarchicalOrchestrator:
                 "materialized_orchestrator_candidate": round_state.materialized_orchestrator_file,
             },
         )
+
+    def _evaluate_agent_results(
+        self,
+        round_id: int,
+        proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+        round_state: RoundState,
+        baseline_branch: str,
+    ) -> list[CandidateResult]:
+        baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
+        results: list[CandidateResult] = []
+        for proposal in proposals:
+            if isinstance(proposal, ModelProposal):
+                agent_name = "model_agent"
+                experiment = apply_model_proposal(clone_experiment(baseline_experiment), proposal)
+                notes = proposal.notes
+            elif isinstance(proposal, AugmentationProposal):
+                agent_name = "augmentation_agent"
+                experiment = apply_augmentation_proposal(clone_experiment(baseline_experiment), proposal)
+                notes = proposal.notes
+            else:
+                agent_name = "data_agent"
+                experiment = apply_data_proposal(clone_experiment(baseline_experiment), proposal)
+                notes = proposal.notes
+
+            config = experiment_to_candidate_config(experiment, notes=notes)
+            workspace = self.workspaces[agent_name]
+            worktree_path = workspace.worktree_path
+            if agent_name in round_state.materialized_agent_files:
+                worktree_path = str(Path(round_state.materialized_agent_files[agent_name]).parent.parent)
+            results.append(
+                self.harness.evaluate(
+                    round_id=round_id,
+                    agent_name=agent_name,
+                    branch_name=workspace.branch_name,
+                    worktree_path=worktree_path,
+                    config=config,
+                    experiment=experiment,
+                    artifact_paths={
+                        "proposal_artifact": round_state.proposal_artifacts.get(agent_name, ""),
+                        "materialized_agent_experiment": round_state.materialized_agent_files.get(agent_name, ""),
+                    },
+                )
+            )
+        return results
 
     def _materialize_round_state(
         self,
@@ -371,6 +441,37 @@ class HierarchicalOrchestrator:
         import json
 
         return json.loads(Path(path).read_text(encoding="utf-8"))
+
+    def _baseline_experiment_from_branch(self, baseline_branch: str) -> dict[str, object]:
+        if baseline_branch == "main":
+            return base_experiment_config()
+        experiment_path = Path(self.orchestrator_workspace.worktree_path) / "research" / "experiment.json"
+        if experiment_path.exists():
+            payload = self._load_json(str(experiment_path))
+            if "experiment" in payload:
+                return payload["experiment"]
+            return payload
+        return base_experiment_config()
+
+    def _compose_experiment_from_proposals(
+        self,
+        proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+        baseline_experiment: dict[str, object],
+    ) -> dict[str, object]:
+        model_proposal = next(proposal for proposal in proposals if isinstance(proposal, ModelProposal))
+        augmentation_proposal = next(proposal for proposal in proposals if isinstance(proposal, AugmentationProposal))
+        data_proposal = next(proposal for proposal in proposals if isinstance(proposal, DataProposal))
+        experiment = clone_experiment(baseline_experiment)
+        experiment = apply_model_proposal(experiment, model_proposal)
+        experiment = apply_augmentation_proposal(experiment, augmentation_proposal)
+        experiment = apply_data_proposal(experiment, data_proposal)
+        return experiment
+
+    def _write_run_outputs(self, history: list[CandidateResult]) -> RunOutputs:
+        output_dir = Path.cwd() / "artifacts" / "reports"
+        csv_path = write_history_csv(history, output_dir / "score_history.csv")
+        svg_path = write_history_svg(history, output_dir / "score_history.svg")
+        return RunOutputs(history_csv=csv_path, history_svg=svg_path)
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [

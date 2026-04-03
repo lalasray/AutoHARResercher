@@ -52,6 +52,7 @@ def main() -> None:
     workspaces = results["workspaces"]
     git_actions = results["git_actions"]
     round_states = results["round_states"]
+    run_outputs = results["run_outputs"]
     ranked = sorted(history, key=lambda item: item.val_score, reverse=True)
 
     print("AutoHARResearcher git-first demo")
@@ -82,6 +83,10 @@ def main() -> None:
             print(f"  synced branches -> {', '.join(round_state.synced_branches)}")
         if round_state.pushed_branches:
             print(f"  pushed branches -> {', '.join(round_state.pushed_branches)}")
+    print()
+    print("Report outputs:")
+    print(f"- history csv: {run_outputs.history_csv}")
+    print(f"- history svg: {run_outputs.history_svg}")
     print()
     print("Top candidates:")
     for rank, result in enumerate(ranked[:5], start=1):
