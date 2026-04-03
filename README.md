@@ -18,9 +18,9 @@ Build a hierarchical auto-research loop for human activity recognition from IMU 
 This first version is intentionally simple:
 
 - no LLM calls
-- no external ML dependencies
-- real UCI HAR evaluation with a small dependency-free baseline
-- no external dependencies
+- real UCI HAR evaluation
+- optional PyTorch acceleration when available
+- CUDA auto-detection with CPU fallback
 - Git commands can be either previewed or materialized
 - each round writes proposal artifacts so the branch-composition flow is visible
 
@@ -38,18 +38,32 @@ Orchestrator
 Role split in this version:
 
 - `ModelAgent`: proposes only the model-side part of the next candidate
-- `AugmentationAgent`: proposes only the augmentation-side part of the next candidate
+- `AugmentationAgent`: proposes augmentation type and augmentation strength for the next candidate
 - `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates single-agent and partial-combination candidates, and decides which branch to promote
-- `Harness`: trains and evaluates a tiny dependency-free baseline on UCI HAR from the experiment file
+- `Harness`: trains and evaluates a real UCI HAR baseline from the experiment file, with optional Torch-backed training, early stopping, and richer metrics
 
-The harness now reads the experiment file, loads UCI HAR, runs a tiny dependency-free baseline, and returns a real validation macro-F1 score plus richer outputs such as per-class F1 and a confusion matrix. The orchestrator compares scores across rounds and keeps the best candidate.
+The harness now reads the experiment file, loads UCI HAR, and returns a real validation macro-F1 score plus richer outputs such as:
+
+- per-class F1
+- confusion matrix
+- estimated parameter count
+- feature dimension
+- training report with device, epochs trained, best epoch, and early-stopping state
+
+The current model search space includes stronger HAR-inspired families such as:
+
+- `deepconvlstm`
+- `hart`
+- `tinierhar`
+- plus simpler baselines like `cnn`, `gru`, `tiny_transformer`, and `cnn_gru`
 
 The proposal policy is now adaptive:
 
 - agents mutate around the currently accepted best configuration
 - agents avoid replaying identical recent proposals when they still have unseen options
 - the orchestrator can keep a stronger partial combination such as `model + data` when `model + augmentation + data` is worse
+- the augmentation agent searches both augmentation type and strength
 
 ## Round Artifacts
 
@@ -68,7 +82,7 @@ And in the Git materialized flow, each branch now owns a real shared experiment 
 
 - agent worktrees write `research/experiment.json`
 - `ModelAgent` edits only model fields
-- `AugmentationAgent` edits only augmentation fields
+- `AugmentationAgent` edits augmentation name and strength
 - `DataAgent` edits only data/preprocessing fields
 - `orchestrator-main` commits the composed `research/experiment.json`
 
@@ -134,8 +148,13 @@ Push policy in this mode:
 ```text
 autohar_researcher/
   agents.py
+  datasets.py
+  experiment.py
+  git_runtime.py
   harness.py
   main.py
+  reporting.py
+  round_state.py
   types.py
 ```
 
@@ -157,6 +176,11 @@ autohar_researcher/
 - [x] Replace synthetic harness with a real train/val pipeline for one IMU dataset
 - [ ] Add dataset module for windowing, normalization, and label mapping
 - [x] Log metrics such as accuracy, macro-F1, and confusion matrix
+- [x] Add adaptive proposal mutation around the accepted best experiment
+- [x] Add augmentation type and strength search
+- [x] Add stronger HAR-inspired model choices
+- [x] Add optional Torch-backed training with CPU/CUDA device selection
+- [x] Add validation-based early stopping
 - [ ] Save best checkpoint and experiment metadata
 
 ### Phase 3: match your architecture sketch
@@ -189,12 +213,29 @@ autohar_researcher/
 - [x] Add mutation of the current best experiment rather than static handcrafted proposals
 - [ ] Persist all runs in a lightweight experiment registry
 
+## Training Runtime
+
+The current training config in `research/experiment.json` supports:
+
+- `epochs`
+- `min_epochs`
+- `early_stopping_patience`
+- `device`
+
+Device behavior:
+
+- `device: "auto"` uses CUDA when available, otherwise CPU
+- `device: "cuda"` requests CUDA explicitly
+- `device: "cpu"` forces CPU
+
+In environments without a visible GPU, the system falls back to CPU cleanly.
+
 ## Next Step Suggestion
 
 The cleanest next move is to strengthen the current real HAR baseline:
 
 - dataset: UCI HAR
-- model: a stronger classifier than the current lightweight linear baseline
+- model: a stronger sensor-sequence baseline than the current lightweight proxy models
 - metric: validation macro-F1
 
 Once that is stronger, the same orchestrator can optimize a genuinely meaningful HAR benchmark.
