@@ -54,10 +54,18 @@ Each round now materializes concrete files:
 - `artifacts/round_N/agent_proposals/data_agent.json`
 - `artifacts/round_N/orchestrator_candidate.json`
 
+And in the Git materialized flow, each branch now owns a real shared experiment file:
+
+- agent worktrees write `research/experiment.json`
+- `ModelAgent` edits only model fields
+- `AugmentationAgent` edits only augmentation fields
+- `DataAgent` edits only data/preprocessing fields
+- `orchestrator-main` commits the composed `research/experiment.json`
+
 This is the bridge between the current dummy prototype and a real Git-based system:
 
 - today: agent branches produce structured proposal files
-- now: agent branches can also receive real committed round files in their worktrees
+- now: agent branches can receive real committed experiment files in their worktrees
 - next: agent branches produce real code diffs instead of JSON-only files
 - later: the orchestrator composes richer commits on its persistent branch
 
@@ -123,7 +131,6 @@ autohar_researcher/
 ## TODO
 
 ### Phase 1: current dummy prototype
-
 - [x] Create hierarchical orchestrator
 - [x] Create 3 parallel domain agents
 - [x] Add dummy HAR evaluation harness

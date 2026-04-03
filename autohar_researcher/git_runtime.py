@@ -5,6 +5,13 @@ import subprocess
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
+from autohar_researcher.experiment import (
+    apply_augmentation_proposal,
+    apply_data_proposal,
+    apply_model_proposal,
+    base_experiment_config,
+    clone_experiment,
+)
 from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
     AgentWorkspace,
@@ -42,22 +49,27 @@ class GitRuntime:
     ) -> RoundState:
         self.bootstrap_agent_workspaces(workspaces)
         round_state.baseline_branch = baseline_branch
+        agent_experiments: dict[str, dict[str, object]] = {}
 
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
                 agent_name = "model_agent"
+                experiment = apply_model_proposal(base_experiment_config(), proposal)
             elif isinstance(proposal, AugmentationProposal):
                 agent_name = "augmentation_agent"
+                experiment = apply_augmentation_proposal(base_experiment_config(), proposal)
             else:
                 agent_name = "data_agent"
+                experiment = apply_data_proposal(base_experiment_config(), proposal)
 
             workspace = workspaces[agent_name]
-            rel_path = Path("research") / "proposals" / f"round_{round_id}.json"
+            rel_path = Path("research") / "experiment.json"
             payload = {
                 "round_id": round_id,
                 "agent_name": agent_name,
                 "branch_name": workspace.branch_name,
-                "proposal": self._to_serializable(proposal),
+                "owned_fields": self._owned_fields(agent_name),
+                "experiment": experiment,
             }
             abs_path = Path(workspace.worktree_path) / rel_path
             self.write_json(abs_path, payload)
@@ -67,6 +79,7 @@ class GitRuntime:
                 message=f"round {round_id}: {agent_name} proposal",
             )
             round_state.materialized_agent_files[agent_name] = str(abs_path)
+            agent_experiments[agent_name] = experiment
             if auto_push_non_main and committed:
                 self.push_branch(workspace.branch_name, cwd=Path(workspace.worktree_path))
                 round_state.pushed_branches.append(workspace.branch_name)
@@ -80,7 +93,12 @@ class GitRuntime:
         for agent_name, materialized_path in round_state.materialized_agent_files.items():
             source_payload[agent_name] = json.loads(Path(materialized_path).read_text(encoding="utf-8"))
 
-        orchestrator_rel = Path("research") / "composed" / f"round_{round_id}.json"
+        composed_experiment = clone_experiment(base_experiment_config())
+        composed_experiment["model"] = dict(agent_experiments["model_agent"]["model"])
+        composed_experiment["data"] = dict(agent_experiments["data_agent"]["data"])
+        composed_experiment["augmentation"] = dict(agent_experiments["augmentation_agent"]["augmentation"])
+
+        orchestrator_rel = Path("research") / "experiment.json"
         composed_payload = {
             "round_id": round_id,
             "branch_name": orchestrator_branch,
@@ -90,6 +108,7 @@ class GitRuntime:
             },
             "source_files": round_state.materialized_agent_files,
             "composed_from": source_payload,
+            "experiment": composed_experiment,
         }
         orchestrator_abs = orchestrator_worktree / orchestrator_rel
         self.write_json(orchestrator_abs, composed_payload)
@@ -144,6 +163,14 @@ class GitRuntime:
     def has_remote(self, remote_name: str) -> bool:
         remote = self.run_git(["remote", "get-url", remote_name], check=False)
         return remote.returncode == 0 and bool(remote.stdout.strip())
+
+    def _owned_fields(self, agent_name: str) -> list[str]:
+        owned = {
+            "model_agent": ["model.name", "model.learning_rate"],
+            "augmentation_agent": ["augmentation.name"],
+            "data_agent": ["data.preprocessing", "data.window_size"],
+        }
+        return owned[agent_name]
 
     def run_git(
         self,

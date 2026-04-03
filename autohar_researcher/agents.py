@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
+from autohar_researcher.experiment import experiment_to_candidate_config
 from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
 from autohar_researcher.round_state import RoundState
@@ -275,6 +276,12 @@ class HierarchicalOrchestrator:
                 "Composed by orchestrator from model, augmentation, and data proposals."
             ),
         )
+        if round_state.materialized_orchestrator_file:
+            composed_payload = self._load_json(round_state.materialized_orchestrator_file)
+            config = experiment_to_candidate_config(
+                composed_payload["experiment"],
+                notes="Composed by orchestrator from model, augmentation, and data proposals.",
+            )
         component_summaries = {
             "model_agent": model_proposal.notes,
             "augmentation_agent": augmentation_proposal.notes,
@@ -359,6 +366,11 @@ class HierarchicalOrchestrator:
             orchestrator_branch=self.orchestrator_workspace.branch_name,
             orchestrator_worktree=self.orchestrator_workspace.worktree_path,
         )
+
+    def _load_json(self, path: str) -> dict[str, object]:
+        import json
+
+        return json.loads(Path(path).read_text(encoding="utf-8"))
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [
