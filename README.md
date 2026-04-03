@@ -139,19 +139,24 @@ This is important because `results/orchestrator.json` is only the orchestrator c
 - augmentation-agent hint
 - data-agent hint
 
-And in the Git materialized flow, each branch now owns a real shared experiment file:
+And in the Git materialized flow, each branch now owns explicit Python module files:
 
-- agent worktrees write `research/experiment.json`
-- `ModelAgent` edits only model fields
-- `AugmentationAgent` edits augmentation name and strength
-- `DataAgent` edits only data/preprocessing fields
-- `orchestrator-main` commits the composed `research/experiment.json`
+- `research/modules/model_module.py`
+- `research/modules/augmentation_module.py`
+- `research/modules/data_module.py`
+
+Ownership is now strict at the file level:
+
+- `ModelAgent` only proposes changes through `research/modules/model_module.py`
+- `AugmentationAgent` only proposes changes through `research/modules/augmentation_module.py`
+- `DataAgent` only proposes changes through `research/modules/data_module.py`
+- `orchestrator-main` composes those modules and writes the shared `research/experiment.json`
 
 This is the bridge between the current dummy prototype and a real Git-based system:
 
 - today: agent branches produce structured proposal files
-- now: agent branches can receive real committed experiment files in their worktrees
-- next: agent branches produce real code diffs instead of JSON-only files
+- now: agent branches commit their own Python-owned module file without editing the other agent module files
+- next: those module files can evolve from config payloads into richer code logic
 - later: the orchestrator composes richer commits on its persistent branch
 
 ## Git-First Mental Model

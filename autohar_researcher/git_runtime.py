@@ -11,6 +11,12 @@ from autohar_researcher.experiment import (
     apply_model_proposal,
     base_experiment_config,
     clone_experiment,
+    compose_experiment_from_workspace,
+    load_module_python,
+    module_owned_fields,
+    module_payload,
+    module_relative_path,
+    write_module_python,
 )
 from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
@@ -67,20 +73,33 @@ class GitRuntime:
                 experiment = apply_data_proposal(clone_experiment(baseline_experiment), proposal)
 
             workspace = workspaces[agent_name]
-            rel_path = Path("research") / "experiment.json"
+            experiment_rel = Path("research") / "experiment.json"
+            module_rel = module_relative_path(agent_name)
             sync_payload = {
                 "round_id": round_id,
                 "agent_name": agent_name,
                 "branch_name": workspace.branch_name,
                 "sync_from_branch": baseline_branch,
-                "owned_fields": self._owned_fields(agent_name),
+                "owned_fields": module_owned_fields(agent_name),
                 "experiment": clone_experiment(baseline_experiment),
             }
-            abs_path = Path(workspace.worktree_path) / rel_path
-            self.write_json(abs_path, sync_payload)
-            sync_committed = self.commit_if_changed(
+            experiment_abs = Path(workspace.worktree_path) / experiment_rel
+            self.write_json(experiment_abs, sync_payload)
+            for sync_agent_name in workspaces:
+                sync_module_abs = Path(workspace.worktree_path) / module_relative_path(sync_agent_name)
+                write_module_python(
+                    sync_module_abs,
+                    module_payload(
+                        sync_agent_name,
+                        baseline_experiment,
+                        round_id=round_id,
+                        branch_name=workspace.branch_name,
+                        sync_from_branch=baseline_branch,
+                    ),
+                )
+            sync_committed = self.commit_paths_if_changed(
                 worktree=Path(workspace.worktree_path),
-                rel_path=rel_path,
+                rel_paths=[experiment_rel, *[module_relative_path(name) for name in workspaces]],
                 message=f"round {round_id}: sync from {baseline_branch}",
             )
             if sync_committed:
@@ -94,16 +113,23 @@ class GitRuntime:
                 "agent_name": agent_name,
                 "branch_name": workspace.branch_name,
                 "sync_from_branch": baseline_branch,
-                "owned_fields": self._owned_fields(agent_name),
-                "experiment": experiment,
+                "owned_fields": module_owned_fields(agent_name),
+                "config": module_payload(
+                    agent_name,
+                    experiment,
+                    round_id=round_id,
+                    branch_name=workspace.branch_name,
+                    sync_from_branch=baseline_branch,
+                )["config"],
             }
-            self.write_json(abs_path, payload)
-            committed = self.commit_if_changed(
+            module_abs = Path(workspace.worktree_path) / module_rel
+            write_module_python(module_abs, payload)
+            committed = self.commit_paths_if_changed(
                 worktree=Path(workspace.worktree_path),
-                rel_path=rel_path,
+                rel_paths=[module_rel],
                 message=f"round {round_id}: {agent_name} proposal",
             )
-            round_state.materialized_agent_files[agent_name] = str(abs_path)
+            round_state.materialized_agent_files[agent_name] = str(module_abs)
             agent_experiments[agent_name] = experiment
             if auto_push_non_main and committed:
                 self.push_branch(workspace.branch_name, cwd=Path(workspace.worktree_path))
@@ -116,7 +142,7 @@ class GitRuntime:
 
         source_payload = {}
         for agent_name, materialized_path in round_state.materialized_agent_files.items():
-            source_payload[agent_name] = json.loads(Path(materialized_path).read_text(encoding="utf-8"))
+            source_payload[agent_name] = load_module_python(Path(materialized_path))
 
         composed_experiment = clone_experiment(baseline_experiment)
         composed_experiment["model"] = dict(agent_experiments["model_agent"]["model"])
@@ -124,6 +150,7 @@ class GitRuntime:
         composed_experiment["augmentation"] = dict(agent_experiments["augmentation_agent"]["augmentation"])
 
         orchestrator_rel = Path("research") / "experiment.json"
+        orchestrator_module_rels = [module_relative_path(name) for name in workspaces]
         composed_payload = {
             "round_id": round_id,
             "branch_name": orchestrator_branch,
@@ -137,9 +164,20 @@ class GitRuntime:
         }
         orchestrator_abs = orchestrator_worktree / orchestrator_rel
         self.write_json(orchestrator_abs, composed_payload)
-        committed = self.commit_if_changed(
+        for source_agent_name in workspaces:
+            write_module_python(
+                orchestrator_worktree / module_relative_path(source_agent_name),
+                module_payload(
+                    source_agent_name,
+                    composed_experiment,
+                    round_id=round_id,
+                    branch_name=orchestrator_branch,
+                    sync_from_branch=baseline_branch,
+                ),
+            )
+        committed = self.commit_paths_if_changed(
             worktree=orchestrator_worktree,
-            rel_path=orchestrator_rel,
+            rel_paths=[orchestrator_rel, *orchestrator_module_rels],
             message=f"round {round_id}: composed orchestrator candidate",
         )
         round_state.materialized_orchestrator_file = str(orchestrator_abs)
@@ -161,13 +199,16 @@ class GitRuntime:
         self.run_git(["worktree", "add", worktree_path, branch_name])
 
     def commit_if_changed(self, worktree: Path, rel_path: Path, message: str) -> bool:
+        return self.commit_paths_if_changed(worktree=worktree, rel_paths=[rel_path], message=message)
+
+    def commit_paths_if_changed(self, worktree: Path, rel_paths: list[Path], message: str) -> bool:
         status = self.run_git(
-            ["status", "--short", "--", str(rel_path)],
+            ["status", "--short", "--", *[str(rel_path) for rel_path in rel_paths]],
             cwd=worktree,
         )
         if not status.stdout.strip():
             return False
-        self.run_git(["add", str(rel_path)], cwd=worktree)
+        self.run_git(["add", *[str(rel_path) for rel_path in rel_paths]], cwd=worktree)
         self.run_git(["commit", "-m", message], cwd=worktree)
         return True
 
@@ -189,14 +230,6 @@ class GitRuntime:
         remote = self.run_git(["remote", "get-url", remote_name], check=False)
         return remote.returncode == 0 and bool(remote.stdout.strip())
 
-    def _owned_fields(self, agent_name: str) -> list[str]:
-        owned = {
-            "model_agent": ["model.name", "model.learning_rate"],
-            "augmentation_agent": ["augmentation.name", "augmentation.strength"],
-            "data_agent": ["data.preprocessing", "data.window_size"],
-        }
-        return owned[agent_name]
-
     def _load_baseline_experiment(
         self,
         baseline_branch: str,
@@ -205,7 +238,10 @@ class GitRuntime:
         if baseline_branch == "main":
             return base_experiment_config()
         if baseline_branch == "orchestrator-main":
-            experiment_path = orchestrator_worktree / "research" / "experiment.json"
+            return compose_experiment_from_workspace(
+                orchestrator_worktree,
+                fallback_experiment=base_experiment_config(),
+            )
         else:
             branch_directory = baseline_branch.replace("agent-", "").replace("-main", "")
             if branch_directory == "augmentation":
@@ -214,13 +250,11 @@ class GitRuntime:
                 branch_directory = "data_agent"
             elif branch_directory == "model":
                 branch_directory = "model_agent"
-            experiment_path = self.repo_root / ".worktrees" / branch_directory / "research" / "experiment.json"
-        if not experiment_path.exists():
-            return base_experiment_config()
-        payload = json.loads(experiment_path.read_text(encoding="utf-8"))
-        if "experiment" in payload:
-            return payload["experiment"]
-        return payload
+            branch_worktree = self.repo_root / ".worktrees" / branch_directory
+            return compose_experiment_from_workspace(
+                branch_worktree,
+                fallback_experiment=base_experiment_config(),
+            )
 
     def run_git(
         self,

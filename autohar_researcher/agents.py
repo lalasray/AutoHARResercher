@@ -10,6 +10,7 @@ from autohar_researcher.experiment import (
     apply_model_proposal,
     base_experiment_config,
     clone_experiment,
+    compose_experiment_from_workspace,
     experiment_to_candidate_config,
 )
 from autohar_researcher.git_runtime import GitRuntime
@@ -689,20 +690,17 @@ class HierarchicalOrchestrator:
 
             config = experiment_to_candidate_config(experiment, notes=notes)
             workspace = self.workspaces[agent_name]
-            worktree_path = workspace.worktree_path
-            if agent_name in round_state.materialized_agent_files:
-                worktree_path = str(Path(round_state.materialized_agent_files[agent_name]).parent.parent)
             results.append(
                 self.harness.evaluate(
                     round_id=round_id,
                     agent_name=agent_name,
                     branch_name=workspace.branch_name,
-                    worktree_path=worktree_path,
+                    worktree_path=workspace.worktree_path,
                     config=config,
                     experiment=experiment,
                     artifact_paths={
                         "proposal_artifact": round_state.proposal_artifacts.get(agent_name, ""),
-                        "materialized_agent_experiment": round_state.materialized_agent_files.get(agent_name, ""),
+                        "materialized_agent_module": round_state.materialized_agent_files.get(agent_name, ""),
                     },
                 )
             )
@@ -869,13 +867,10 @@ class HierarchicalOrchestrator:
         if baseline_branch == "main":
             return base_experiment_config()
         workspace = self._workspace_for_branch(baseline_branch)
-        experiment_path = Path(workspace.worktree_path) / "research" / "experiment.json"
-        if experiment_path.exists():
-            payload = self._load_json(str(experiment_path))
-            if "experiment" in payload:
-                return payload["experiment"]
-            return payload
-        return base_experiment_config()
+        return compose_experiment_from_workspace(
+            Path(workspace.worktree_path),
+            fallback_experiment=base_experiment_config(),
+        )
 
     def _compose_experiment_from_proposals(
         self,

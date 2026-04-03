@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pprint
 from pathlib import Path
 
 from autohar_researcher.types import (
@@ -100,7 +101,7 @@ def module_payload(
 
 def write_module_python(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    body = json.dumps(payload, indent=2, sort_keys=True)
+    body = pprint.pformat(payload, sort_dicts=True, width=88)
     path.write_text(
         '"""Agent-owned module config for AutoHARResearcher."""\n\n'
         f"MODULE_PAYLOAD = {body}\n",
