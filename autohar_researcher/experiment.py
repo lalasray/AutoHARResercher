@@ -170,7 +170,7 @@ def _module_patch_builder(agent_name: str) -> str:
 
 def load_module_python(path: Path) -> dict[str, object]:
     namespace: dict[str, object] = {}
-    exec(path.read_text(encoding="utf-8"), {}, namespace)
+    exec(path.read_text(encoding="utf-8"), namespace, namespace)
     module_metadata = namespace.get("module_metadata")
     if callable(module_metadata):
         payload = module_metadata()
@@ -186,7 +186,7 @@ def apply_module_python(
     path: Path,
 ) -> tuple[dict[str, object], dict[str, object]]:
     namespace: dict[str, object] = {}
-    exec(path.read_text(encoding="utf-8"), {}, namespace)
+    exec(path.read_text(encoding="utf-8"), namespace, namespace)
     module_metadata = namespace.get("module_metadata")
     build_patch = namespace.get("build_patch")
     if callable(module_metadata) and callable(build_patch):
