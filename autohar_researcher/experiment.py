@@ -15,8 +15,8 @@ def base_experiment_config() -> dict[str, object]:
             "split": "official_train_test",
         },
         "model": {
-            "name": "cnn",
-            "learning_rate": 1e-3,
+            "name": "deepconvlstm",
+            "learning_rate": 3e-4,
         },
         "data": {
             "preprocessing": "raw",

@@ -55,7 +55,8 @@ class DummyHARHarness:
             val_features = [self._extract_features(window, config) for window, _ in val_samples]
             val_labels = [self.LABELS.index(label) for _, label in val_samples]
 
-            model = self._train_linear_model(
+            model = self._train_model(
+                model_name=config.model_name,
                 train_features=train_features,
                 train_labels=train_labels,
                 learning_rate=config.learning_rate,
@@ -64,7 +65,7 @@ class DummyHARHarness:
             predictions = [self._predict(model, features) for features in val_features]
             confusion_matrix = self._confusion_matrix(predictions, val_labels)
             per_class_f1 = self._per_class_f1(predictions, val_labels)
-            parameter_count = len(model) * len(model[0])
+            parameter_count = float(self._parameter_count(model))
             feature_dim = len(train_features[0])
             self._evaluation_cache[cache_key] = {
                 "macro_f1": round(self._macro_f1(predictions, val_labels), 4),
@@ -328,6 +329,10 @@ class DummyHARHarness:
                 / max(len(window) - 1, 1)
             )
 
+        multiscale = self._multiscale_features(window)
+        saliency = self._saliency_features(window)
+        interactions = self._interaction_features(window)
+
         if config.model_name == "cnn":
             return means + stds + energies
         if config.model_name == "gru":
@@ -340,7 +345,38 @@ class DummyHARHarness:
                 for c in range(channels)
             ]
             return means + stds + [second_half[i] - first_half[i] for i in range(channels)]
+        if config.model_name == "deepconvlstm":
+            return means + stds + energies + diffs + multiscale + interactions
+        if config.model_name == "hart":
+            return means + stds + saliency + multiscale + interactions
+        if config.model_name == "tinierhar":
+            return means + stds + saliency + interactions
         return means + stds + energies + diffs
+
+    def _train_model(
+        self,
+        model_name: str,
+        train_features: list[list[float]],
+        train_labels: list[int],
+        learning_rate: float,
+        epochs: int,
+    ) -> dict[str, object]:
+        if model_name in {"deepconvlstm", "hart", "tinierhar"}:
+            hidden_dim = 48 if model_name in {"deepconvlstm", "hart"} else 24
+            return self._train_mlp_model(
+                train_features=train_features,
+                train_labels=train_labels,
+                learning_rate=learning_rate,
+                epochs=epochs,
+                hidden_dim=hidden_dim,
+            )
+        weights = self._train_linear_model(
+            train_features=train_features,
+            train_labels=train_labels,
+            learning_rate=learning_rate,
+            epochs=epochs,
+        )
+        return {"kind": "linear", "weights": weights}
 
     def _train_linear_model(
         self,
@@ -369,9 +405,114 @@ class DummyHARHarness:
                     weights[class_index][-1] -= scaled_lr * error
         return weights
 
-    def _predict(self, weights: list[list[float]], features: list[float]) -> int:
-        logits = [self._dot(weight, features) for weight in weights]
+    def _train_mlp_model(
+        self,
+        train_features: list[list[float]],
+        train_labels: list[int],
+        learning_rate: float,
+        epochs: int,
+        hidden_dim: int,
+    ) -> dict[str, object]:
+        feature_dim = len(train_features[0])
+        num_classes = len(self.LABELS)
+        rng = random.Random(feature_dim + hidden_dim + epochs)
+        hidden = [
+            [rng.uniform(-0.05, 0.05) for _ in range(feature_dim + 1)]
+            for _ in range(hidden_dim)
+        ]
+        output = [
+            [rng.uniform(-0.05, 0.05) for _ in range(hidden_dim + 1)]
+            for _ in range(num_classes)
+        ]
+        scaled_lr = max(0.003, min(learning_rate * 60.0, 0.03))
+        order = list(range(len(train_features)))
+        for epoch in range(max(epochs * 3, 6)):
+            random.Random(hidden_dim + epoch).shuffle(order)
+            for sample_index in order:
+                features = train_features[sample_index]
+                label = train_labels[sample_index]
+                hidden_linear = [self._dot(weight, features) for weight in hidden]
+                hidden_state = [math.tanh(value) for value in hidden_linear]
+                logits = [self._dot(weight, hidden_state) for weight in output]
+                probs = self._softmax(logits)
+                output_errors = [
+                    probs[class_index] - (1.0 if class_index == label else 0.0)
+                    for class_index in range(num_classes)
+                ]
+                hidden_errors = []
+                for hidden_index in range(hidden_dim):
+                    downstream = sum(
+                        output[class_index][hidden_index] * output_errors[class_index]
+                        for class_index in range(num_classes)
+                    )
+                    hidden_errors.append((1.0 - (hidden_state[hidden_index] ** 2)) * downstream)
+                for class_index in range(num_classes):
+                    for hidden_index, value in enumerate(hidden_state):
+                        output[class_index][hidden_index] -= scaled_lr * output_errors[class_index] * value
+                    output[class_index][-1] -= scaled_lr * output_errors[class_index]
+                for hidden_index in range(hidden_dim):
+                    for feature_index, value in enumerate(features):
+                        hidden[hidden_index][feature_index] -= scaled_lr * hidden_errors[hidden_index] * value
+                    hidden[hidden_index][-1] -= scaled_lr * hidden_errors[hidden_index]
+        return {"kind": "mlp", "hidden": hidden, "output": output}
+
+    def _predict(self, model: dict[str, object], features: list[float]) -> int:
+        if model["kind"] == "linear":
+            logits = [self._dot(weight, features) for weight in model["weights"]]
+        else:
+            hidden = [math.tanh(self._dot(weight, features)) for weight in model["hidden"]]
+            logits = [self._dot(weight, hidden) for weight in model["output"]]
         return max(range(len(logits)), key=lambda index: logits[index])
+
+    def _parameter_count(self, model: dict[str, object]) -> int:
+        if model["kind"] == "linear":
+            return len(model["weights"]) * len(model["weights"][0])
+        hidden = model["hidden"]
+        output = model["output"]
+        return (len(hidden) * len(hidden[0])) + (len(output) * len(output[0]))
+
+    def _multiscale_features(self, window: list[list[float]]) -> list[float]:
+        channels = len(window[0])
+        features: list[float] = []
+        segment_counts = [2, 4]
+        for segment_count in segment_counts:
+            segment_size = max(len(window) // segment_count, 1)
+            for start in range(0, len(window), segment_size):
+                segment = window[start : start + segment_size]
+                if not segment:
+                    continue
+                features.extend(
+                    sum(row[channel] for row in segment) / len(segment)
+                    for channel in range(channels)
+                )
+        return features
+
+    def _saliency_features(self, window: list[list[float]]) -> list[float]:
+        channels = len(window[0])
+        motion = [
+            sum(abs(window[index][channel] - window[index - 1][channel]) for channel in range(channels))
+            for index in range(1, len(window))
+        ]
+        if not motion:
+            return [0.0 for _ in range(channels * 2)]
+        top_indices = sorted(range(len(motion)), key=lambda index: motion[index], reverse=True)[: max(2, len(motion) // 8)]
+        salient_rows = [window[index + 1] for index in top_indices]
+        pooled = [
+            sum(row[channel] for row in salient_rows) / len(salient_rows)
+            for channel in range(channels)
+        ]
+        peak = [max(abs(row[channel]) for row in salient_rows) for channel in range(channels)]
+        return pooled + peak
+
+    def _interaction_features(self, window: list[list[float]]) -> list[float]:
+        channels = len(window[0])
+        interactions: list[float] = []
+        for left in range(min(channels, 4)):
+            for right in range(left + 1, min(channels, 4)):
+                interactions.append(
+                    sum(row[left] * row[right] for row in window) / len(window)
+                )
+        return interactions
 
     def _dot(self, weight: list[float], features: list[float]) -> float:
         return sum(coef * value for coef, value in zip(weight[:-1], features)) + weight[-1]

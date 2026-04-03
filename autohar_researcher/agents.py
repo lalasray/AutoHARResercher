@@ -42,7 +42,15 @@ def _dedupe_preserve_order(items: list[object]) -> list[object]:
 
 class ModelAgent:
     name = "model_agent"
-    MODEL_CANDIDATES = ["cnn_gru", "cnn", "tiny_transformer", "gru"]
+    MODEL_CANDIDATES = [
+        "deepconvlstm",
+        "hart",
+        "tinierhar",
+        "cnn_gru",
+        "cnn",
+        "tiny_transformer",
+        "gru",
+    ]
 
     def propose(
         self,
@@ -59,7 +67,7 @@ class ModelAgent:
             if result.agent_name == self.name
         }
         best_config = best_result.config if best_result else None
-        base_model = best_config.model_name if best_config else "cnn_gru"
+        base_model = best_config.model_name if best_config else "deepconvlstm"
         base_lr = best_config.learning_rate if best_config else 3e-4
         learning_rates = [
             max(1e-4, round(base_lr * factor, 6))
