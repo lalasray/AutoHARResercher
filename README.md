@@ -17,11 +17,10 @@ Build a hierarchical auto-research loop for human activity recognition from IMU 
 
 This first version is intentionally simple:
 
-- no LLM calls
 - real UCI HAR evaluation
 - optional PyTorch acceleration when available
 - CUDA auto-detection with CPU fallback
-- optional OpenAI-based planner when credentials are configured
+- required OpenAI-based planner for round planning
 - Git commands can be either previewed or materialized
 - each round writes proposal artifacts so the branch-composition flow is visible
 
@@ -44,10 +43,11 @@ Role split in this version:
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates single-agent and partial-combination candidates, and decides which branch to promote
 - `Harness`: trains and evaluates a real UCI HAR baseline from the experiment file, with optional Torch-backed training, early stopping, and richer metrics
 
-The orchestrator can also use a real OpenAI-based planner:
+The orchestrator now uses a real OpenAI-based planner:
 
-- if `OPENAI_API_KEY` is available, the planner can propose round-level agent hints
-- if no key is available, the system falls back to the built-in heuristic planner
+- the planner is required for round planning
+- if `OPENAI_API_KEY` is missing, the run fails fast
+- if the `openai` Python package is missing, the run fails fast
 
 The harness now reads the experiment file, loads UCI HAR, and returns a real validation macro-F1 score plus richer outputs such as:
 
@@ -173,7 +173,14 @@ Behavior:
 
 - `.autohar.env` is loaded automatically by the planner
 - `.autohar.env` is ignored by Git
-- if the key is missing, the system uses the heuristic fallback planner
+- if the key is missing, the system raises an error
+- if the `openai` package is missing, the system raises an error
+
+Install dependencies before running:
+
+```bash
+python3 -m pip install -e .
+```
 
 ## Project Layout
 

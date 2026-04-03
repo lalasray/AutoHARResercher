@@ -33,20 +33,6 @@ def load_local_env(path: Path | None = None) -> None:
             os.environ[key] = value
 
 
-class NullPlanner:
-    name = "heuristic_fallback"
-
-    def plan_round(
-        self,
-        round_id: int,
-        best_result: CandidateResult | None,
-        history: list[CandidateResult],
-        accepted_history: list[CandidateResult],
-    ) -> dict[str, object]:
-        del round_id, best_result, history, accepted_history
-        return {"planner": self.name, "hints": {}}
-
-
 class OpenAIPlanner:
     name = "openai_responses"
 
@@ -190,11 +176,16 @@ class OpenAIPlanner:
         )
 
 
-def build_planner() -> NullPlanner | OpenAIPlanner:
+def build_planner() -> OpenAIPlanner:
     load_local_env()
-    if os.getenv("OPENAI_API_KEY") and OpenAI is not None:
-        try:
-            return OpenAIPlanner()
-        except Exception:
-            return NullPlanner()
-    return NullPlanner()
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY is required for planning. "
+            "Put it in .autohar.env or export it in your shell."
+        )
+    if OpenAI is None:
+        raise RuntimeError(
+            "The openai Python package is required for planning. "
+            "Install project dependencies first."
+        )
+    return OpenAIPlanner()
