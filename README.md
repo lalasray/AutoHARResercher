@@ -63,6 +63,11 @@ The orchestrator now uses a real OpenAI-based planner:
 - if `OPENAI_API_KEY` is missing, the run fails fast
 - if the `openai` Python package is missing, the run fails fast
 - the planner reads separate agent guidance files so each agent has a distinct role contract
+- each round now makes 4 LLM calls:
+  - 1 orchestrator planning call
+  - 1 `ModelAgent` planning call
+  - 1 `AugmentationAgent` planning call
+  - 1 `DataAgent` planning call
 
 Planner-readable agent guides now live in:
 
@@ -72,6 +77,13 @@ Planner-readable agent guides now live in:
 - `agent_guides/data_agent.md`
 
 These files let you evolve agent behavior without burying all policy inside one long hardcoded prompt.
+
+This means the current system is no longer a single planner call that fills every slot at once. It is now a real hierarchical flow:
+
+- the orchestrator LLM sets the round strategy
+- the three specialist agent LLM calls each propose their own scoped mutation
+- the harness evaluates the resulting candidates
+- only better candidates replace the accepted baseline
 
 The harness now reads the experiment file, loads UCI HAR, and returns a real validation macro-F1 score plus richer outputs such as:
 

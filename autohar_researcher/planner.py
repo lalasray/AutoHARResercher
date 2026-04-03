@@ -34,7 +34,7 @@ def load_local_env(path: Path | None = None) -> None:
 
 
 class OpenAIPlanner:
-    name = "openai_responses"
+    name = "openai_responses_multiagent"
 
     def __init__(self, model: str | None = None) -> None:
         if OpenAI is None:
@@ -50,86 +50,33 @@ class OpenAIPlanner:
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
     ) -> dict[str, object]:
-        prompt = self._build_prompt(
+        context = self._shared_context(
             round_id=round_id,
             best_result=best_result,
             history=history,
             accepted_history=accepted_history,
         )
-        response = self.client.responses.create(
-            model=self.model,
-            input=prompt,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "autohar_round_plan",
-                    "schema": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "summary": {"type": "string"},
-                            "model_agent": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "model_name": {"type": "string"},
-                                    "learning_rate": {"type": "number"},
-                                    "rationale": {"type": "string"},
-                                },
-                                "required": ["model_name", "learning_rate", "rationale"],
-                            },
-                            "augmentation_agent": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "augmentation": {"type": "string"},
-                                    "strength": {"type": "string"},
-                                    "rationale": {"type": "string"},
-                                },
-                                "required": ["augmentation", "strength", "rationale"],
-                            },
-                            "data_agent": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "preprocessing": {"type": "string"},
-                                    "window_size": {"type": "integer"},
-                                    "rationale": {"type": "string"},
-                                },
-                                "required": ["preprocessing", "window_size", "rationale"],
-                            },
-                        },
-                        "required": [
-                            "summary",
-                            "model_agent",
-                            "augmentation_agent",
-                            "data_agent",
-                        ],
-                    },
-                    "strict": True,
-                }
-            },
-        )
-        payload = json.loads(response.output_text)
+        orchestrator_plan = self._plan_orchestrator(context)
         hints: dict[str, object] = {
-            "model_agent": ModelPlanHint(**payload["model_agent"]),
-            "augmentation_agent": AugmentationPlanHint(**payload["augmentation_agent"]),
-            "data_agent": DataPlanHint(**payload["data_agent"]),
+            "model_agent": self._plan_model_agent(context, orchestrator_plan),
+            "augmentation_agent": self._plan_augmentation_agent(context, orchestrator_plan),
+            "data_agent": self._plan_data_agent(context, orchestrator_plan),
         }
         return {
             "planner": self.name,
             "model": self.model,
-            "summary": payload["summary"],
+            "summary": orchestrator_plan["summary"],
             "hints": hints,
+            "orchestrator_plan": orchestrator_plan,
         }
 
-    def _build_prompt(
+    def _shared_context(
         self,
         round_id: int,
         best_result: CandidateResult | None,
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
-    ) -> str:
+    ) -> dict[str, object]:
         trend_summary = self._trend_summary(history, accepted_history)
         recent_trials = [
             {
@@ -137,6 +84,7 @@ class OpenAIPlanner:
                 "agent_name": result.agent_name,
                 "score": round(result.val_score, 4),
                 "config": asdict(result.config),
+                "summary": result.summary,
             }
             for result in history[-12:]
         ]
@@ -146,6 +94,7 @@ class OpenAIPlanner:
                 "agent_name": result.agent_name,
                 "score": round(result.val_score, 4),
                 "config": asdict(result.config),
+                "summary": result.summary,
             }
             for result in accepted_history[-6:]
         ]
@@ -154,35 +103,179 @@ class OpenAIPlanner:
             best_payload = {
                 "round_id": best_result.round_id,
                 "agent_name": best_result.agent_name,
+                "branch_name": best_result.branch_name,
                 "score": round(best_result.val_score, 4),
                 "config": asdict(best_result.config),
+                "summary": best_result.summary,
             }
-        return (
-            "You are the planning controller for an IMU HAR auto-research system. "
-            "Suggest one candidate mutation for each agent. "
-            "Be trend-aware, prefer ideas that can beat the accepted baseline, and avoid repeating weak patterns.\n\n"
+        return {
+            "round_id": round_id,
+            "best_result": best_payload,
+            "trend_summary": trend_summary,
+            "recent_trials": recent_trials,
+            "accepted_history": accepted,
+        }
+
+    def _plan_orchestrator(self, context: dict[str, object]) -> dict[str, object]:
+        prompt = (
+            "You are the orchestrator of an IMU HAR auto-research system.\n"
+            "Your job is to decide the round-level search strategy before the specialist agents act.\n"
+            "You are not choosing the final config directly. You are setting priorities and guardrails for the three specialist agents.\n\n"
             f"Orchestrator guide:\n{self.guides['orchestrator']}\n\n"
-            f"ModelAgent guide:\n{self.guides['model_agent']}\n\n"
-            f"AugmentationAgent guide:\n{self.guides['augmentation_agent']}\n\n"
-            f"DataAgent guide:\n{self.guides['data_agent']}\n\n"
-            f"Round: {round_id}\n"
-            f"Best accepted result: {json.dumps(best_payload, indent=2)}\n"
-            f"Trend summary: {json.dumps(trend_summary, indent=2)}\n"
-            f"Recent accepted history: {json.dumps(accepted, indent=2)}\n"
-            f"Recent trials: {json.dumps(recent_trials, indent=2)}\n\n"
-            "Constraints:\n"
-            "- model_agent may change only model_name and learning_rate\n"
-            "- augmentation_agent may change only augmentation and strength\n"
-            "- data_agent may change only preprocessing and window_size\n"
-            "- Use valid values already seen in the repo such as models {deepconvlstm, hart, tinierhar, cnn_gru, cnn, tiny_transformer, gru}, "
-            "augmentations {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}, "
-            "strength {weak, medium, strong}, preprocessing {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}, "
-            "window sizes {64, 96, 128, 192, 256}.\n"
-            "- The accepted baseline should only be replaced when a candidate scores better.\n"
-            "- Prefer concise rationales grounded in observed trends.\n"
-            "- If a category has been winning repeatedly, bias toward small exploitative mutations around it.\n"
-            "- If a category has been losing repeatedly, either recommend `none` / stability or propose a different focused experiment.\n"
+            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+            "Return a concise JSON strategy for this round.\n"
+            "The accepted baseline should only be replaced if a candidate scores better.\n"
+            "Use valid focus values from {model, augmentation, data, combination, exploit, explore, stability}.\n"
         )
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "summary": {"type": "string"},
+                "priority_order": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 3,
+                    "maxItems": 3,
+                },
+                "exploration_mode": {"type": "string"},
+                "combination_bias": {"type": "string"},
+                "risk_note": {"type": "string"},
+            },
+            "required": [
+                "summary",
+                "priority_order",
+                "exploration_mode",
+                "combination_bias",
+                "risk_note",
+            ],
+        }
+        return self._call_json_schema(
+            name="autohar_orchestrator_plan",
+            prompt=prompt,
+            schema=schema,
+        )
+
+    def _plan_model_agent(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> ModelPlanHint:
+        prompt = (
+            "You are ModelAgent in an IMU HAR auto-research system.\n"
+            "You only control model_name and learning_rate.\n"
+            "Propose one model-side mutation for this round.\n"
+            "Do not change augmentation or data settings.\n\n"
+            f"ModelAgent guide:\n{self.guides['model_agent']}\n\n"
+            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+            "Use valid models from {deepconvlstm, hart, tinierhar, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "Keep the rationale short and trend-aware.\n"
+        )
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "model_name": {"type": "string"},
+                "learning_rate": {"type": "number"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["model_name", "learning_rate", "rationale"],
+        }
+        payload = self._call_json_schema(
+            name="autohar_model_agent_plan",
+            prompt=prompt,
+            schema=schema,
+        )
+        return ModelPlanHint(**payload)
+
+    def _plan_augmentation_agent(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> AugmentationPlanHint:
+        prompt = (
+            "You are AugmentationAgent in an IMU HAR auto-research system.\n"
+            "You only control augmentation and strength.\n"
+            "Propose one augmentation-side mutation for this round.\n"
+            "Do not change model or data settings.\n\n"
+            f"AugmentationAgent guide:\n{self.guides['augmentation_agent']}\n\n"
+            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+            "Use valid augmentations from {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}.\n"
+            "Use valid strengths from {weak, medium, strong}.\n"
+            "Keep the rationale short and trend-aware.\n"
+        )
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "augmentation": {"type": "string"},
+                "strength": {"type": "string"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["augmentation", "strength", "rationale"],
+        }
+        payload = self._call_json_schema(
+            name="autohar_augmentation_agent_plan",
+            prompt=prompt,
+            schema=schema,
+        )
+        return AugmentationPlanHint(**payload)
+
+    def _plan_data_agent(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> DataPlanHint:
+        prompt = (
+            "You are DataAgent in an IMU HAR auto-research system.\n"
+            "You only control preprocessing and window_size.\n"
+            "Propose one data-side mutation for this round.\n"
+            "Do not change model or augmentation settings.\n\n"
+            f"DataAgent guide:\n{self.guides['data_agent']}\n\n"
+            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+            "Use valid preprocessing from {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}.\n"
+            "Use valid window sizes from {64, 96, 128, 192, 256}.\n"
+            "Keep the rationale short and trend-aware.\n"
+        )
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "preprocessing": {"type": "string"},
+                "window_size": {"type": "integer"},
+                "rationale": {"type": "string"},
+            },
+            "required": ["preprocessing", "window_size", "rationale"],
+        }
+        payload = self._call_json_schema(
+            name="autohar_data_agent_plan",
+            prompt=prompt,
+            schema=schema,
+        )
+        return DataPlanHint(**payload)
+
+    def _call_json_schema(
+        self,
+        name: str,
+        prompt: str,
+        schema: dict[str, object],
+    ) -> dict[str, object]:
+        response = self.client.responses.create(
+            model=self.model,
+            input=prompt,
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": name,
+                    "schema": schema,
+                    "strict": True,
+                }
+            },
+        )
+        return json.loads(response.output_text)
 
     def _load_guides(self) -> dict[str, str]:
         guide_root = Path.cwd() / "agent_guides"
