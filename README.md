@@ -153,10 +153,12 @@ Ownership is now strict at the file level:
 - `DataAgent` only proposes changes through `research/modules/data_module.py`
 - `orchestrator-main` composes those modules and writes the shared `research/experiment.json`
 
+Those module files are now executable Python modules, not just static payload holders. Each one exposes module metadata plus a `build_patch(base_experiment)` function that returns only the owned section update for that agent.
+
 This is the bridge between the current dummy prototype and a real Git-based system:
 
 - today: agent branches produce structured proposal files
-- now: agent branches commit their own Python-owned module file without editing the other agent module files
+- now: agent branches commit their own executable Python module without editing the other agent module files
 - next: those module files can evolve from config payloads into richer code logic
 - later: the orchestrator composes richer commits on its persistent branch
 
