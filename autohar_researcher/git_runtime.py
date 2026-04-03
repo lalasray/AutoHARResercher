@@ -204,7 +204,17 @@ class GitRuntime:
     ) -> dict[str, object]:
         if baseline_branch == "main":
             return base_experiment_config()
-        experiment_path = orchestrator_worktree / "research" / "experiment.json"
+        if baseline_branch == "orchestrator-main":
+            experiment_path = orchestrator_worktree / "research" / "experiment.json"
+        else:
+            branch_directory = baseline_branch.replace("agent-", "").replace("-main", "")
+            if branch_directory == "augmentation":
+                branch_directory = "augmentation_agent"
+            elif branch_directory == "data":
+                branch_directory = "data_agent"
+            elif branch_directory == "model":
+                branch_directory = "model_agent"
+            experiment_path = self.repo_root / ".worktrees" / branch_directory / "research" / "experiment.json"
         if not experiment_path.exists():
             return base_experiment_config()
         payload = json.loads(experiment_path.read_text(encoding="utf-8"))

@@ -14,7 +14,11 @@ from autohar_researcher.experiment import (
 )
 from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
-from autohar_researcher.reporting import write_history_csv, write_history_svg
+from autohar_researcher.reporting import (
+    write_history_csv,
+    write_history_svg,
+    write_promotion_svg,
+)
 from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
     AgentWorkspace,
@@ -120,11 +124,11 @@ class HierarchicalOrchestrator:
             )
             self._annotate_best_so_far(round_results, best_by_agent)
             round_best = self.evaluate_round(round_results)
-            accepted_orchestrator = self._select_accepted_orchestrator(round_results, best_result)
-            if accepted_orchestrator is not None:
-                accepted_orchestrator.accepted = True
-                best_result = accepted_orchestrator
-                accepted_history.append(self._clone_result(accepted_orchestrator))
+            accepted_candidate = self._select_accepted_candidate(round_results, best_result)
+            if accepted_candidate is not None:
+                accepted_candidate.accepted = True
+                best_result = accepted_candidate
+                accepted_history.append(self._clone_result(accepted_candidate))
 
             history.extend(round_results)
             round_states.append(round_state)
@@ -464,19 +468,14 @@ class HierarchicalOrchestrator:
             )
             result.best_so_far_score = best_by_agent[result.agent_name]
 
-    def _select_accepted_orchestrator(
+    def _select_accepted_candidate(
         self,
         round_results: list[CandidateResult],
         best_result: CandidateResult | None,
     ) -> CandidateResult | None:
-        orchestrator_result = next(
-            (result for result in round_results if result.agent_name == "orchestrator"),
-            None,
-        )
-        if orchestrator_result is None:
-            return None
-        if best_result is None or orchestrator_result.val_score > best_result.val_score:
-            return orchestrator_result
+        round_best = self.evaluate_round(round_results)
+        if best_result is None or round_best.val_score > best_result.val_score:
+            return round_best
         return None
 
     def _clone_result(self, result: CandidateResult) -> CandidateResult:
@@ -495,10 +494,25 @@ class HierarchicalOrchestrator:
             best_so_far_score=result.best_so_far_score,
         )
 
+    def _workspace_for_branch(self, branch_name: str) -> AgentWorkspace:
+        if branch_name == "main":
+            return AgentWorkspace(
+                agent_name="main",
+                branch_name="main",
+                worktree_path=str(Path.cwd()),
+            )
+        if branch_name == self.orchestrator_workspace.branch_name:
+            return self.orchestrator_workspace
+        for workspace in self.workspaces.values():
+            if workspace.branch_name == branch_name:
+                return workspace
+        raise KeyError(f"Unknown branch workspace for {branch_name}")
+
     def _baseline_experiment_from_branch(self, baseline_branch: str) -> dict[str, object]:
         if baseline_branch == "main":
             return base_experiment_config()
-        experiment_path = Path(self.orchestrator_workspace.worktree_path) / "research" / "experiment.json"
+        workspace = self._workspace_for_branch(baseline_branch)
+        experiment_path = Path(workspace.worktree_path) / "research" / "experiment.json"
         if experiment_path.exists():
             payload = self._load_json(str(experiment_path))
             if "experiment" in payload:
@@ -534,11 +548,10 @@ class HierarchicalOrchestrator:
             title="Trial Macro-F1 By Round",
         )
         accepted_csv_path = write_history_csv(accepted_history, output_dir / "accepted_history.csv")
-        accepted_svg_path = write_history_svg(
-            history,
+        accepted_svg_path = write_promotion_svg(
+            accepted_history,
             output_dir / "accepted_history.svg",
-            value_key="best_so_far_score",
-            title="Best-So-Far Macro-F1 By Round",
+            title="Accepted Baseline Macro-F1 By Round",
         )
         return RunOutputs(
             trial_history_csv=trial_csv_path,
@@ -550,7 +563,7 @@ class HierarchicalOrchestrator:
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [
             GitAction(
-                label="Promote best orchestrated branch",
+                label="Promote best accepted branch",
                 command=f"git merge --no-ff {best_result.branch_name}",
             ),
             GitAction(
