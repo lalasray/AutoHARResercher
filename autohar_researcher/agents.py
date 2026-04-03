@@ -111,40 +111,86 @@ class AugmentationAgent:
         accepted_history: list[CandidateResult],
     ) -> AugmentationProposal:
         del best_score
-        tried = {result.config.augmentation for result in history if result.agent_name == self.name}
         best_config = best_result.config if best_result else None
         accepted_aug = best_config.augmentation if best_config else "none"
-        scored_options = sorted(
-            (
-                (
-                    self._best_score_for_option(history, augmentation),
-                    augmentation,
-                )
-                for augmentation in self.AUGMENTATIONS
+        context_key = self._context_key(best_config)
+        tried = {
+            result.config.augmentation
+            for result in history
+            if result.agent_name == self.name
+            and self._context_key(result.config) == context_key
+        }
+        context_ranked = sorted(
+            self.AUGMENTATIONS,
+            key=lambda augmentation: (
+                self._contextual_score(history, accepted_history, augmentation, context_key),
+                self._global_score(history, accepted_history, augmentation),
             ),
             reverse=True,
         )
+        global_ranked = sorted(
+            self.AUGMENTATIONS,
+            key=lambda augmentation: self._global_score(history, accepted_history, augmentation),
+            reverse=True,
+        )
         ranked = [accepted_aug]
-        ranked.extend(augmentation for _, augmentation in scored_options)
+        if accepted_aug == "none":
+            ranked.extend(augmentation for augmentation in context_ranked if augmentation != "none")
+            ranked.append("none")
+        else:
+            ranked.extend(context_ranked)
+        ranked.extend(global_ranked)
         ranked.extend(self.AUGMENTATIONS)
         ranked = _dedupe_preserve_order(ranked)
         augmentation = self._pick_option(ranked, tried, round_id)
-        note_prefix = "Exploit the best accepted augmentation neighborhood." if accepted_history else "Sweep the first augmentation choices."
+        note_prefix = (
+            "Use context-aware augmentation ranking around the accepted baseline."
+            if accepted_history
+            else "Sweep the first augmentation choices."
+        )
         return AugmentationProposal(
             augmentation=augmentation,
-            notes=f"{note_prefix} Testing augmentation={augmentation}.",
+            notes=f"{note_prefix} Testing augmentation={augmentation} for context={context_key}.",
         )
 
-    def _best_score_for_option(
+    def _context_key(self, config: CandidateConfig | None) -> str:
+        if config is None:
+            return "bootstrap"
+        return f"{config.model_name}|{config.preprocessing}|{int(config.window_size)}"
+
+    def _contextual_score(
         self,
         history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+        augmentation: str,
+        context_key: str,
+    ) -> float:
+        scores = [
+            result.val_score
+            for result in [*history, *accepted_history]
+            if self._context_key(result.config) == context_key
+            and result.config.augmentation == augmentation
+            and result.agent_name in {self.name, "orchestrator"}
+        ]
+        return max(scores, default=float("-inf"))
+
+    def _global_score(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
         augmentation: str,
     ) -> float:
         scores = [
             result.val_score
             for result in history
-            if result.agent_name == self.name and result.config.augmentation == augmentation
+            if result.config.augmentation == augmentation
+            and result.agent_name in {self.name, "orchestrator"}
         ]
+        scores.extend(
+            result.val_score
+            for result in accepted_history
+            if result.config.augmentation == augmentation
+        )
         return max(scores, default=float("-inf"))
 
     def _pick_option(self, ranked: list[str], tried: set[str], round_id: int) -> str:
