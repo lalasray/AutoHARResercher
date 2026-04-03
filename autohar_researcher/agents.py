@@ -79,7 +79,12 @@ class HierarchicalOrchestrator:
             worktree_path=str(Path.cwd() / ".worktrees" / "orchestrator_main"),
         )
 
-    def run(self, rounds: int = 3, materialize_git: bool = False) -> dict[str, object]:
+    def run(
+        self,
+        rounds: int = 3,
+        materialize_git: bool = False,
+        auto_push_non_main: bool = False,
+    ) -> dict[str, object]:
         history: list[CandidateResult] = []
         best_result: CandidateResult | None = None
         actions: list[GitAction] = self.bootstrap_actions()
@@ -99,6 +104,7 @@ class HierarchicalOrchestrator:
                 round_id=round_id,
                 round_plan=round_plan,
                 materialize_git=materialize_git,
+                auto_push_non_main=auto_push_non_main,
             )
             history.extend(round_results)
             round_states.append(round_state)
@@ -213,6 +219,7 @@ class HierarchicalOrchestrator:
         round_id: int,
         round_plan: dict[str, object],
         materialize_git: bool = False,
+        auto_push_non_main: bool = False,
     ) -> tuple[list[CandidateResult], RoundState]:
         best_score = round_plan["best_score"]
         with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
@@ -230,6 +237,7 @@ class HierarchicalOrchestrator:
                 proposals=proposals,
                 workspaces=self.workspaces,
                 round_state=round_state,
+                auto_push_non_main=auto_push_non_main,
             )
         result = self._compose_round_result(
             round_id=round_id,

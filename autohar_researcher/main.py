@@ -33,10 +33,19 @@ def main() -> None:
         action="store_true",
         help="Actually create/update agent worktrees, write files, and commit round changes.",
     )
+    parser.add_argument(
+        "--auto-push-non-main",
+        action="store_true",
+        help="Push agent branches and orchestrator-main to origin after commit, but never push main.",
+    )
     args = parser.parse_args()
 
     orchestrator = HierarchicalOrchestrator(harness=DummyHARHarness())
-    results = orchestrator.run(rounds=args.rounds, materialize_git=args.materialize_git)
+    results = orchestrator.run(
+        rounds=args.rounds,
+        materialize_git=args.materialize_git,
+        auto_push_non_main=args.auto_push_non_main,
+    )
 
     history = results["history"]
     best_result = results["best_result"]
@@ -50,6 +59,7 @@ def main() -> None:
     print(f"Rounds: {args.rounds}")
     print(f"Candidates evaluated: {len(history)}")
     print(f"Materialize git: {args.materialize_git}")
+    print(f"Auto-push non-main: {args.auto_push_non_main}")
     print()
     print("Agent workspaces:")
     for workspace in workspaces.values():
@@ -68,6 +78,8 @@ def main() -> None:
         for agent_name, artifact_path in round_state.proposal_artifacts.items():
             print(f"  {agent_name} proposal -> {artifact_path}")
         print(f"  orchestrator candidate -> {round_state.composed_artifact}")
+        if round_state.pushed_branches:
+            print(f"  pushed branches -> {', '.join(round_state.pushed_branches)}")
     print()
     print("Top candidates:")
     for rank, result in enumerate(ranked[:5], start=1):

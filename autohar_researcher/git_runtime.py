@@ -38,6 +38,7 @@ class GitRuntime:
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         workspaces: dict[str, AgentWorkspace],
         round_state: RoundState,
+        auto_push_non_main: bool = False,
     ) -> RoundState:
         self.bootstrap_agent_workspaces(workspaces)
         round_state.baseline_branch = baseline_branch
@@ -60,12 +61,15 @@ class GitRuntime:
             }
             abs_path = Path(workspace.worktree_path) / rel_path
             self.write_json(abs_path, payload)
-            self.commit_if_changed(
+            committed = self.commit_if_changed(
                 worktree=Path(workspace.worktree_path),
                 rel_path=rel_path,
                 message=f"round {round_id}: {agent_name} proposal",
             )
             round_state.materialized_agent_files[agent_name] = str(abs_path)
+            if auto_push_non_main and committed:
+                self.push_branch(workspace.branch_name, cwd=Path(workspace.worktree_path))
+                round_state.pushed_branches.append(workspace.branch_name)
 
         orchestrator_branch = round_state.orchestrator_branch
         orchestrator_worktree = Path(round_state.orchestrator_worktree)
@@ -89,12 +93,15 @@ class GitRuntime:
         }
         orchestrator_abs = orchestrator_worktree / orchestrator_rel
         self.write_json(orchestrator_abs, composed_payload)
-        self.commit_if_changed(
+        committed = self.commit_if_changed(
             worktree=orchestrator_worktree,
             rel_path=orchestrator_rel,
             message=f"round {round_id}: composed orchestrator candidate",
         )
         round_state.materialized_orchestrator_file = str(orchestrator_abs)
+        if auto_push_non_main and committed and orchestrator_branch != "main":
+            self.push_branch(orchestrator_branch, cwd=orchestrator_worktree)
+            round_state.pushed_branches.append(orchestrator_branch)
         return round_state
 
     def ensure_branch(self, branch_name: str, start_point: str) -> None:
@@ -109,15 +116,21 @@ class GitRuntime:
             return
         self.run_git(["worktree", "add", worktree_path, branch_name])
 
-    def commit_if_changed(self, worktree: Path, rel_path: Path, message: str) -> None:
+    def commit_if_changed(self, worktree: Path, rel_path: Path, message: str) -> bool:
         status = self.run_git(
             ["status", "--short", "--", str(rel_path)],
             cwd=worktree,
         )
         if not status.stdout.strip():
-            return
+            return False
         self.run_git(["add", str(rel_path)], cwd=worktree)
         self.run_git(["commit", "-m", message], cwd=worktree)
+        return True
+
+    def push_branch(self, branch_name: str, cwd: Path | None = None) -> None:
+        if branch_name == "main" or not self.has_remote("origin"):
+            return
+        self.run_git(["push", "-u", "origin", branch_name], cwd=cwd)
 
     def write_json(self, path: Path, payload: object) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,6 +140,10 @@ class GitRuntime:
         if is_dataclass(payload):
             return asdict(payload)
         return payload
+
+    def has_remote(self, remote_name: str) -> bool:
+        remote = self.run_git(["remote", "get-url", remote_name], check=False)
+        return remote.returncode == 0 and bool(remote.stdout.strip())
 
     def run_git(
         self,

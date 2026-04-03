@@ -96,6 +96,20 @@ To actually create/update the agent worktrees and commit round files:
 python3 -m autohar_researcher.main --rounds 2 --materialize-git --show-git-plan
 ```
 
+To also push every non-`main` branch after commit:
+
+```bash
+python3 -m autohar_researcher.main --rounds 2 --materialize-git --auto-push-non-main --show-git-plan
+```
+
+Push policy in this mode:
+
+- pushes `agent-model-main`
+- pushes `agent-augmentation-main`
+- pushes `agent-data-main`
+- pushes `orchestrator-main`
+- never pushes `main`
+
 ## Project Layout
 
 ```text
