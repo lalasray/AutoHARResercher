@@ -41,6 +41,7 @@ class OpenAIPlanner:
             raise RuntimeError("openai package is not installed")
         self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "gpt-5-mini")
         self.client = OpenAI()
+        self.guides = self._load_guides()
 
     def plan_round(
         self,
@@ -129,6 +130,7 @@ class OpenAIPlanner:
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
     ) -> str:
+        trend_summary = self._trend_summary(history, accepted_history)
         recent_trials = [
             {
                 "round_id": result.round_id,
@@ -159,8 +161,13 @@ class OpenAIPlanner:
             "You are the planning controller for an IMU HAR auto-research system. "
             "Suggest one candidate mutation for each agent. "
             "Be trend-aware, prefer ideas that can beat the accepted baseline, and avoid repeating weak patterns.\n\n"
+            f"Orchestrator guide:\n{self.guides['orchestrator']}\n\n"
+            f"ModelAgent guide:\n{self.guides['model_agent']}\n\n"
+            f"AugmentationAgent guide:\n{self.guides['augmentation_agent']}\n\n"
+            f"DataAgent guide:\n{self.guides['data_agent']}\n\n"
             f"Round: {round_id}\n"
             f"Best accepted result: {json.dumps(best_payload, indent=2)}\n"
+            f"Trend summary: {json.dumps(trend_summary, indent=2)}\n"
             f"Recent accepted history: {json.dumps(accepted, indent=2)}\n"
             f"Recent trials: {json.dumps(recent_trials, indent=2)}\n\n"
             "Constraints:\n"
@@ -172,8 +179,44 @@ class OpenAIPlanner:
             "strength {weak, medium, strong}, preprocessing {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}, "
             "window sizes {64, 96, 128, 192, 256}.\n"
             "- The accepted baseline should only be replaced when a candidate scores better.\n"
-            "- Prefer concise rationales grounded in observed trends."
+            "- Prefer concise rationales grounded in observed trends.\n"
+            "- If a category has been winning repeatedly, bias toward small exploitative mutations around it.\n"
+            "- If a category has been losing repeatedly, either recommend `none` / stability or propose a different focused experiment.\n"
         )
+
+    def _load_guides(self) -> dict[str, str]:
+        guide_root = Path.cwd() / "agent_guides"
+        return {
+            "orchestrator": (guide_root / "orchestrator.md").read_text(encoding="utf-8"),
+            "model_agent": (guide_root / "model_agent.md").read_text(encoding="utf-8"),
+            "augmentation_agent": (guide_root / "augmentation_agent.md").read_text(encoding="utf-8"),
+            "data_agent": (guide_root / "data_agent.md").read_text(encoding="utf-8"),
+        }
+
+    def _trend_summary(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> dict[str, object]:
+        recent = history[-20:]
+        best_by_agent: dict[str, float] = {}
+        avg_by_agent: dict[str, float] = {}
+        if recent:
+            agent_names = sorted({result.agent_name for result in recent})
+            for agent_name in agent_names:
+                scores = [result.val_score for result in recent if result.agent_name == agent_name]
+                best_by_agent[agent_name] = round(max(scores), 4)
+                avg_by_agent[agent_name] = round(sum(scores) / len(scores), 4)
+        plateau = False
+        if len(accepted_history) >= 3:
+            recent_accepts = [result.val_score for result in accepted_history[-3:]]
+            plateau = max(recent_accepts) - min(recent_accepts) < 0.01
+        return {
+            "recent_best_by_agent": best_by_agent,
+            "recent_avg_by_agent": avg_by_agent,
+            "accepted_count": len(accepted_history),
+            "recent_accept_plateau": plateau,
+        }
 
 
 def build_planner() -> OpenAIPlanner:

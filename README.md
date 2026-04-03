@@ -43,11 +43,35 @@ Role split in this version:
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates single-agent and partial-combination candidates, and decides which branch to promote
 - `Harness`: trains and evaluates a real UCI HAR baseline from the experiment file, with optional Torch-backed training, early stopping, and richer metrics
 
+The agent relationship is intentionally asymmetric:
+
+- the three domain agents are independent by scope
+- they do not directly control each other
+- they share only the accepted baseline and evaluation metric
+- the `Orchestrator` is the coordination and memory layer that tracks results across all agents
+
+So the orchestrator is the only component with a global view of:
+
+- recent trials
+- accepted history
+- current best baseline
+- which kinds of proposals are helping or hurting
+
 The orchestrator now uses a real OpenAI-based planner:
 
 - the planner is required for round planning
 - if `OPENAI_API_KEY` is missing, the run fails fast
 - if the `openai` Python package is missing, the run fails fast
+- the planner reads separate agent guidance files so each agent has a distinct role contract
+
+Planner-readable agent guides now live in:
+
+- `agent_guides/orchestrator.md`
+- `agent_guides/model_agent.md`
+- `agent_guides/augmentation_agent.md`
+- `agent_guides/data_agent.md`
+
+These files let you evolve agent behavior without burying all policy inside one long hardcoded prompt.
 
 The harness now reads the experiment file, loads UCI HAR, and returns a real validation macro-F1 score plus richer outputs such as:
 
@@ -185,6 +209,12 @@ python3 -m pip install -e .
 ## Project Layout
 
 ```text
+agent_guides/
+  orchestrator.md
+  model_agent.md
+  augmentation_agent.md
+  data_agent.md
+
 autohar_researcher/
   agents.py
   datasets.py
