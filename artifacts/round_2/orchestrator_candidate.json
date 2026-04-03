@@ -1,5 +1,5 @@
 {
-  "branch_name": "orchestrator/round-2",
+  "branch_name": "orchestrator-round-2",
   "composed_config": {
     "augmentation": "rotation",
     "learning_rate": 0.0003,
@@ -8,8 +8,8 @@
     "window_size": 256
   },
   "source_branches": {
-    "augmentation_agent": "agent/augmentation/main",
-    "data_agent": "agent/data/main",
-    "model_agent": "agent/model/main"
+    "augmentation_agent": "agent-augmentation-main",
+    "data_agent": "agent-data-main",
+    "model_agent": "agent-model-main"
   }
 }

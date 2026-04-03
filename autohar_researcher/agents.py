@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
+from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
 from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
@@ -71,17 +72,25 @@ class HierarchicalOrchestrator:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
         self.workspaces = self._build_workspaces()
+        self.git_runtime = GitRuntime()
 
-    def run(self, rounds: int = 3) -> dict[str, object]:
+    def run(self, rounds: int = 3, materialize_git: bool = False) -> dict[str, object]:
         history: list[CandidateResult] = []
         best_result: CandidateResult | None = None
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
 
+        if materialize_git:
+            self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
+
         for round_id in range(1, rounds + 1):
             round_plan = self.plan_round(round_id=round_id, best_result=best_result)
             actions.extend(self.plan_git_actions(round_id=round_id, round_plan=round_plan))
-            round_results, round_state = self.execute_round(round_id=round_id, round_plan=round_plan)
+            round_results, round_state = self.execute_round(
+                round_id=round_id,
+                round_plan=round_plan,
+                materialize_git=materialize_git,
+            )
             history.extend(round_results)
             round_states.append(round_state)
             round_best = self.evaluate_round(round_results)
@@ -104,17 +113,17 @@ class HierarchicalOrchestrator:
         return {
             "model_agent": AgentWorkspace(
                 agent_name="model_agent",
-                branch_name="agent/model/main",
+                branch_name="agent-model-main",
                 worktree_path=str(worktree_root / "model_agent"),
             ),
             "augmentation_agent": AgentWorkspace(
                 agent_name="augmentation_agent",
-                branch_name="agent/augmentation/main",
+                branch_name="agent-augmentation-main",
                 worktree_path=str(worktree_root / "augmentation_agent"),
             ),
             "data_agent": AgentWorkspace(
                 agent_name="data_agent",
-                branch_name="agent/data/main",
+                branch_name="agent-data-main",
                 worktree_path=str(worktree_root / "data_agent"),
             ),
         }
@@ -175,13 +184,13 @@ class HierarchicalOrchestrator:
             )
         actions.append(
             GitAction(
-                label=f"Round {round_id}: compose unified candidate",
-                command=(
-                    f"git checkout -b orchestrator/round-{round_id} {baseline_branch} "
-                    f"# combine model, augmentation, and data changes"
-                ),
+                    label=f"Round {round_id}: compose unified candidate",
+                    command=(
+                        f"git checkout -b orchestrator-round-{round_id} {baseline_branch} "
+                        f"# combine model, augmentation, and data changes"
+                    ),
+                )
             )
-        )
         actions.append(
             GitAction(
                 label=f"Round {round_id}: evaluate unified candidate",
@@ -194,6 +203,7 @@ class HierarchicalOrchestrator:
         self,
         round_id: int,
         round_plan: dict[str, object],
+        materialize_git: bool = False,
     ) -> tuple[list[CandidateResult], RoundState]:
         best_score = round_plan["best_score"]
         with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
@@ -204,6 +214,14 @@ class HierarchicalOrchestrator:
             proposals = [future.result() for future in futures]
 
         round_state = self._materialize_round_state(round_id=round_id, proposals=proposals)
+        if materialize_git:
+            round_state = self.git_runtime.materialize_round(
+                round_id=round_id,
+                baseline_branch=str(round_plan["baseline_branch"]),
+                proposals=proposals,
+                workspaces=self.workspaces,
+                round_state=round_state,
+            )
         result = self._compose_round_result(
             round_id=round_id,
             proposals=proposals,
@@ -247,8 +265,8 @@ class HierarchicalOrchestrator:
         }
         workspace = AgentWorkspace(
             agent_name="orchestrator",
-            branch_name=f"orchestrator/round-{round_id}",
-            worktree_path=str(Path.cwd()),
+            branch_name=round_state.orchestrator_branch or f"orchestrator-round-{round_id}",
+            worktree_path=round_state.orchestrator_worktree or str(Path.cwd()),
         )
         return self.harness.evaluate(
             round_id=round_id,
@@ -260,6 +278,11 @@ class HierarchicalOrchestrator:
             artifact_paths={
                 **round_state.proposal_artifacts,
                 "composed_candidate": round_state.composed_artifact,
+                **{
+                    f"materialized_{agent_name}": path
+                    for agent_name, path in round_state.materialized_agent_files.items()
+                },
+                "materialized_orchestrator_candidate": round_state.materialized_orchestrator_file,
             },
         )
 
@@ -294,7 +317,7 @@ class HierarchicalOrchestrator:
             proposal for proposal in proposals if isinstance(proposal, DataProposal)
         )
         composed_payload = {
-            "branch_name": f"orchestrator/round-{round_id}",
+            "branch_name": f"orchestrator-round-{round_id}",
             "source_branches": {
                 "model_agent": self.workspaces["model_agent"].branch_name,
                 "augmentation_agent": self.workspaces["augmentation_agent"].branch_name,
@@ -327,9 +350,9 @@ class HierarchicalOrchestrator:
             GitAction(
                 label="Rebase agent branches onto winning baseline",
                 command=(
-                    f"git rebase {best_result.branch_name} agent/model/main && "
-                    f"git rebase {best_result.branch_name} agent/augmentation/main && "
-                    f"git rebase {best_result.branch_name} agent/data/main"
+                    f"git rebase {best_result.branch_name} agent-model-main && "
+                    f"git rebase {best_result.branch_name} agent-augmentation-main && "
+                    f"git rebase {best_result.branch_name} agent-data-main"
                 ),
             ),
         ]

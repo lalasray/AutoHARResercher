@@ -21,7 +21,7 @@ This first version is intentionally simple:
 - no real IMU training
 - no external dependencies
 - deterministic dummy validation scores so we can verify the loop quickly
-- Git commands are planned and printed, not automatically executed
+- Git commands can be either previewed or materialized
 - each round writes proposal artifacts so the branch-composition flow is visible
 
 ## Minimal Architecture
@@ -57,16 +57,17 @@ Each round now materializes concrete files:
 This is the bridge between the current dummy prototype and a real Git-based system:
 
 - today: agent branches produce structured proposal files
-- next: agent branches produce real code diffs or commits
-- later: the orchestrator composes an actual round branch from those commits
+- now: agent branches can also receive real committed round files in their worktrees
+- next: agent branches produce real code diffs instead of JSON-only files
+- later: the orchestrator composes an actual round branch from richer commits
 
 ## Git-First Mental Model
 
 Use `main` as the stable baseline and give each agent its own branch/worktree:
 
-- `agent/model/main`
-- `agent/augmentation/main`
-- `agent/data/main`
+- `agent-model-main`
+- `agent-augmentation-main`
+- `agent-data-main`
 
 The orchestrator does not need to "be" a branch. It is better thought of as a controller process that:
 
@@ -81,6 +82,12 @@ The orchestrator does not need to "be" a branch. It is better thought of as a co
 
 ```bash
 python3 -m autohar_researcher.main --rounds 4 --show-git-plan
+```
+
+To actually create/update the agent worktrees and commit round files:
+
+```bash
+python3 -m autohar_researcher.main --rounds 2 --materialize-git --show-git-plan
 ```
 
 ## Project Layout
@@ -104,6 +111,7 @@ autohar_researcher/
 - [x] Represent each agent as a branch/worktree in the orchestration plan
 - [x] Let the orchestrator compose one candidate from partial agent proposals
 - [x] Write per-round proposal artifacts and a composed candidate artifact
+- [x] Materialize real branch/worktree files and commits for each round
 - [x] Add CLI entrypoint for quick demo
 
 ### Phase 2: make it HAR-realistic

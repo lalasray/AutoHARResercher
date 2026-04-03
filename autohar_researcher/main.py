@@ -28,10 +28,15 @@ def main() -> None:
         action="store_true",
         help="Print the git-first orchestration plan for branches and worktrees.",
     )
+    parser.add_argument(
+        "--materialize-git",
+        action="store_true",
+        help="Actually create/update agent worktrees, write files, and commit round changes.",
+    )
     args = parser.parse_args()
 
     orchestrator = HierarchicalOrchestrator(harness=DummyHARHarness())
-    results = orchestrator.run(rounds=args.rounds)
+    results = orchestrator.run(rounds=args.rounds, materialize_git=args.materialize_git)
 
     history = results["history"]
     best_result = results["best_result"]
@@ -44,6 +49,7 @@ def main() -> None:
     print("=" * 32)
     print(f"Rounds: {args.rounds}")
     print(f"Candidates evaluated: {len(history)}")
+    print(f"Materialize git: {args.materialize_git}")
     print()
     print("Agent workspaces:")
     for workspace in workspaces.values():
