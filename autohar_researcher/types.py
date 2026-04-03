@@ -71,3 +71,24 @@ class RunOutputs:
     trial_history_svg: str
     accepted_history_csv: str
     accepted_history_svg: str
+
+
+@dataclass(frozen=True)
+class ModelPlanHint:
+    model_name: str
+    learning_rate: float
+    rationale: str = ""
+
+
+@dataclass(frozen=True)
+class AugmentationPlanHint:
+    augmentation: str
+    strength: str
+    rationale: str = ""
+
+
+@dataclass(frozen=True)
+class DataPlanHint:
+    preprocessing: str
+    window_size: int
+    rationale: str = ""
