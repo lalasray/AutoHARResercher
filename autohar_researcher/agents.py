@@ -271,7 +271,7 @@ class HierarchicalOrchestrator:
             round_state=round_state,
             baseline_branch=str(round_plan["baseline_branch"]),
         )
-        result = self._compose_round_result(
+        result = self._evaluate_orchestrator_result(
             round_id=round_id,
             proposals=proposals,
             round_state=round_state,
@@ -282,73 +282,70 @@ class HierarchicalOrchestrator:
     def evaluate_round(self, round_results: list[CandidateResult]) -> CandidateResult:
         return max(round_results, key=lambda result: result.val_score)
 
-    def _compose_round_result(
+    def _evaluate_orchestrator_result(
         self,
         round_id: int,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         round_state: RoundState,
         baseline_branch: str,
     ) -> CandidateResult:
-        model_proposal = next(
-            proposal for proposal in proposals if isinstance(proposal, ModelProposal)
-        )
-        augmentation_proposal = next(
-            proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
-        )
-        data_proposal = next(
-            proposal for proposal in proposals if isinstance(proposal, DataProposal)
-        )
-
-        config = CandidateConfig(
-            model_name=model_proposal.model_name,
-            preprocessing=data_proposal.preprocessing,
-            augmentation=augmentation_proposal.augmentation,
-            learning_rate=model_proposal.learning_rate,
-            window_size=data_proposal.window_size,
-            notes=(
-                "Composed by orchestrator from model, augmentation, and data proposals."
-            ),
-        )
-        if round_state.materialized_orchestrator_file:
-            composed_payload = self._load_json(round_state.materialized_orchestrator_file)
-            config = experiment_to_candidate_config(
-                composed_payload["experiment"],
-                notes="Composed by orchestrator from model, augmentation, and data proposals.",
-            )
-            experiment = composed_payload["experiment"]
-        else:
+        baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
+        candidate_specs = [
+            ("model+augmentation", {"model_agent", "augmentation_agent"}),
+            ("model+data", {"model_agent", "data_agent"}),
+            ("augmentation+data", {"augmentation_agent", "data_agent"}),
+            ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}),
+        ]
+        evaluated: list[CandidateResult] = []
+        for label, included_agents in candidate_specs:
             experiment = self._compose_experiment_from_proposals(
                 proposals=proposals,
-                baseline_experiment=self._baseline_experiment_from_branch(baseline_branch),
+                baseline_experiment=baseline_experiment,
+                included_agents=included_agents,
             )
-        component_summaries = {
-            "model_agent": model_proposal.notes,
-            "augmentation_agent": augmentation_proposal.notes,
-            "data_agent": data_proposal.notes,
-        }
-        workspace = AgentWorkspace(
-            agent_name="orchestrator",
-            branch_name=round_state.orchestrator_branch or self.orchestrator_workspace.branch_name,
-            worktree_path=round_state.orchestrator_worktree or self.orchestrator_workspace.worktree_path,
+            if (
+                included_agents == {"model_agent", "augmentation_agent", "data_agent"}
+                and round_state.materialized_orchestrator_file
+            ):
+                composed_payload = self._load_json(round_state.materialized_orchestrator_file)
+                experiment = composed_payload["experiment"]
+            config = experiment_to_candidate_config(
+                experiment,
+                notes=f"Orchestrator evaluated combination: {label}.",
+            )
+            component_summaries = self._component_summaries(proposals, included_agents)
+            workspace = AgentWorkspace(
+                agent_name="orchestrator",
+                branch_name=round_state.orchestrator_branch or self.orchestrator_workspace.branch_name,
+                worktree_path=round_state.orchestrator_worktree or self.orchestrator_workspace.worktree_path,
+            )
+            evaluated.append(
+                self.harness.evaluate(
+                    round_id=round_id,
+                    agent_name="orchestrator",
+                    branch_name=workspace.branch_name,
+                    worktree_path=workspace.worktree_path,
+                    config=config,
+                    experiment=experiment,
+                    component_summaries=component_summaries,
+                    artifact_paths={
+                        **round_state.proposal_artifacts,
+                        "selected_combination": label,
+                        "composed_candidate": round_state.composed_artifact,
+                        **{
+                            f"materialized_{agent_name}": path
+                            for agent_name, path in round_state.materialized_agent_files.items()
+                        },
+                        "materialized_orchestrator_candidate": round_state.materialized_orchestrator_file,
+                    },
+                )
+            )
+        best_candidate = max(evaluated, key=lambda result: result.val_score)
+        best_candidate.summary = (
+            f"{best_candidate.summary} | selected_combination="
+            f"{best_candidate.artifact_paths.get('selected_combination', 'unknown')}"
         )
-        return self.harness.evaluate(
-            round_id=round_id,
-            agent_name="orchestrator",
-            branch_name=workspace.branch_name,
-            worktree_path=workspace.worktree_path,
-            config=config,
-            experiment=experiment,
-            component_summaries=component_summaries,
-            artifact_paths={
-                **round_state.proposal_artifacts,
-                "composed_candidate": round_state.composed_artifact,
-                **{
-                    f"materialized_{agent_name}": path
-                    for agent_name, path in round_state.materialized_agent_files.items()
-                },
-                "materialized_orchestrator_candidate": round_state.materialized_orchestrator_file,
-            },
-        )
+        return best_candidate
 
     def _evaluate_agent_results(
         self,
@@ -524,15 +521,45 @@ class HierarchicalOrchestrator:
         self,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         baseline_experiment: dict[str, object],
+        included_agents: set[str] | None = None,
     ) -> dict[str, object]:
-        model_proposal = next(proposal for proposal in proposals if isinstance(proposal, ModelProposal))
-        augmentation_proposal = next(proposal for proposal in proposals if isinstance(proposal, AugmentationProposal))
-        data_proposal = next(proposal for proposal in proposals if isinstance(proposal, DataProposal))
         experiment = clone_experiment(baseline_experiment)
-        experiment = apply_model_proposal(experiment, model_proposal)
-        experiment = apply_augmentation_proposal(experiment, augmentation_proposal)
-        experiment = apply_data_proposal(experiment, data_proposal)
+        included = included_agents or {
+            "model_agent",
+            "augmentation_agent",
+            "data_agent",
+        }
+        if "model_agent" in included:
+            model_proposal = next(
+                proposal for proposal in proposals if isinstance(proposal, ModelProposal)
+            )
+            experiment = apply_model_proposal(experiment, model_proposal)
+        if "augmentation_agent" in included:
+            augmentation_proposal = next(
+                proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
+            )
+            experiment = apply_augmentation_proposal(experiment, augmentation_proposal)
+        if "data_agent" in included:
+            data_proposal = next(
+                proposal for proposal in proposals if isinstance(proposal, DataProposal)
+            )
+            experiment = apply_data_proposal(experiment, data_proposal)
         return experiment
+
+    def _component_summaries(
+        self,
+        proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+        included_agents: set[str],
+    ) -> dict[str, str]:
+        summaries: dict[str, str] = {}
+        for proposal in proposals:
+            if isinstance(proposal, ModelProposal) and "model_agent" in included_agents:
+                summaries["model_agent"] = proposal.notes
+            elif isinstance(proposal, AugmentationProposal) and "augmentation_agent" in included_agents:
+                summaries["augmentation_agent"] = proposal.notes
+            elif isinstance(proposal, DataProposal) and "data_agent" in included_agents:
+                summaries["data_agent"] = proposal.notes
+        return summaries
 
     def _write_run_outputs(
         self,
