@@ -192,7 +192,7 @@ class GitRuntime:
     def _owned_fields(self, agent_name: str) -> list[str]:
         owned = {
             "model_agent": ["model.name", "model.learning_rate"],
-            "augmentation_agent": ["augmentation.name"],
+            "augmentation_agent": ["augmentation.name", "augmentation.strength"],
             "data_agent": ["data.preprocessing", "data.window_size"],
         }
         return owned[agent_name]
