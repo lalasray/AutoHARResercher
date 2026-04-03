@@ -1,4 +1,0 @@
-{
-  "augmentation": "rotation",
-  "notes": "Test whether rotation augmentation helps a compact sequence model."
-}

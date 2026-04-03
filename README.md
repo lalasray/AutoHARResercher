@@ -18,9 +18,9 @@ Build a hierarchical auto-research loop for human activity recognition from IMU 
 This first version is intentionally simple:
 
 - no LLM calls
-- no real IMU training
+- no external ML dependencies
+- synthetic IMU training/evaluation instead of a public dataset
 - no external dependencies
-- deterministic dummy validation scores so we can verify the loop quickly
 - Git commands can be either previewed or materialized
 - each round writes proposal artifacts so the branch-composition flow is visible
 
@@ -41,9 +41,9 @@ Role split in this version:
 - `AugmentationAgent`: proposes only the augmentation-side part of the next candidate
 - `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, composes one unified candidate branch from their partial proposals, evaluates that branch, and decides which branch to promote
-- `Harness`: returns the score for a candidate branch/worktree
+- `Harness`: trains and evaluates a tiny synthetic HAR baseline from the experiment file
 
-The harness turns the composed configuration into a fake but structured validation score. The orchestrator compares scores across rounds and keeps the best candidate.
+The harness now reads the composed experiment file, runs a tiny synthetic IMU HAR pipeline, and returns a real validation macro-F1 score. The orchestrator compares scores across rounds and keeps the best candidate.
 
 ## Round Artifacts
 
@@ -133,7 +133,7 @@ autohar_researcher/
 ### Phase 1: current dummy prototype
 - [x] Create hierarchical orchestrator
 - [x] Create 3 parallel domain agents
-- [x] Add dummy HAR evaluation harness
+- [x] Add synthetic HAR train/validation harness
 - [x] Keep best configuration over multiple rounds
 - [x] Represent each agent as a branch/worktree in the orchestration plan
 - [x] Let the orchestrator compose one candidate from partial agent proposals
@@ -141,9 +141,9 @@ autohar_researcher/
 - [x] Materialize real branch/worktree files and commits for each round
 - [x] Add CLI entrypoint for quick demo
 
-### Phase 2: make it HAR-realistic
+### Phase 2: make it dataset-realistic
 
-- [ ] Replace dummy harness with a real train/val pipeline for one IMU dataset
+- [ ] Replace synthetic harness with a real train/val pipeline for one IMU dataset
 - [ ] Add dataset module for windowing, normalization, and label mapping
 - [ ] Log metrics such as accuracy, macro-F1, and confusion matrix
 - [ ] Save best checkpoint and experiment metadata
