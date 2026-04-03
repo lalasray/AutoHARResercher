@@ -14,6 +14,7 @@ from autohar_researcher.experiment import (
 )
 from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
+from autohar_researcher.planner import build_planner
 from autohar_researcher.reporting import (
     write_history_csv,
     write_history_svg,
@@ -26,9 +27,12 @@ from autohar_researcher.types import (
     CandidateConfig,
     CandidateResult,
     DataProposal,
+    DataPlanHint,
     GitAction,
+    ModelPlanHint,
     ModelProposal,
     RunOutputs,
+    AugmentationPlanHint,
 )
 
 
@@ -59,8 +63,15 @@ class ModelAgent:
         best_result: CandidateResult | None,
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
+        planner_hint: ModelPlanHint | None = None,
     ) -> ModelProposal:
         del best_score
+        if planner_hint is not None:
+            return ModelProposal(
+                model_name=planner_hint.model_name,
+                learning_rate=planner_hint.learning_rate,
+                notes=f"LLM planner hint: {planner_hint.rationale}",
+            )
         tried = {
             (result.config.model_name, round(result.config.learning_rate, 7))
             for result in history
@@ -128,8 +139,15 @@ class AugmentationAgent:
         best_result: CandidateResult | None,
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
+        planner_hint: AugmentationPlanHint | None = None,
     ) -> AugmentationProposal:
         del best_score
+        if planner_hint is not None:
+            return AugmentationProposal(
+                augmentation=planner_hint.augmentation,
+                strength=planner_hint.strength,
+                notes=f"LLM planner hint: {planner_hint.rationale}",
+            )
         best_config = best_result.config if best_result else None
         accepted_aug = best_config.augmentation if best_config else "none"
         accepted_strength = best_config.augmentation_strength if best_config else "medium"
@@ -256,8 +274,15 @@ class DataAgent:
         best_result: CandidateResult | None,
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
+        planner_hint: DataPlanHint | None = None,
     ) -> DataProposal:
         del best_score
+        if planner_hint is not None:
+            return DataProposal(
+                preprocessing=planner_hint.preprocessing,
+                window_size=planner_hint.window_size,
+                notes=f"LLM planner hint: {planner_hint.rationale}",
+            )
         tried = {
             (result.config.preprocessing, int(result.config.window_size))
             for result in history
@@ -330,6 +355,7 @@ class HierarchicalOrchestrator:
     def __init__(self, harness: DummyHARHarness) -> None:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
+        self.planner = build_planner()
         self.workspaces = self._build_workspaces()
         self.git_runtime = GitRuntime()
         self.orchestrator_workspace = AgentWorkspace(
@@ -359,7 +385,12 @@ class HierarchicalOrchestrator:
             )
 
         for round_id in range(1, rounds + 1):
-            round_plan = self.plan_round(round_id=round_id, best_result=best_result)
+            round_plan = self.plan_round(
+                round_id=round_id,
+                best_result=best_result,
+                history=history,
+                accepted_history=accepted_history,
+            )
             actions.extend(self.plan_git_actions(round_id=round_id, round_plan=round_plan))
             round_results, round_state = self.execute_round(
                 round_id=round_id,
@@ -438,11 +469,22 @@ class HierarchicalOrchestrator:
         self,
         round_id: int,
         best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
     ) -> dict[str, object]:
+        planner_output = self.planner.plan_round(
+            round_id=round_id,
+            best_result=best_result,
+            history=history,
+            accepted_history=accepted_history,
+        )
         return {
             "round_id": round_id,
             "best_score": best_result.val_score if best_result else None,
             "baseline_branch": "main" if best_result is None else best_result.branch_name,
+            "planner_name": planner_output.get("planner", getattr(self.planner, "name", "unknown")),
+            "planner_summary": planner_output.get("summary", ""),
+            "planner_hints": planner_output.get("hints", {}),
         }
 
     def plan_git_actions(
@@ -499,6 +541,7 @@ class HierarchicalOrchestrator:
         auto_push_non_main: bool = False,
     ) -> tuple[list[CandidateResult], RoundState]:
         best_score = round_plan["best_score"]
+        planner_hints = dict(round_plan.get("planner_hints", {}))
         with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
             futures = [
                 pool.submit(
@@ -508,6 +551,7 @@ class HierarchicalOrchestrator:
                     best_result,
                     list(history),
                     list(accepted_history),
+                    planner_hints.get(agent.name),
                 )
                 for agent in self.agents
             ]

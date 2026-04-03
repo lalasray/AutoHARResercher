@@ -21,6 +21,7 @@ This first version is intentionally simple:
 - real UCI HAR evaluation
 - optional PyTorch acceleration when available
 - CUDA auto-detection with CPU fallback
+- optional OpenAI-based planner when credentials are configured
 - Git commands can be either previewed or materialized
 - each round writes proposal artifacts so the branch-composition flow is visible
 
@@ -42,6 +43,11 @@ Role split in this version:
 - `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates single-agent and partial-combination candidates, and decides which branch to promote
 - `Harness`: trains and evaluates a real UCI HAR baseline from the experiment file, with optional Torch-backed training, early stopping, and richer metrics
+
+The orchestrator can also use a real OpenAI-based planner:
+
+- if `OPENAI_API_KEY` is available, the planner can propose round-level agent hints
+- if no key is available, the system falls back to the built-in heuristic planner
 
 The harness now reads the experiment file, loads UCI HAR, and returns a real validation macro-F1 score plus richer outputs such as:
 
@@ -142,6 +148,32 @@ Push policy in this mode:
 - pushes `agent-data-main`
 - pushes `orchestrator-main`
 - never pushes `main`
+
+## LLM Planner Config
+
+You can configure the OpenAI planner with a repo-local file:
+
+1. copy `.autohar.env.example` to `.autohar.env`
+2. put your real key there
+
+Example:
+
+```bash
+cp .autohar.env.example .autohar.env
+```
+
+Then edit `.autohar.env`:
+
+```env
+OPENAI_API_KEY=your_real_key_here
+AUTOHAR_LLM_MODEL=gpt-5-mini
+```
+
+Behavior:
+
+- `.autohar.env` is loaded automatically by the planner
+- `.autohar.env` is ignored by Git
+- if the key is missing, the system uses the heuristic fallback planner
 
 ## Project Layout
 
