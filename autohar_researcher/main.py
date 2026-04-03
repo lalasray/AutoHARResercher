@@ -37,6 +37,7 @@ def main() -> None:
     best_result = results["best_result"]
     workspaces = results["workspaces"]
     git_actions = results["git_actions"]
+    round_states = results["round_states"]
     ranked = sorted(history, key=lambda item: item.val_score, reverse=True)
 
     print("AutoHARResearcher git-first demo")
@@ -50,6 +51,13 @@ def main() -> None:
             f"- {workspace.agent_name}: branch={workspace.branch_name} "
             f"worktree={workspace.worktree_path}"
         )
+    print()
+    print("Round artifacts:")
+    for round_state in round_states:
+        print(f"- round {round_state.round_id}:")
+        for agent_name, artifact_path in round_state.proposal_artifacts.items():
+            print(f"  {agent_name} proposal -> {artifact_path}")
+        print(f"  orchestrator candidate -> {round_state.composed_artifact}")
     print()
     print("Top candidates:")
     for rank, result in enumerate(ranked[:5], start=1):
@@ -69,6 +77,14 @@ def main() -> None:
     print(best_result.config)
     print(f"Best branch to promote: {best_result.branch_name}")
     print(f"Best worktree: {best_result.worktree_path}")
+    if best_result.component_summaries:
+        print("Composed from agent proposals:")
+        for agent_name, summary in best_result.component_summaries.items():
+            print(f"- {agent_name}: {summary}")
+    if best_result.artifact_paths:
+        print("Related artifacts:")
+        for label, artifact_path in best_result.artifact_paths.items():
+            print(f"- {label}: {artifact_path}")
     print("Score breakdown:")
     for key, value in best_result.score_breakdown.items():
         print(f"- {key}: {value:.4f}")

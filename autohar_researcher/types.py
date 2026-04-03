@@ -23,6 +23,28 @@ class CandidateResult:
     val_score: float
     summary: str
     score_breakdown: dict[str, float] = field(default_factory=dict)
+    component_summaries: dict[str, str] = field(default_factory=dict)
+    artifact_paths: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ModelProposal:
+    model_name: str
+    learning_rate: float
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class AugmentationProposal:
+    augmentation: str
+    notes: str = ""
+
+
+@dataclass(frozen=True)
+class DataProposal:
+    preprocessing: str
+    window_size: int
+    notes: str = ""
 
 
 @dataclass(frozen=True)

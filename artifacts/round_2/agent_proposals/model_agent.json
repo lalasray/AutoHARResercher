@@ -1,0 +1,5 @@
+{
+  "learning_rate": 0.0003,
+  "model_name": "cnn_gru",
+  "notes": "Push the strongest architecture toward a better-performing region."
+}

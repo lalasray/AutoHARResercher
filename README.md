@@ -7,7 +7,7 @@ Minimal IMU-based HAR equivalent of Karpathy-style `autoresearch`, starting with
 Build a hierarchical auto-research loop for human activity recognition from IMU data:
 
 - One `Orchestrator` controls the search loop.
-- Three parallel agents propose candidate improvements:
+- Three parallel agents propose partial improvements:
   - `ModelAgent`
   - `AugmentationAgent`
   - `DataAgent`
@@ -22,6 +22,7 @@ This first version is intentionally simple:
 - no external dependencies
 - deterministic dummy validation scores so we can verify the loop quickly
 - Git commands are planned and printed, not automatically executed
+- each round writes proposal artifacts so the branch-composition flow is visible
 
 ## Minimal Architecture
 
@@ -36,13 +37,28 @@ Orchestrator
 
 Role split in this version:
 
-- `ModelAgent`: proposes model-family-centered candidates
-- `AugmentationAgent`: proposes augmentation-centered candidates
-- `DataAgent`: proposes preprocessing and windowing candidates
-- `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates returned validation scores, and decides which branch to promote
+- `ModelAgent`: proposes only the model-side part of the next candidate
+- `AugmentationAgent`: proposes only the augmentation-side part of the next candidate
+- `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
+- `Orchestrator`: plans each round, launches the 3 agents in parallel, composes one unified candidate branch from their partial proposals, evaluates that branch, and decides which branch to promote
 - `Harness`: returns the score for a candidate branch/worktree
 
-The harness turns that configuration into a fake but structured validation score. The orchestrator compares scores across rounds and keeps the best candidate.
+The harness turns the composed configuration into a fake but structured validation score. The orchestrator compares scores across rounds and keeps the best candidate.
+
+## Round Artifacts
+
+Each round now materializes concrete files:
+
+- `artifacts/round_N/agent_proposals/model_agent.json`
+- `artifacts/round_N/agent_proposals/augmentation_agent.json`
+- `artifacts/round_N/agent_proposals/data_agent.json`
+- `artifacts/round_N/orchestrator_candidate.json`
+
+This is the bridge between the current dummy prototype and a real Git-based system:
+
+- today: agent branches produce structured proposal files
+- next: agent branches produce real code diffs or commits
+- later: the orchestrator composes an actual round branch from those commits
 
 ## Git-First Mental Model
 
@@ -56,8 +72,9 @@ The orchestrator does not need to "be" a branch. It is better thought of as a co
 
 - creates or tracks the agent branches
 - creates one worktree per agent
-- tells each agent when to make a candidate change
-- runs the harness on each candidate branch
+- tells each agent when to make its aspect-specific change
+- composes those partial changes into an orchestrator branch for the round
+- runs the harness on the composed candidate branch
 - selects the best branch to merge back into `main`
 
 ## Run
@@ -85,6 +102,8 @@ autohar_researcher/
 - [x] Add dummy HAR evaluation harness
 - [x] Keep best configuration over multiple rounds
 - [x] Represent each agent as a branch/worktree in the orchestration plan
+- [x] Let the orchestrator compose one candidate from partial agent proposals
+- [x] Write per-round proposal artifacts and a composed candidate artifact
 - [x] Add CLI entrypoint for quick demo
 
 ### Phase 2: make it HAR-realistic
@@ -120,6 +139,7 @@ autohar_researcher/
 - [ ] Let agents edit real files in their own worktrees
 - [ ] Let the harness launch actual training jobs from each worktree
 - [ ] Let the orchestrator read metrics from branch-specific outputs
+- [ ] Let the orchestrator create a real round branch by combining selected agent commits
 - [ ] Let the orchestrator merge or reject branches based on validation score
 - [ ] Add mutation of the current best experiment rather than static handcrafted proposals
 - [ ] Persist all runs in a lightweight experiment registry

@@ -1,0 +1,5 @@
+{
+  "notes": "Probe an alternative data pipeline with richer derived channels.",
+  "preprocessing": "normalized+magnitude_channels",
+  "window_size": 256
+}

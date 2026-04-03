@@ -3,29 +3,33 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
 from autohar_researcher.harness import DummyHARHarness
-from autohar_researcher.types import AgentWorkspace, CandidateConfig, CandidateResult, GitAction
+from autohar_researcher.round_state import RoundState
+from autohar_researcher.types import (
+    AgentWorkspace,
+    AugmentationProposal,
+    CandidateConfig,
+    CandidateResult,
+    DataProposal,
+    GitAction,
+    ModelProposal,
+)
 
 
 class ModelAgent:
     name = "model_agent"
 
-    def propose(self, round_id: int, best_score: float | None) -> CandidateConfig:
+    def propose(self, round_id: int, best_score: float | None) -> ModelProposal:
         if best_score is None:
-            return CandidateConfig(
+            return ModelProposal(
                 model_name="cnn_gru",
-                preprocessing="normalized",
-                augmentation="jitter",
                 learning_rate=3e-4,
-                window_size=128,
                 notes="Balanced architecture-first guess for IMU HAR.",
             )
-        return CandidateConfig(
+        return ModelProposal(
             model_name="cnn_gru",
-            preprocessing="normalized+gravity_filter",
-            augmentation="rotation",
             learning_rate=3e-4,
-            window_size=128,
             notes="Push the strongest architecture toward a better-performing region.",
         )
 
@@ -33,22 +37,14 @@ class ModelAgent:
 class AugmentationAgent:
     name = "augmentation_agent"
 
-    def propose(self, round_id: int, best_score: float | None) -> CandidateConfig:
+    def propose(self, round_id: int, best_score: float | None) -> AugmentationProposal:
         if round_id % 2 == 1:
-            return CandidateConfig(
-                model_name="gru",
-                preprocessing="normalized+magnitude_channels",
+            return AugmentationProposal(
                 augmentation="time_warp",
-                learning_rate=1e-3,
-                window_size=128,
                 notes="Probe a recurrent baseline with a stronger augmentation move.",
             )
-        return CandidateConfig(
-            model_name="tiny_transformer",
-            preprocessing="normalized",
+        return AugmentationProposal(
             augmentation="rotation",
-            learning_rate=3e-4,
-            window_size=64,
             notes="Test whether rotation augmentation helps a compact sequence model.",
         )
 
@@ -56,21 +52,15 @@ class AugmentationAgent:
 class DataAgent:
     name = "data_agent"
 
-    def propose(self, round_id: int, best_score: float | None) -> CandidateConfig:
+    def propose(self, round_id: int, best_score: float | None) -> DataProposal:
         if best_score is not None and best_score > 0.84:
-            return CandidateConfig(
-                model_name="cnn_gru",
+            return DataProposal(
                 preprocessing="normalized+gravity_filter",
-                augmentation="none",
-                learning_rate=1e-4,
                 window_size=128,
                 notes="Stabilize preprocessing and windowing around the best data setup.",
             )
-        return CandidateConfig(
-            model_name="cnn",
+        return DataProposal(
             preprocessing="normalized+magnitude_channels",
-            augmentation="mixup",
-            learning_rate=3e-4,
             window_size=256,
             notes="Probe an alternative data pipeline with richer derived channels.",
         )
@@ -86,12 +76,14 @@ class HierarchicalOrchestrator:
         history: list[CandidateResult] = []
         best_result: CandidateResult | None = None
         actions: list[GitAction] = self.bootstrap_actions()
+        round_states: list[RoundState] = []
 
         for round_id in range(1, rounds + 1):
             round_plan = self.plan_round(round_id=round_id, best_result=best_result)
             actions.extend(self.plan_git_actions(round_id=round_id, round_plan=round_plan))
-            round_results = self.execute_round(round_id=round_id, round_plan=round_plan)
+            round_results, round_state = self.execute_round(round_id=round_id, round_plan=round_plan)
             history.extend(round_results)
+            round_states.append(round_state)
             round_best = self.evaluate_round(round_results)
             if best_result is None or round_best.val_score > best_result.val_score:
                 best_result = round_best
@@ -103,6 +95,7 @@ class HierarchicalOrchestrator:
             "history": history,
             "workspaces": self.workspaces,
             "git_actions": actions,
+            "round_states": round_states,
         }
 
     def _build_workspaces(self) -> dict[str, AgentWorkspace]:
@@ -147,20 +140,20 @@ class HierarchicalOrchestrator:
         self,
         round_id: int,
         best_result: CandidateResult | None,
-    ) -> dict[str, float | int | None]:
+    ) -> dict[str, object]:
         return {
             "round_id": round_id,
             "best_score": best_result.val_score if best_result else None,
+            "baseline_branch": "main" if best_result is None else best_result.branch_name,
         }
 
     def plan_git_actions(
         self,
         round_id: int,
-        round_plan: dict[str, float | int | None],
+        round_plan: dict[str, object],
     ) -> list[GitAction]:
         actions: list[GitAction] = []
-        best_score = round_plan["best_score"]
-        baseline_note = "main" if best_score is None else "best-so-far branch"
+        baseline_branch = str(round_plan["baseline_branch"])
         for workspace in self.workspaces.values():
             actions.append(
                 GitAction(
@@ -173,51 +166,170 @@ class HierarchicalOrchestrator:
             )
             actions.append(
                 GitAction(
-                    label=f"Round {round_id}: evaluate {workspace.agent_name}",
+                    label=f"Round {round_id}: fetch proposal from {workspace.agent_name}",
                     command=(
-                        f"python3 -m autohar_researcher.main --rounds 1 "
-                        f"# from {workspace.branch_name} using {baseline_note}"
+                        f"git -C {workspace.worktree_path} diff {baseline_branch} "
+                        f"# inspect {workspace.agent_name} contribution against {baseline_branch}"
                     ),
                 )
             )
+        actions.append(
+            GitAction(
+                label=f"Round {round_id}: compose unified candidate",
+                command=(
+                    f"git checkout -b orchestrator/round-{round_id} {baseline_branch} "
+                    f"# combine model, augmentation, and data changes"
+                ),
+            )
+        )
+        actions.append(
+            GitAction(
+                label=f"Round {round_id}: evaluate unified candidate",
+                command="python3 -m autohar_researcher.main --rounds 1 # evaluate composed config",
+            )
+        )
         return actions
 
     def execute_round(
         self,
         round_id: int,
-        round_plan: dict[str, float | int | None],
-    ) -> list[CandidateResult]:
+        round_plan: dict[str, object],
+    ) -> tuple[list[CandidateResult], RoundState]:
         best_score = round_plan["best_score"]
         with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
             futures = [
-                pool.submit(self._run_agent_round, agent, round_id, best_score)
+                pool.submit(agent.propose, round_id, best_score)
                 for agent in self.agents
             ]
-            return [future.result() for future in futures]
+            proposals = [future.result() for future in futures]
+
+        round_state = self._materialize_round_state(round_id=round_id, proposals=proposals)
+        result = self._compose_round_result(
+            round_id=round_id,
+            proposals=proposals,
+            round_state=round_state,
+        )
+        return [result], round_state
 
     def evaluate_round(self, round_results: list[CandidateResult]) -> CandidateResult:
         return max(round_results, key=lambda result: result.val_score)
 
-    def _run_agent_round(
+    def _compose_round_result(
         self,
-        agent: ModelAgent | AugmentationAgent | DataAgent,
         round_id: int,
-        best_score: float | None,
+        proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+        round_state: RoundState,
     ) -> CandidateResult:
-        config = agent.propose(round_id=round_id, best_score=best_score)
-        workspace = self.workspaces[agent.name]
+        model_proposal = next(
+            proposal for proposal in proposals if isinstance(proposal, ModelProposal)
+        )
+        augmentation_proposal = next(
+            proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
+        )
+        data_proposal = next(
+            proposal for proposal in proposals if isinstance(proposal, DataProposal)
+        )
+
+        config = CandidateConfig(
+            model_name=model_proposal.model_name,
+            preprocessing=data_proposal.preprocessing,
+            augmentation=augmentation_proposal.augmentation,
+            learning_rate=model_proposal.learning_rate,
+            window_size=data_proposal.window_size,
+            notes=(
+                "Composed by orchestrator from model, augmentation, and data proposals."
+            ),
+        )
+        component_summaries = {
+            "model_agent": model_proposal.notes,
+            "augmentation_agent": augmentation_proposal.notes,
+            "data_agent": data_proposal.notes,
+        }
+        workspace = AgentWorkspace(
+            agent_name="orchestrator",
+            branch_name=f"orchestrator/round-{round_id}",
+            worktree_path=str(Path.cwd()),
+        )
         return self.harness.evaluate(
             round_id=round_id,
-            agent_name=agent.name,
+            agent_name="orchestrator",
             branch_name=workspace.branch_name,
             worktree_path=workspace.worktree_path,
             config=config,
+            component_summaries=component_summaries,
+            artifact_paths={
+                **round_state.proposal_artifacts,
+                "composed_candidate": round_state.composed_artifact,
+            },
+        )
+
+    def _materialize_round_state(
+        self,
+        round_id: int,
+        proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+    ) -> RoundState:
+        round_dir = ensure_round_dir(round_id)
+        proposal_dir = round_dir / "agent_proposals"
+        proposal_artifacts: dict[str, str] = {}
+
+        for proposal in proposals:
+            if isinstance(proposal, ModelProposal):
+                agent_name = "model_agent"
+            elif isinstance(proposal, AugmentationProposal):
+                agent_name = "augmentation_agent"
+            else:
+                agent_name = "data_agent"
+            proposal_artifacts[agent_name] = write_json_artifact(
+                proposal_dir / f"{agent_name}.json",
+                proposal,
+            )
+
+        model_proposal = next(
+            proposal for proposal in proposals if isinstance(proposal, ModelProposal)
+        )
+        augmentation_proposal = next(
+            proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
+        )
+        data_proposal = next(
+            proposal for proposal in proposals if isinstance(proposal, DataProposal)
+        )
+        composed_payload = {
+            "branch_name": f"orchestrator/round-{round_id}",
+            "source_branches": {
+                "model_agent": self.workspaces["model_agent"].branch_name,
+                "augmentation_agent": self.workspaces["augmentation_agent"].branch_name,
+                "data_agent": self.workspaces["data_agent"].branch_name,
+            },
+            "composed_config": {
+                "model_name": model_proposal.model_name,
+                "learning_rate": model_proposal.learning_rate,
+                "augmentation": augmentation_proposal.augmentation,
+                "preprocessing": data_proposal.preprocessing,
+                "window_size": data_proposal.window_size,
+            },
+        }
+        composed_artifact = write_json_artifact(
+            round_dir / "orchestrator_candidate.json",
+            composed_payload,
+        )
+        return RoundState(
+            round_id=round_id,
+            proposal_artifacts=proposal_artifacts,
+            composed_artifact=composed_artifact,
         )
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [
             GitAction(
-                label="Promote best agent branch",
+                label="Promote best orchestrated branch",
                 command=f"git merge --no-ff {best_result.branch_name}",
-            )
+            ),
+            GitAction(
+                label="Rebase agent branches onto winning baseline",
+                command=(
+                    f"git rebase {best_result.branch_name} agent/model/main && "
+                    f"git rebase {best_result.branch_name} agent/augmentation/main && "
+                    f"git rebase {best_result.branch_name} agent/data/main"
+                ),
+            ),
         ]

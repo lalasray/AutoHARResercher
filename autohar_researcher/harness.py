@@ -47,6 +47,8 @@ class DummyHARHarness:
         branch_name: str,
         worktree_path: str,
         config: CandidateConfig,
+        component_summaries: dict[str, str] | None = None,
+        artifact_paths: dict[str, str] | None = None,
     ) -> CandidateResult:
         base = 0.05
         model = self.MODEL_SCORES[config.model_name]
@@ -85,4 +87,6 @@ class DummyHARHarness:
                 "lr": lr,
                 "synergy": synergy,
             },
+            component_summaries=component_summaries or {},
+            artifact_paths=artifact_paths or {},
         )
