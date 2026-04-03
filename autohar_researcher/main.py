@@ -85,8 +85,10 @@ def main() -> None:
             print(f"  pushed branches -> {', '.join(round_state.pushed_branches)}")
     print()
     print("Report outputs:")
-    print(f"- history csv: {run_outputs.history_csv}")
-    print(f"- history svg: {run_outputs.history_svg}")
+    print(f"- trial history csv: {run_outputs.trial_history_csv}")
+    print(f"- trial history svg: {run_outputs.trial_history_svg}")
+    print(f"- accepted history csv: {run_outputs.accepted_history_csv}")
+    print(f"- accepted history svg: {run_outputs.accepted_history_svg}")
     print()
     print("Top candidates:")
     for rank, result in enumerate(ranked[:5], start=1):

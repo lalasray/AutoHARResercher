@@ -96,7 +96,9 @@ class HierarchicalOrchestrator:
         auto_push_non_main: bool = False,
     ) -> dict[str, object]:
         history: list[CandidateResult] = []
+        accepted_history: list[CandidateResult] = []
         best_result: CandidateResult | None = None
+        best_by_agent: dict[str, float] = {}
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
 
@@ -116,18 +118,26 @@ class HierarchicalOrchestrator:
                 materialize_git=materialize_git,
                 auto_push_non_main=auto_push_non_main,
             )
+            self._annotate_best_so_far(round_results, best_by_agent)
+            round_best = self.evaluate_round(round_results)
+            accepted_orchestrator = self._select_accepted_orchestrator(round_results, best_result)
+            if accepted_orchestrator is not None:
+                accepted_orchestrator.accepted = True
+                best_result = accepted_orchestrator
+                accepted_history.append(self._clone_result(accepted_orchestrator))
+
             history.extend(round_results)
             round_states.append(round_state)
-            round_best = self.evaluate_round(round_results)
-            if best_result is None or round_best.val_score > best_result.val_score:
+            if best_result is None:
                 best_result = round_best
 
         assert best_result is not None
         actions.extend(self.finalize_actions(best_result=best_result))
-        run_outputs = self._write_run_outputs(history)
+        run_outputs = self._write_run_outputs(history, accepted_history)
         return {
             "best_result": best_result,
             "history": history,
+            "accepted_history": accepted_history,
             "workspaces": self.workspaces,
             "git_actions": actions,
             "round_states": round_states,
@@ -442,6 +452,49 @@ class HierarchicalOrchestrator:
 
         return json.loads(Path(path).read_text(encoding="utf-8"))
 
+    def _annotate_best_so_far(
+        self,
+        round_results: list[CandidateResult],
+        best_by_agent: dict[str, float],
+    ) -> None:
+        for result in round_results:
+            best_by_agent[result.agent_name] = max(
+                best_by_agent.get(result.agent_name, float("-inf")),
+                result.val_score,
+            )
+            result.best_so_far_score = best_by_agent[result.agent_name]
+
+    def _select_accepted_orchestrator(
+        self,
+        round_results: list[CandidateResult],
+        best_result: CandidateResult | None,
+    ) -> CandidateResult | None:
+        orchestrator_result = next(
+            (result for result in round_results if result.agent_name == "orchestrator"),
+            None,
+        )
+        if orchestrator_result is None:
+            return None
+        if best_result is None or orchestrator_result.val_score > best_result.val_score:
+            return orchestrator_result
+        return None
+
+    def _clone_result(self, result: CandidateResult) -> CandidateResult:
+        return CandidateResult(
+            round_id=result.round_id,
+            agent_name=result.agent_name,
+            branch_name=result.branch_name,
+            worktree_path=result.worktree_path,
+            config=result.config,
+            val_score=result.val_score,
+            summary=result.summary,
+            score_breakdown=dict(result.score_breakdown),
+            component_summaries=dict(result.component_summaries),
+            artifact_paths=dict(result.artifact_paths),
+            accepted=result.accepted,
+            best_so_far_score=result.best_so_far_score,
+        )
+
     def _baseline_experiment_from_branch(self, baseline_branch: str) -> dict[str, object]:
         if baseline_branch == "main":
             return base_experiment_config()
@@ -467,11 +520,32 @@ class HierarchicalOrchestrator:
         experiment = apply_data_proposal(experiment, data_proposal)
         return experiment
 
-    def _write_run_outputs(self, history: list[CandidateResult]) -> RunOutputs:
+    def _write_run_outputs(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> RunOutputs:
         output_dir = Path.cwd() / "artifacts" / "reports"
-        csv_path = write_history_csv(history, output_dir / "score_history.csv")
-        svg_path = write_history_svg(history, output_dir / "score_history.svg")
-        return RunOutputs(history_csv=csv_path, history_svg=svg_path)
+        trial_csv_path = write_history_csv(history, output_dir / "score_history.csv")
+        trial_svg_path = write_history_svg(
+            history,
+            output_dir / "score_history.svg",
+            value_key="val_score",
+            title="Trial Macro-F1 By Round",
+        )
+        accepted_csv_path = write_history_csv(accepted_history, output_dir / "accepted_history.csv")
+        accepted_svg_path = write_history_svg(
+            history,
+            output_dir / "accepted_history.svg",
+            value_key="best_so_far_score",
+            title="Best-So-Far Macro-F1 By Round",
+        )
+        return RunOutputs(
+            trial_history_csv=trial_csv_path,
+            trial_history_svg=trial_svg_path,
+            accepted_history_csv=accepted_csv_path,
+            accepted_history_svg=accepted_svg_path,
+        )
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [

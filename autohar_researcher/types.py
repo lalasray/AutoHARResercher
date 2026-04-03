@@ -25,6 +25,8 @@ class CandidateResult:
     score_breakdown: dict[str, float] = field(default_factory=dict)
     component_summaries: dict[str, str] = field(default_factory=dict)
     artifact_paths: dict[str, str] = field(default_factory=dict)
+    accepted: bool = False
+    best_so_far_score: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -62,5 +64,7 @@ class GitAction:
 
 @dataclass(frozen=True)
 class RunOutputs:
-    history_csv: str
-    history_svg: str
+    trial_history_csv: str
+    trial_history_svg: str
+    accepted_history_csv: str
+    accepted_history_svg: str

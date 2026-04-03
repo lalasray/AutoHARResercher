@@ -11,17 +11,32 @@ def write_history_csv(history: list[CandidateResult], output_path: Path) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["round_id", "agent_name", "branch_name", "val_score"])
+        writer.writerow(["round_id", "agent_name", "branch_name", "val_score", "accepted", "best_so_far_score"])
         for result in history:
-            writer.writerow([result.round_id, result.agent_name, result.branch_name, f"{result.val_score:.4f}"])
+            writer.writerow(
+                [
+                    result.round_id,
+                    result.agent_name,
+                    result.branch_name,
+                    f"{result.val_score:.4f}",
+                    str(result.accepted).lower(),
+                    f"{result.best_so_far_score:.4f}",
+                ]
+            )
     return str(output_path)
 
 
-def write_history_svg(history: list[CandidateResult], output_path: Path) -> str:
+def write_history_svg(
+    history: list[CandidateResult],
+    output_path: Path,
+    value_key: str,
+    title: str,
+) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     grouped: dict[str, list[tuple[int, float]]] = defaultdict(list)
     for result in history:
-        grouped[result.agent_name].append((result.round_id, result.val_score))
+        value = result.val_score if value_key == "val_score" else result.best_so_far_score
+        grouped[result.agent_name].append((result.round_id, value))
 
     width = 960
     height = 520
@@ -50,7 +65,7 @@ def write_history_svg(history: list[CandidateResult], output_path: Path) -> str:
     elements = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="#ffffff"/>',
-        f'<text x="{margin_left}" y="24" font-family="Arial, sans-serif" font-size="20" fill="#111">F1 Score By Round</text>',
+        f'<text x="{margin_left}" y="24" font-family="Arial, sans-serif" font-size="20" fill="#111">{title}</text>',
     ]
 
     for tick in range(0, 6):

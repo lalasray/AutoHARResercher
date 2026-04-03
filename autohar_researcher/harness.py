@@ -14,6 +14,10 @@ class DummyHARHarness:
 
     LABELS = ["walk", "walk_upstairs", "walk_downstairs", "sit", "stand", "lay"]
 
+    def __init__(self) -> None:
+        self._dataset: UCIHARDataset | None = None
+        self._evaluation_cache: dict[tuple[str, str, str, float, int], dict[str, float]] = {}
+
     def evaluate(
         self,
         round_id: int,
@@ -26,34 +30,50 @@ class DummyHARHarness:
         artifact_paths: dict[str, str] | None = None,
     ) -> CandidateResult:
         experiment = experiment or self._load_experiment(Path(worktree_path))
-        dataset = self._load_dataset(experiment)
-        train_samples = [
-            (self._prepare_window(window, config, split="train"), label)
-            for window, label in dataset.load_split("train")
-        ]
-        val_samples = [
-            (self._prepare_window(window, config, split="test"), label)
-            for window, label in dataset.load_split("test")
-        ]
-
-        train_features = [self._extract_features(window, config) for window, _ in train_samples]
-        train_labels = [self.LABELS.index(label) for _, label in train_samples]
-        val_features = [self._extract_features(window, config) for window, _ in val_samples]
-        val_labels = [self.LABELS.index(label) for _, label in val_samples]
-
-        model = self._train_linear_model(
-            train_features=train_features,
-            train_labels=train_labels,
-            learning_rate=config.learning_rate,
-            epochs=int(experiment["training"]["epochs"]),
+        cache_key = (
+            config.model_name,
+            config.preprocessing,
+            config.augmentation,
+            float(config.learning_rate),
+            int(config.window_size),
         )
-        predictions = [self._predict(model, features) for features in val_features]
-        macro_f1 = self._macro_f1(predictions, val_labels)
-        accuracy = self._accuracy(predictions, val_labels)
-        train_accuracy = self._accuracy(
-            [self._predict(model, features) for features in train_features],
-            train_labels,
-        )
+        if cache_key not in self._evaluation_cache:
+            dataset = self._load_dataset(experiment)
+            train_samples = [
+                (self._prepare_window(window, config, split="train"), label)
+                for window, label in dataset.load_split("train")
+            ]
+            val_samples = [
+                (self._prepare_window(window, config, split="test"), label)
+                for window, label in dataset.load_split("test")
+            ]
+
+            train_features = [self._extract_features(window, config) for window, _ in train_samples]
+            train_labels = [self.LABELS.index(label) for _, label in train_samples]
+            val_features = [self._extract_features(window, config) for window, _ in val_samples]
+            val_labels = [self.LABELS.index(label) for _, label in val_samples]
+
+            model = self._train_linear_model(
+                train_features=train_features,
+                train_labels=train_labels,
+                learning_rate=config.learning_rate,
+                epochs=int(experiment["training"]["epochs"]),
+            )
+            predictions = [self._predict(model, features) for features in val_features]
+            self._evaluation_cache[cache_key] = {
+                "macro_f1": round(self._macro_f1(predictions, val_labels), 4),
+                "val_accuracy": round(self._accuracy(predictions, val_labels), 4),
+                "train_accuracy": round(
+                    self._accuracy(
+                        [self._predict(model, features) for features in train_features],
+                        train_labels,
+                    ),
+                    4,
+                ),
+                "train_samples": float(len(train_samples)),
+                "val_samples": float(len(val_samples)),
+            }
+        cached = self._evaluation_cache[cache_key]
 
         summary = (
             f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
@@ -65,15 +85,9 @@ class DummyHARHarness:
             branch_name=branch_name,
             worktree_path=worktree_path,
             config=config,
-            val_score=round(macro_f1, 4),
+            val_score=cached["macro_f1"],
             summary=summary,
-            score_breakdown={
-                "macro_f1": round(macro_f1, 4),
-                "val_accuracy": round(accuracy, 4),
-                "train_accuracy": round(train_accuracy, 4),
-                "train_samples": float(len(train_samples)),
-                "val_samples": float(len(val_samples)),
-            },
+            score_breakdown=dict(cached),
             component_summaries=component_summaries or {},
             artifact_paths=artifact_paths or {},
         )
@@ -95,9 +109,10 @@ class DummyHARHarness:
             dataset_name = "uci_har"
         if dataset_name != "uci_har":
             raise ValueError(f"Unsupported dataset {dataset_name!r}")
-        dataset = UCIHARDataset()
-        dataset.ensure_downloaded()
-        return dataset
+        if self._dataset is None:
+            self._dataset = UCIHARDataset()
+            self._dataset.ensure_downloaded()
+        return self._dataset
 
     def _prepare_window(
         self,
