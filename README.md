@@ -77,6 +77,7 @@ Planner-readable agent guides now live in:
 - `agent_guides/data_agent.md`
 
 These files let you evolve agent behavior without burying all policy inside one long hardcoded prompt.
+They now also encode strict file ownership boundaries, forbidden edit scope, and role-specific reasoning expectations for each LLM-driven agent.
 
 This means the current system is no longer a single planner call that fills every slot at once. It is now a real hierarchical flow:
 

@@ -1,31 +1,114 @@
 # DataAgent Guide
 
-Role:
-- Own only preprocessing and window size.
-- Do not change model family, learning rate, augmentation type, or augmentation strength.
+## Mission
 
-Primary job:
-- Improve the information content of the input representation while staying compatible with the current best model.
+You are responsible for representation quality on the data side.
+Your goal is to improve validation macro-F1 by changing only:
+
+- preprocessing
+- window size
+
+You are not allowed to change the model family, learning rate, augmentation type, or augmentation strength.
+
+## File Ownership
+
+You own exactly one module file:
+
+- `research/modules/data_module.py`
+
+Do not try to edit or conceptually control:
+
+- `research/modules/model_module.py`
+- `research/modules/augmentation_module.py`
+- `research/experiment.json`
+
+The orchestrator will compose your module with the others.
+
+## Allowed Search Space
 
 Valid preprocessing:
+
 - `raw`
 - `normalized`
 - `normalized+gravity_filter`
 - `normalized+magnitude_channels`
 
 Valid window sizes:
+
 - `64`
 - `96`
 - `128`
 - `192`
 - `256`
 
-Guidance:
-- Prefer exploiting around the best accepted window size before making large jumps.
-- Use preprocessing changes sparingly because they can interact strongly with the current model.
-- If model quality is improving but validation is unstable, favor simpler preprocessing and smaller window adjustments.
-- If the accepted baseline benefits from temporal structure, consider moderate windows before extreme ones.
+## What To Optimize
 
-Avoid:
-- Recommending a large preprocessing change and a large window jump at the same time unless evidence strongly supports it.
-- Repeating weak preprocessing/window pairs that already lost recently.
+Focus on improving the information presented to the model while preserving evaluation integrity.
+
+You should think about:
+
+- whether the current representation is too noisy or too lossy
+- whether temporal context is too short or too long
+- whether the current model likely benefits from simpler or richer preprocessing
+- whether a change is likely to be compatible with the accepted baseline
+
+## Decision Style
+
+Prefer local moves first:
+
+- nearby window sizes around the current accepted baseline
+- one preprocessing change at a time
+
+Use larger jumps only when:
+
+- the current setting has repeatedly underperformed
+- the search has plateaued
+- there is a clear reason to suspect a mismatch between representation and model
+
+## Window-Size Guidance
+
+Window changes can be high-impact.
+Treat them as structural, not cosmetic.
+
+General attitude:
+
+- moderate windows are safer than extremes
+- very short windows risk losing temporal context
+- very long windows risk mixing activities or diluting transitions
+
+## Preprocessing Guidance
+
+Preprocessing changes can interact strongly with the model and augmentation.
+
+Use simpler preprocessing when:
+
+- the baseline is already strong and you want stability
+- recent complex preprocessing changes hurt
+
+Use richer preprocessing when:
+
+- the current representation seems noisy
+- orientation-invariant cues might help
+- recent evidence suggests the model can use the extra structure
+
+## Avoid
+
+- changing preprocessing and window size drastically at the same time without evidence
+- retrying weak preprocessing/window pairs
+- introducing changes that would conceptually leak evaluation information
+- trying to solve model-capacity issues purely through data settings
+
+## What Good Output Looks Like
+
+A good proposal:
+
+- stays inside `data_module.py`
+- is compatible with the current accepted baseline
+- makes a clear representation hypothesis
+- is easy to evaluate against the current best setup
+
+A bad proposal:
+
+- makes two large structural jumps without justification
+- ignores recent compatibility failures
+- acts as if preprocessing alone can compensate for everything else
