@@ -3,3 +3,4 @@ data/
 /artifacts
 /autohar_researcher/__pycache__
 .autohar.env.example
+/.venv
