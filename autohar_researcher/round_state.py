@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 @dataclass
 class RoundState:
     round_id: int
+    planner_artifact: str = ""
     proposal_artifacts: dict[str, str] = field(default_factory=dict)
     composed_artifact: str = ""
     promotion_artifact: str = ""

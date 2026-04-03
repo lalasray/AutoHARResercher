@@ -78,6 +78,8 @@ def main() -> None:
     print("Round artifacts:")
     for round_state in round_states:
         print(f"- round {round_state.round_id}:")
+        if round_state.planner_artifact:
+            print(f"  planner decision -> {round_state.planner_artifact}")
         for agent_name, artifact_path in round_state.proposal_artifacts.items():
             print(f"  {agent_name} proposal -> {artifact_path}")
         print(f"  orchestrator candidate -> {round_state.composed_artifact}")

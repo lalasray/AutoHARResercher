@@ -495,6 +495,7 @@ class HierarchicalOrchestrator:
             "planner_name": planner_output.get("planner", getattr(self.planner, "name", "unknown")),
             "planner_summary": planner_output.get("summary", ""),
             "planner_hints": planner_output.get("hints", {}),
+            "orchestrator_plan": planner_output.get("orchestrator_plan", {}),
         }
 
     def plan_git_actions(
@@ -567,7 +568,11 @@ class HierarchicalOrchestrator:
             ]
             proposals = [future.result() for future in futures]
 
-        round_state = self._materialize_round_state(round_id=round_id, proposals=proposals)
+        round_state = self._materialize_round_state(
+            round_id=round_id,
+            proposals=proposals,
+            round_plan=round_plan,
+        )
         if materialize_git:
             round_state = self.git_runtime.materialize_round(
                 round_id=round_id,
@@ -707,10 +712,50 @@ class HierarchicalOrchestrator:
         self,
         round_id: int,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+        round_plan: dict[str, object],
     ) -> RoundState:
         round_dir = ensure_round_dir(round_id)
         proposal_dir = round_dir / "agent_proposals"
         proposal_artifacts: dict[str, str] = {}
+        planner_hints = round_plan.get("planner_hints", {})
+        planner_payload = {
+            "round_id": round_id,
+            "planner_name": round_plan.get("planner_name", ""),
+            "planner_summary": round_plan.get("planner_summary", ""),
+            "baseline_branch": round_plan.get("baseline_branch", ""),
+            "best_score": round_plan.get("best_score"),
+            "orchestrator_plan": round_plan.get("orchestrator_plan", {}),
+            "planner_hints": {
+                "model_agent": (
+                    {
+                        "model_name": planner_hints["model_agent"].model_name,
+                        "learning_rate": planner_hints["model_agent"].learning_rate,
+                        "rationale": planner_hints["model_agent"].rationale,
+                    }
+                    if "model_agent" in planner_hints
+                    else {}
+                ),
+                "augmentation_agent": (
+                    {
+                        "augmentation": planner_hints["augmentation_agent"].augmentation,
+                        "strength": planner_hints["augmentation_agent"].strength,
+                        "rationale": planner_hints["augmentation_agent"].rationale,
+                    }
+                    if "augmentation_agent" in planner_hints
+                    else {}
+                ),
+                "data_agent": (
+                    {
+                        "preprocessing": planner_hints["data_agent"].preprocessing,
+                        "window_size": planner_hints["data_agent"].window_size,
+                        "rationale": planner_hints["data_agent"].rationale,
+                    }
+                    if "data_agent" in planner_hints
+                    else {}
+                ),
+            },
+        }
+        planner_artifact = write_json_artifact(round_dir / "planner_decision.json", planner_payload)
 
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
@@ -755,6 +800,7 @@ class HierarchicalOrchestrator:
         )
         return RoundState(
             round_id=round_id,
+            planner_artifact=planner_artifact,
             proposal_artifacts=proposal_artifacts,
             composed_artifact=composed_artifact,
             orchestrator_branch=self.orchestrator_workspace.branch_name,

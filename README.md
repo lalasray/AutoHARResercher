@@ -111,6 +111,7 @@ The proposal policy is now adaptive:
 
 Each round now materializes concrete files:
 
+- `artifacts/round_N/planner_decision.json`
 - `artifacts/round_N/agent_proposals/model_agent.json`
 - `artifacts/round_N/agent_proposals/augmentation_agent.json`
 - `artifacts/round_N/agent_proposals/data_agent.json`
@@ -129,6 +130,14 @@ Each round now materializes concrete files:
 - all round candidates sorted by score
 
 This is important because `results/orchestrator.json` is only the orchestrator candidate's score for that round. It is not automatically the accepted baseline.
+
+`planner_decision.json` is the easiest file to inspect if you want to know what the LLMs were told and what they decided before evaluation:
+
+- orchestrator strategy summary
+- orchestrator priority order / exploration mode
+- model-agent hint
+- augmentation-agent hint
+- data-agent hint
 
 And in the Git materialized flow, each branch now owns a real shared experiment file:
 
