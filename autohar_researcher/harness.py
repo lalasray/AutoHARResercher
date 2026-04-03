@@ -5,6 +5,7 @@ import math
 import random
 from pathlib import Path
 
+from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
 from autohar_researcher.datasets import UCIHARDataset
 from autohar_researcher.types import CandidateConfig, CandidateResult
 
@@ -16,7 +17,7 @@ class DummyHARHarness:
 
     def __init__(self) -> None:
         self._dataset: UCIHARDataset | None = None
-        self._evaluation_cache: dict[tuple[str, str, str, float, int], dict[str, float]] = {}
+        self._evaluation_cache: dict[tuple[str, str, str, float, int], dict[str, object]] = {}
 
     def evaluate(
         self,
@@ -60,6 +61,10 @@ class DummyHARHarness:
                 epochs=int(experiment["training"]["epochs"]),
             )
             predictions = [self._predict(model, features) for features in val_features]
+            confusion_matrix = self._confusion_matrix(predictions, val_labels)
+            per_class_f1 = self._per_class_f1(predictions, val_labels)
+            parameter_count = len(model) * len(model[0])
+            feature_dim = len(train_features[0])
             self._evaluation_cache[cache_key] = {
                 "macro_f1": round(self._macro_f1(predictions, val_labels), 4),
                 "val_accuracy": round(self._accuracy(predictions, val_labels), 4),
@@ -72,13 +77,36 @@ class DummyHARHarness:
                 ),
                 "train_samples": float(len(train_samples)),
                 "val_samples": float(len(val_samples)),
+                "estimated_parameter_count": float(parameter_count),
+                "feature_dim": float(feature_dim),
+                "details": {
+                    "labels": list(self.LABELS),
+                    "confusion_matrix": confusion_matrix,
+                    "per_class_f1": per_class_f1,
+                },
             }
         cached = self._evaluation_cache[cache_key]
-
         summary = (
             f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
             f"{config.augmentation}, lr={config.learning_rate}, window={config.window_size}"
         )
+        details = dict(cached["details"])
+        score_breakdown = {
+            key: value
+            for key, value in cached.items()
+            if isinstance(value, float)
+        }
+        evaluation_artifact = self._write_evaluation_artifact(
+            round_id=round_id,
+            agent_name=agent_name,
+            branch_name=branch_name,
+            config=config,
+            summary=summary,
+            score_breakdown=score_breakdown,
+            details=details,
+        )
+        merged_artifacts = dict(artifact_paths or {})
+        merged_artifacts["evaluation_report"] = evaluation_artifact
         return CandidateResult(
             round_id=round_id,
             agent_name=agent_name,
@@ -87,9 +115,10 @@ class DummyHARHarness:
             config=config,
             val_score=cached["macro_f1"],
             summary=summary,
-            score_breakdown=dict(cached),
+            score_breakdown=score_breakdown,
+            details=details,
             component_summaries=component_summaries or {},
-            artifact_paths=artifact_paths or {},
+            artifact_paths=merged_artifacts,
         )
 
     def _load_experiment(self, worktree_path: Path) -> dict[str, object]:
@@ -316,3 +345,61 @@ class DummyHARHarness:
             else:
                 scores.append((2.0 * precision * recall) / (precision + recall))
         return sum(scores) / len(scores)
+
+    def _per_class_f1(self, predictions: list[int], labels: list[int]) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for class_index, label_name in enumerate(self.LABELS):
+            tp = sum(
+                int(prediction == class_index and label == class_index)
+                for prediction, label in zip(predictions, labels)
+            )
+            fp = sum(
+                int(prediction == class_index and label != class_index)
+                for prediction, label in zip(predictions, labels)
+            )
+            fn = sum(
+                int(prediction != class_index and label == class_index)
+                for prediction, label in zip(predictions, labels)
+            )
+            precision = tp / max(tp + fp, 1)
+            recall = tp / max(tp + fn, 1)
+            score = 0.0 if precision + recall == 0 else (2.0 * precision * recall) / (precision + recall)
+            scores[label_name] = round(score, 4)
+        return scores
+
+    def _confusion_matrix(self, predictions: list[int], labels: list[int]) -> list[list[int]]:
+        matrix = [[0 for _ in self.LABELS] for _ in self.LABELS]
+        for prediction, label in zip(predictions, labels):
+            matrix[label][prediction] += 1
+        return matrix
+
+    def _write_evaluation_artifact(
+        self,
+        round_id: int,
+        agent_name: str,
+        branch_name: str,
+        config: CandidateConfig,
+        summary: str,
+        score_breakdown: dict[str, float],
+        details: dict[str, object],
+    ) -> str:
+        round_dir = ensure_round_dir(round_id)
+        return write_json_artifact(
+            round_dir / "results" / f"{agent_name}.json",
+            {
+                "round_id": round_id,
+                "agent_name": agent_name,
+                "branch_name": branch_name,
+                "summary": summary,
+                "config": {
+                    "model_name": config.model_name,
+                    "preprocessing": config.preprocessing,
+                    "augmentation": config.augmentation,
+                    "learning_rate": config.learning_rate,
+                    "window_size": config.window_size,
+                    "notes": config.notes,
+                },
+                "score_breakdown": score_breakdown,
+                "details": details,
+            },
+        )

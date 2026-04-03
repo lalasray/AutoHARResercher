@@ -119,6 +119,17 @@ def main() -> None:
     print("Score breakdown:")
     for key, value in best_result.score_breakdown.items():
         print(f"- {key}: {value:.4f}")
+    if best_result.details.get("per_class_f1"):
+        print("Per-class F1:")
+        for label, score in best_result.details["per_class_f1"].items():
+            print(f"- {label}: {score:.4f}")
+    if best_result.details.get("confusion_matrix"):
+        print("Confusion matrix:")
+        labels = best_result.details.get("labels", [])
+        if labels:
+            print(f"- labels: {', '.join(labels)}")
+        for row in best_result.details["confusion_matrix"]:
+            print(f"- {' '.join(str(value) for value in row)}")
 
     if args.show_git_plan:
         print()

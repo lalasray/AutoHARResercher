@@ -23,6 +23,7 @@ class CandidateResult:
     val_score: float
     summary: str
     score_breakdown: dict[str, float] = field(default_factory=dict)
+    details: dict[str, object] = field(default_factory=dict)
     component_summaries: dict[str, str] = field(default_factory=dict)
     artifact_paths: dict[str, str] = field(default_factory=dict)
     accepted: bool = False

@@ -40,10 +40,16 @@ Role split in this version:
 - `ModelAgent`: proposes only the model-side part of the next candidate
 - `AugmentationAgent`: proposes only the augmentation-side part of the next candidate
 - `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
-- `Orchestrator`: plans each round, launches the 3 agents in parallel, composes one unified candidate branch from their partial proposals, evaluates that branch, and decides which branch to promote
+- `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates single-agent and partial-combination candidates, and decides which branch to promote
 - `Harness`: trains and evaluates a tiny dependency-free baseline on UCI HAR from the experiment file
 
-The harness now reads the composed experiment file, loads UCI HAR, runs a tiny dependency-free baseline, and returns a real validation macro-F1 score. The orchestrator compares scores across rounds and keeps the best candidate.
+The harness now reads the experiment file, loads UCI HAR, runs a tiny dependency-free baseline, and returns a real validation macro-F1 score plus richer outputs such as per-class F1 and a confusion matrix. The orchestrator compares scores across rounds and keeps the best candidate.
+
+The proposal policy is now adaptive:
+
+- agents mutate around the currently accepted best configuration
+- agents avoid replaying identical recent proposals when they still have unseen options
+- the orchestrator can keep a stronger partial combination such as `model + data` when `model + augmentation + data` is worse
 
 ## Round Artifacts
 
@@ -53,6 +59,10 @@ Each round now materializes concrete files:
 - `artifacts/round_N/agent_proposals/augmentation_agent.json`
 - `artifacts/round_N/agent_proposals/data_agent.json`
 - `artifacts/round_N/orchestrator_candidate.json`
+- `artifacts/round_N/results/model_agent.json`
+- `artifacts/round_N/results/augmentation_agent.json`
+- `artifacts/round_N/results/data_agent.json`
+- `artifacts/round_N/results/orchestrator.json`
 
 And in the Git materialized flow, each branch now owns a real shared experiment file:
 
@@ -146,7 +156,7 @@ autohar_researcher/
 
 - [x] Replace synthetic harness with a real train/val pipeline for one IMU dataset
 - [ ] Add dataset module for windowing, normalization, and label mapping
-- [ ] Log metrics such as accuracy, macro-F1, and confusion matrix
+- [x] Log metrics such as accuracy, macro-F1, and confusion matrix
 - [ ] Save best checkpoint and experiment metadata
 
 ### Phase 3: match your architecture sketch
@@ -176,7 +186,7 @@ autohar_researcher/
 - [ ] Let the orchestrator read metrics from branch-specific outputs
 - [ ] Let the orchestrator create richer composed commits by combining selected agent commits
 - [ ] Let the orchestrator merge or reject branches based on validation score
-- [ ] Add mutation of the current best experiment rather than static handcrafted proposals
+- [x] Add mutation of the current best experiment rather than static handcrafted proposals
 - [ ] Persist all runs in a lightweight experiment registry
 
 ## Next Step Suggestion

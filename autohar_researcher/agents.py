@@ -32,53 +32,213 @@ from autohar_researcher.types import (
 )
 
 
+def _dedupe_preserve_order(items: list[object]) -> list[object]:
+    ordered: list[object] = []
+    for item in items:
+        if item not in ordered:
+            ordered.append(item)
+    return ordered
+
+
 class ModelAgent:
     name = "model_agent"
+    MODEL_CANDIDATES = ["cnn_gru", "cnn", "tiny_transformer", "gru"]
 
-    def propose(self, round_id: int, best_score: float | None) -> ModelProposal:
-        if best_score is None:
-            return ModelProposal(
-                model_name="cnn_gru",
-                learning_rate=3e-4,
-                notes="Balanced architecture-first guess for IMU HAR.",
-            )
-        return ModelProposal(
-            model_name="cnn_gru",
-            learning_rate=3e-4,
-            notes="Push the strongest architecture toward a better-performing region.",
+    def propose(
+        self,
+        round_id: int,
+        best_score: float | None,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> ModelProposal:
+        del best_score
+        tried = {
+            (result.config.model_name, round(result.config.learning_rate, 7))
+            for result in history
+            if result.agent_name == self.name
+        }
+        best_config = best_result.config if best_result else None
+        base_model = best_config.model_name if best_config else "cnn_gru"
+        base_lr = best_config.learning_rate if best_config else 3e-4
+        learning_rates = [
+            max(1e-4, round(base_lr * factor, 6))
+            for factor in (0.5, 0.8, 1.0, 1.25, 1.5)
+        ]
+        candidate_order = [
+            (base_model, learning_rate) for learning_rate in learning_rates
+        ]
+        candidate_order.extend(
+            (model_name, learning_rate)
+            for model_name in [base_model, *self.MODEL_CANDIDATES]
+            for learning_rate in learning_rates[:3]
         )
+        candidate_order = _dedupe_preserve_order(candidate_order)
+        model_name, learning_rate = self._pick_candidate(
+            candidate_order=candidate_order,
+            tried=tried,
+            round_id=round_id,
+        )
+        note_prefix = "Mutate around accepted best model." if accepted_history else "Seed the first strong architecture."
+        return ModelProposal(
+            model_name=model_name,
+            learning_rate=learning_rate,
+            notes=f"{note_prefix} Exploring {model_name} at lr={learning_rate}.",
+        )
+
+    def _pick_candidate(
+        self,
+        candidate_order: list[tuple[str, float]],
+        tried: set[tuple[str, float]],
+        round_id: int,
+    ) -> tuple[str, float]:
+        for candidate in candidate_order:
+            if candidate not in tried:
+                return candidate
+        return candidate_order[(round_id - 1) % len(candidate_order)]
 
 
 class AugmentationAgent:
     name = "augmentation_agent"
+    AUGMENTATIONS = ["none", "rotation", "time_warp", "jitter", "mixup"]
 
-    def propose(self, round_id: int, best_score: float | None) -> AugmentationProposal:
-        if round_id % 2 == 1:
-            return AugmentationProposal(
-                augmentation="time_warp",
-                notes="Probe a recurrent baseline with a stronger augmentation move.",
-            )
-        return AugmentationProposal(
-            augmentation="rotation",
-            notes="Test whether rotation augmentation helps a compact sequence model.",
+    def propose(
+        self,
+        round_id: int,
+        best_score: float | None,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> AugmentationProposal:
+        del best_score
+        tried = {result.config.augmentation for result in history if result.agent_name == self.name}
+        best_config = best_result.config if best_result else None
+        accepted_aug = best_config.augmentation if best_config else "none"
+        scored_options = sorted(
+            (
+                (
+                    self._best_score_for_option(history, augmentation),
+                    augmentation,
+                )
+                for augmentation in self.AUGMENTATIONS
+            ),
+            reverse=True,
         )
+        ranked = [accepted_aug]
+        ranked.extend(augmentation for _, augmentation in scored_options)
+        ranked.extend(self.AUGMENTATIONS)
+        ranked = _dedupe_preserve_order(ranked)
+        augmentation = self._pick_option(ranked, tried, round_id)
+        note_prefix = "Exploit the best accepted augmentation neighborhood." if accepted_history else "Sweep the first augmentation choices."
+        return AugmentationProposal(
+            augmentation=augmentation,
+            notes=f"{note_prefix} Testing augmentation={augmentation}.",
+        )
+
+    def _best_score_for_option(
+        self,
+        history: list[CandidateResult],
+        augmentation: str,
+    ) -> float:
+        scores = [
+            result.val_score
+            for result in history
+            if result.agent_name == self.name and result.config.augmentation == augmentation
+        ]
+        return max(scores, default=float("-inf"))
+
+    def _pick_option(self, ranked: list[str], tried: set[str], round_id: int) -> str:
+        for option in ranked:
+            if option not in tried:
+                return option
+        return ranked[(round_id - 1) % len(ranked)]
 
 
 class DataAgent:
     name = "data_agent"
+    PREPROCESSING_CANDIDATES = [
+        "raw",
+        "normalized",
+        "normalized+gravity_filter",
+        "normalized+magnitude_channels",
+    ]
+    WINDOW_CANDIDATES = [64, 96, 128, 192, 256]
 
-    def propose(self, round_id: int, best_score: float | None) -> DataProposal:
-        if best_score is not None and best_score > 0.84:
-            return DataProposal(
-                preprocessing="normalized+gravity_filter",
-                window_size=128,
-                notes="Stabilize preprocessing and windowing around the best data setup.",
-            )
-        return DataProposal(
-            preprocessing="normalized+magnitude_channels",
-            window_size=256,
-            notes="Probe an alternative data pipeline with richer derived channels.",
+    def propose(
+        self,
+        round_id: int,
+        best_score: float | None,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> DataProposal:
+        del best_score
+        tried = {
+            (result.config.preprocessing, int(result.config.window_size))
+            for result in history
+            if result.agent_name == self.name
+        }
+        best_config = best_result.config if best_result else None
+        base_preprocessing = best_config.preprocessing if best_config else "raw"
+        base_window = best_config.window_size if best_config else 128
+        candidate_order: list[tuple[str, int]] = [
+            (base_preprocessing, window_size)
+            for window_size in self._rank_windows(base_window)
+        ]
+        candidate_order.extend(
+            (preprocessing, base_window)
+            for preprocessing in [base_preprocessing, *self.PREPROCESSING_CANDIDATES]
         )
+        scored_options = sorted(
+            (
+                (
+                    self._best_score_for_option(history, preprocessing, window_size),
+                    preprocessing,
+                    window_size,
+                )
+                for preprocessing in self.PREPROCESSING_CANDIDATES
+                for window_size in self.WINDOW_CANDIDATES
+            ),
+            reverse=True,
+        )
+        candidate_order.extend((preprocessing, window_size) for _, preprocessing, window_size in scored_options)
+        candidate_order = _dedupe_preserve_order(candidate_order)
+        preprocessing, window_size = self._pick_candidate(candidate_order, tried, round_id)
+        note_prefix = "Mutate around accepted preprocessing/window choices." if accepted_history else "Probe initial preprocessing and window choices."
+        return DataProposal(
+            preprocessing=preprocessing,
+            window_size=window_size,
+            notes=f"{note_prefix} Testing {preprocessing} with window={window_size}.",
+        )
+
+    def _rank_windows(self, base_window: int) -> list[int]:
+        return sorted(self.WINDOW_CANDIDATES, key=lambda candidate: (abs(candidate - base_window), candidate))
+
+    def _best_score_for_option(
+        self,
+        history: list[CandidateResult],
+        preprocessing: str,
+        window_size: int,
+    ) -> float:
+        scores = [
+            result.val_score
+            for result in history
+            if result.agent_name == self.name
+            and result.config.preprocessing == preprocessing
+            and int(result.config.window_size) == window_size
+        ]
+        return max(scores, default=float("-inf"))
+
+    def _pick_candidate(
+        self,
+        candidate_order: list[tuple[str, int]],
+        tried: set[tuple[str, int]],
+        round_id: int,
+    ) -> tuple[str, int]:
+        for candidate in candidate_order:
+            if candidate not in tried:
+                return candidate
+        return candidate_order[(round_id - 1) % len(candidate_order)]
 
 
 class HierarchicalOrchestrator:
@@ -119,6 +279,9 @@ class HierarchicalOrchestrator:
             round_results, round_state = self.execute_round(
                 round_id=round_id,
                 round_plan=round_plan,
+                best_result=best_result,
+                history=history,
+                accepted_history=accepted_history,
                 materialize_git=materialize_git,
                 auto_push_non_main=auto_push_non_main,
             )
@@ -244,13 +407,23 @@ class HierarchicalOrchestrator:
         self,
         round_id: int,
         round_plan: dict[str, object],
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
         materialize_git: bool = False,
         auto_push_non_main: bool = False,
     ) -> tuple[list[CandidateResult], RoundState]:
         best_score = round_plan["best_score"]
         with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
             futures = [
-                pool.submit(agent.propose, round_id, best_score)
+                pool.submit(
+                    agent.propose,
+                    round_id,
+                    best_score,
+                    best_result,
+                    list(history),
+                    list(accepted_history),
+                )
                 for agent in self.agents
             ]
             proposals = [future.result() for future in futures]
@@ -485,6 +658,7 @@ class HierarchicalOrchestrator:
             val_score=result.val_score,
             summary=result.summary,
             score_breakdown=dict(result.score_breakdown),
+            details=dict(result.details),
             component_summaries=dict(result.component_summaries),
             artifact_paths=dict(result.artifact_paths),
             accepted=result.accepted,
