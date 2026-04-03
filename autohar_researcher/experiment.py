@@ -11,8 +11,8 @@ from autohar_researcher.types import (
 def base_experiment_config() -> dict[str, object]:
     return {
         "dataset": {
-            "name": "dummy_imu_har",
-            "split": "subject_independent",
+            "name": "uci_har",
+            "split": "official_train_test",
         },
         "model": {
             "name": "cnn",

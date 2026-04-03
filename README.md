@@ -19,7 +19,7 @@ This first version is intentionally simple:
 
 - no LLM calls
 - no external ML dependencies
-- synthetic IMU training/evaluation instead of a public dataset
+- real UCI HAR evaluation with a small dependency-free baseline
 - no external dependencies
 - Git commands can be either previewed or materialized
 - each round writes proposal artifacts so the branch-composition flow is visible
@@ -41,9 +41,9 @@ Role split in this version:
 - `AugmentationAgent`: proposes only the augmentation-side part of the next candidate
 - `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, composes one unified candidate branch from their partial proposals, evaluates that branch, and decides which branch to promote
-- `Harness`: trains and evaluates a tiny synthetic HAR baseline from the experiment file
+- `Harness`: trains and evaluates a tiny dependency-free baseline on UCI HAR from the experiment file
 
-The harness now reads the composed experiment file, runs a tiny synthetic IMU HAR pipeline, and returns a real validation macro-F1 score. The orchestrator compares scores across rounds and keeps the best candidate.
+The harness now reads the composed experiment file, loads UCI HAR, runs a tiny dependency-free baseline, and returns a real validation macro-F1 score. The orchestrator compares scores across rounds and keeps the best candidate.
 
 ## Round Artifacts
 
@@ -142,9 +142,9 @@ autohar_researcher/
 - [x] Materialize real branch/worktree files and commits for each round
 - [x] Add CLI entrypoint for quick demo
 
-### Phase 2: make it dataset-realistic
+### Phase 2: extend the real-data baseline
 
-- [ ] Replace synthetic harness with a real train/val pipeline for one IMU dataset
+- [x] Replace synthetic harness with a real train/val pipeline for one IMU dataset
 - [ ] Add dataset module for windowing, normalization, and label mapping
 - [ ] Log metrics such as accuracy, macro-F1, and confusion matrix
 - [ ] Save best checkpoint and experiment metadata
@@ -159,7 +159,6 @@ autohar_researcher/
 - [ ] Expand data module:
   - [ ] supervised datasets
   - [ ] unsupervised datasets
-  - [ ] personalization / PerCom ideas
 - [ ] Expand simulation tools:
   - [ ] IMU augmentation
   - [ ] pose-to-IMU
@@ -182,10 +181,10 @@ autohar_researcher/
 
 ## Next Step Suggestion
 
-The cleanest next move is to replace the dummy harness with one real HAR baseline:
+The cleanest next move is to strengthen the current real HAR baseline:
 
-- dataset: a tiny IMU dataset or synthetic windows
-- model: 1D CNN or CNN-GRU
+- dataset: UCI HAR
+- model: a stronger classifier than the current lightweight linear baseline
 - metric: validation macro-F1
 
-Once that works, the same orchestrator can optimize real scores instead of fake ones.
+Once that is stronger, the same orchestrator can optimize a genuinely meaningful HAR benchmark.

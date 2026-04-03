@@ -1,4 +1,4 @@
-
-/autohar_researcher/__pycache__
+data/
 /.worktrees
 /artifacts
+/autohar_researcher/__pycache__

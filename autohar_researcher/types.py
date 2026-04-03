@@ -58,3 +58,9 @@ class AgentWorkspace:
 class GitAction:
     label: str
     command: str
+
+
+@dataclass(frozen=True)
+class RunOutputs:
+    history_csv: str
+    history_svg: str

@@ -5,14 +5,14 @@ import math
 import random
 from pathlib import Path
 
+from autohar_researcher.datasets import UCIHARDataset
 from autohar_researcher.types import CandidateConfig, CandidateResult
 
 
 class DummyHARHarness:
-    """Small but real synthetic IMU HAR train/validation pipeline."""
+    """Small but real HAR train/validation pipeline using UCI HAR."""
 
-    LABELS = ["walk", "sit", "stairs"]
-    CHANNELS = 6
+    LABELS = ["walk", "walk_upstairs", "walk_downstairs", "sit", "stand", "lay"]
 
     def evaluate(
         self,
@@ -25,8 +25,15 @@ class DummyHARHarness:
         artifact_paths: dict[str, str] | None = None,
     ) -> CandidateResult:
         experiment = self._load_experiment(Path(worktree_path))
-        train_samples = self._build_dataset(split="train", config=config)
-        val_samples = self._build_dataset(split="val", config=config)
+        dataset = self._load_dataset(experiment)
+        train_samples = [
+            (self._prepare_window(window, config, split="train"), label)
+            for window, label in dataset.load_split("train")
+        ]
+        val_samples = [
+            (self._prepare_window(window, config, split="test"), label)
+            for window, label in dataset.load_split("test")
+        ]
 
         train_features = [self._extract_features(window, config) for window, _ in train_samples]
         train_labels = [self.LABELS.index(label) for _, label in train_samples]
@@ -81,63 +88,50 @@ class DummyHARHarness:
             return payload["experiment"]
         return payload
 
-    def _build_dataset(
-        self,
-        split: str,
-        config: CandidateConfig,
-    ) -> list[tuple[list[list[float]], str]]:
-        samples: list[tuple[list[list[float]], str]] = []
-        per_label = 36 if split == "train" else 18
-        seed_offset = 0 if split == "train" else 10_000
-        for label_index, label in enumerate(self.LABELS):
-            for sample_index in range(per_label):
-                seed = seed_offset + label_index * 1_000 + sample_index * 17 + config.window_size
-                rng = random.Random(seed)
-                window = self._generate_window(label=label, window_size=config.window_size, rng=rng)
-                window = self._preprocess(window, config.preprocessing)
-                if split == "train":
-                    window = self._augment(window, config.augmentation, rng=rng)
-                samples.append((window, label))
-        return samples
+    def _load_dataset(self, experiment: dict[str, object]) -> UCIHARDataset:
+        dataset_name = str(experiment["dataset"]["name"])
+        if dataset_name == "dummy_imu_har":
+            dataset_name = "uci_har"
+        if dataset_name != "uci_har":
+            raise ValueError(f"Unsupported dataset {dataset_name!r}")
+        dataset = UCIHARDataset()
+        dataset.ensure_downloaded()
+        return dataset
 
-    def _generate_window(
+    def _prepare_window(
         self,
-        label: str,
-        window_size: int,
-        rng: random.Random,
+        window: list[list[float]],
+        config: CandidateConfig,
+        split: str,
     ) -> list[list[float]]:
-        window: list[list[float]] = []
-        for t in range(window_size):
-            phase = (2.0 * math.pi * t) / max(window_size, 1)
-            if label == "walk":
-                sample = [
-                    0.9 * math.sin(phase) + rng.uniform(-0.08, 0.08),
-                    0.5 * math.cos(phase) + rng.uniform(-0.08, 0.08),
-                    1.0 + 0.2 * math.sin(2 * phase) + rng.uniform(-0.04, 0.04),
-                    0.3 * math.sin(phase) + rng.uniform(-0.05, 0.05),
-                    0.1 * math.cos(phase) + rng.uniform(-0.05, 0.05),
-                    0.2 * math.sin(2 * phase) + rng.uniform(-0.05, 0.05),
-                ]
-            elif label == "sit":
-                sample = [
-                    rng.uniform(-0.03, 0.03),
-                    rng.uniform(-0.03, 0.03),
-                    1.0 + rng.uniform(-0.02, 0.02),
-                    rng.uniform(-0.02, 0.02),
-                    rng.uniform(-0.02, 0.02),
-                    rng.uniform(-0.02, 0.02),
-                ]
+        processed = self._select_channels(window, config.preprocessing)
+        processed = self._resample_window(processed, config.window_size)
+        processed = self._preprocess(processed, config.preprocessing)
+        if split == "train":
+            rng = random.Random(config.window_size + len(window))
+            processed = self._augment(processed, config.augmentation, rng=rng)
+        return processed
+
+    def _select_channels(self, window: list[list[float]], mode: str) -> list[list[float]]:
+        selected: list[list[float]] = []
+        for row in window:
+            total_acc = row[:3]
+            body_acc = row[3:6]
+            body_gyro = row[6:9]
+            if mode == "normalized+gravity_filter":
+                selected.append(body_acc + body_gyro)
             else:
-                sample = [
-                    1.1 * abs(math.sin(phase)) + rng.uniform(-0.10, 0.10),
-                    0.6 * math.sin(phase + 0.7) + rng.uniform(-0.08, 0.08),
-                    1.1 + 0.35 * math.cos(phase) + rng.uniform(-0.05, 0.05),
-                    0.4 * abs(math.cos(phase)) + rng.uniform(-0.05, 0.05),
-                    0.25 * math.sin(phase) + rng.uniform(-0.05, 0.05),
-                    0.3 * math.cos(2 * phase) + rng.uniform(-0.05, 0.05),
-                ]
-            window.append(sample)
-        return window
+                selected.append(total_acc + body_gyro)
+        return selected
+
+    def _resample_window(self, window: list[list[float]], target_size: int) -> list[list[float]]:
+        if len(window) == target_size:
+            return [row[:] for row in window]
+        resampled = []
+        for idx in range(target_size):
+            source = int(idx * (len(window) - 1) / max(target_size - 1, 1))
+            resampled.append(window[source][:])
+        return resampled
 
     def _preprocess(self, window: list[list[float]], mode: str) -> list[list[float]]:
         processed = [row[:] for row in window]
@@ -177,9 +171,9 @@ class DummyHARHarness:
         if mode == "none":
             return augmented
         if mode == "jitter":
-            return [[value + rng.uniform(-0.03, 0.03) for value in row] for row in augmented]
+            return [[value + rng.uniform(-0.02, 0.02) for value in row] for row in augmented]
         if mode == "rotation":
-            angle = math.pi / 12.0
+            angle = math.pi / 18.0
             cos_a = math.cos(angle)
             sin_a = math.sin(angle)
             rotated: list[list[float]] = []
@@ -200,7 +194,7 @@ class DummyHARHarness:
         if mode == "time_warp":
             warped = []
             for index in range(len(augmented)):
-                source_index = min(len(augmented) - 1, int(index * 0.9))
+                source_index = min(len(augmented) - 1, int(index * 0.92))
                 warped.append(augmented[source_index][:])
             return warped
         if mode == "mixup":
@@ -250,10 +244,10 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         weights = [[0.0 for _ in range(feature_dim + 1)] for _ in range(num_classes)]
-        scaled_lr = max(0.02, min(learning_rate * 800.0, 0.35))
+        scaled_lr = max(0.01, min(learning_rate * 500.0, 0.18))
         order = list(range(len(train_features)))
 
-        for epoch in range(max(epochs * 12, 12)):
+        for epoch in range(max(epochs * 4, 8)):
             random.Random(epochs + epoch).shuffle(order)
             for sample_index in order:
                 features = train_features[sample_index]
