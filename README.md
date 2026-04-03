@@ -90,6 +90,7 @@ In the current Git model:
 
 - each agent branch accumulates that agent's own research commits
 - the orchestrator branch accumulates one composed commit per round
+- before a new agent round starts, each agent branch syncs from the current orchestrator baseline
 - `main` stays the stable branch that can later merge the orchestrator branch
 
 ## Run

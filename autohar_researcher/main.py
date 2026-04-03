@@ -78,6 +78,8 @@ def main() -> None:
         for agent_name, artifact_path in round_state.proposal_artifacts.items():
             print(f"  {agent_name} proposal -> {artifact_path}")
         print(f"  orchestrator candidate -> {round_state.composed_artifact}")
+        if round_state.synced_branches:
+            print(f"  synced branches -> {', '.join(round_state.synced_branches)}")
         if round_state.pushed_branches:
             print(f"  pushed branches -> {', '.join(round_state.pushed_branches)}")
     print()

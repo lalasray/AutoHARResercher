@@ -49,29 +49,54 @@ class GitRuntime:
     ) -> RoundState:
         self.bootstrap_agent_workspaces(workspaces)
         round_state.baseline_branch = baseline_branch
+        baseline_experiment = self._load_baseline_experiment(
+            baseline_branch=baseline_branch,
+            orchestrator_worktree=Path(round_state.orchestrator_worktree),
+        )
         agent_experiments: dict[str, dict[str, object]] = {}
 
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
                 agent_name = "model_agent"
-                experiment = apply_model_proposal(base_experiment_config(), proposal)
+                experiment = apply_model_proposal(clone_experiment(baseline_experiment), proposal)
             elif isinstance(proposal, AugmentationProposal):
                 agent_name = "augmentation_agent"
-                experiment = apply_augmentation_proposal(base_experiment_config(), proposal)
+                experiment = apply_augmentation_proposal(clone_experiment(baseline_experiment), proposal)
             else:
                 agent_name = "data_agent"
-                experiment = apply_data_proposal(base_experiment_config(), proposal)
+                experiment = apply_data_proposal(clone_experiment(baseline_experiment), proposal)
 
             workspace = workspaces[agent_name]
             rel_path = Path("research") / "experiment.json"
+            sync_payload = {
+                "round_id": round_id,
+                "agent_name": agent_name,
+                "branch_name": workspace.branch_name,
+                "sync_from_branch": baseline_branch,
+                "owned_fields": self._owned_fields(agent_name),
+                "experiment": clone_experiment(baseline_experiment),
+            }
+            abs_path = Path(workspace.worktree_path) / rel_path
+            self.write_json(abs_path, sync_payload)
+            sync_committed = self.commit_if_changed(
+                worktree=Path(workspace.worktree_path),
+                rel_path=rel_path,
+                message=f"round {round_id}: sync from {baseline_branch}",
+            )
+            if sync_committed:
+                round_state.synced_branches.append(workspace.branch_name)
+                if auto_push_non_main:
+                    self.push_branch(workspace.branch_name, cwd=Path(workspace.worktree_path))
+                    round_state.pushed_branches.append(workspace.branch_name)
+
             payload = {
                 "round_id": round_id,
                 "agent_name": agent_name,
                 "branch_name": workspace.branch_name,
+                "sync_from_branch": baseline_branch,
                 "owned_fields": self._owned_fields(agent_name),
                 "experiment": experiment,
             }
-            abs_path = Path(workspace.worktree_path) / rel_path
             self.write_json(abs_path, payload)
             committed = self.commit_if_changed(
                 worktree=Path(workspace.worktree_path),
@@ -93,7 +118,7 @@ class GitRuntime:
         for agent_name, materialized_path in round_state.materialized_agent_files.items():
             source_payload[agent_name] = json.loads(Path(materialized_path).read_text(encoding="utf-8"))
 
-        composed_experiment = clone_experiment(base_experiment_config())
+        composed_experiment = clone_experiment(baseline_experiment)
         composed_experiment["model"] = dict(agent_experiments["model_agent"]["model"])
         composed_experiment["data"] = dict(agent_experiments["data_agent"]["data"])
         composed_experiment["augmentation"] = dict(agent_experiments["augmentation_agent"]["augmentation"])
@@ -171,6 +196,21 @@ class GitRuntime:
             "data_agent": ["data.preprocessing", "data.window_size"],
         }
         return owned[agent_name]
+
+    def _load_baseline_experiment(
+        self,
+        baseline_branch: str,
+        orchestrator_worktree: Path,
+    ) -> dict[str, object]:
+        if baseline_branch == "main":
+            return base_experiment_config()
+        experiment_path = orchestrator_worktree / "research" / "experiment.json"
+        if not experiment_path.exists():
+            return base_experiment_config()
+        payload = json.loads(experiment_path.read_text(encoding="utf-8"))
+        if "experiment" in payload:
+            return payload["experiment"]
+        return payload
 
     def run_git(
         self,
