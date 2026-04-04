@@ -410,6 +410,7 @@ class HierarchicalOrchestrator:
             )
 
         for round_id in range(1, rounds + 1):
+            print(f"[AutoHAR] round {round_id}/{rounds}", flush=True)
             previous_best = None if best_result is None else self._clone_result(best_result)
             round_plan = self.plan_round(
                 round_id=round_id,
