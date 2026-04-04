@@ -164,3 +164,27 @@ What I did not fully validate in this pass:
 - improve report clarity between trial vs accepted curves
 - regenerate fresh reports after the latest isolation fix
 - add more datasets later if you want broader HAR evaluation
+
+## Checklist
+
+- [x] Git-first multi-agent scaffold
+- [x] Persistent agent branches and orchestrator branch
+- [x] Real OpenAI planner
+- [x] Separate agent guide files
+- [x] Per-agent memory artifacts
+- [x] Promotion artifacts and baseline-sync artifacts
+- [x] Single-agent, pairwise, and three-way orchestrator evaluation
+- [x] Accept-only-if-better baseline promotion
+- [x] Specialist baseline isolation from full module replay
+- [x] UCI HAR dataset path
+- [x] Validation `macro_f1` as the promotion metric
+- [x] Early stopping
+- [x] Optional Torch/CUDA path
+- [x] Checkpoint and experiment artifact writing
+- [x] Agent-owned executable module files
+- [x] Bounded rewrite hooks for model / augmentation / data modules
+- [x] Combination-memory-aware orchestrator ordering
+- [ ] Freshly regenerate reports after the latest isolation fix
+- [ ] Make reporting clearer between trial curves and accepted baseline curves
+- [ ] Add more datasets
+- [ ] Add richer compute-aware objectives like latency / memory / size
