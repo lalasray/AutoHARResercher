@@ -133,6 +133,27 @@ def _module_patch_builder(agent_name: str) -> str:
             "def current_model(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the current baseline model section."""\n'
             '    return dict(base_experiment.get("model", {}))\n\n'
+            "def stable_model_families() -> list[str]:\n"
+            '    """Return model families that are usually safe early choices."""\n'
+            '    return ["deepconvlstm", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tiny_transformer"]\n\n'
+            "def choose_target_name(requested_name: str, baseline_name: str) -> str:\n"
+            '    """Prefer valid, stable model families and fall back safely."""\n'
+            "    valid = stable_model_families()\n"
+            "    if requested_name in valid:\n"
+            "        return requested_name\n"
+            "    if baseline_name in valid:\n"
+            "        return baseline_name\n"
+            '    return valid[0]\n\n'
+            "def compatibility_bias(base_experiment: dict[str, object], target_name: str) -> float:\n"
+            '    """Return a small LR bias based on the surrounding baseline context."""\n'
+            '    augmentation = str(base_experiment.get("augmentation", {}).get("name", "none"))\n'
+            '    preprocessing = str(base_experiment.get("data", {}).get("preprocessing", "raw"))\n'
+            '    bias = 1.0\n'
+            '    if augmentation != "none" and target_name in {"deepconvlstm", "hart", "tiny_transformer"}:\n'
+            "        bias *= 0.9\n"
+            '    if preprocessing != "raw" and target_name in {"tiny_transformer", "hart"}:\n'
+            "        bias *= 0.95\n"
+            "    return bias\n\n"
             "def bounded_learning_rate(target_name: str, baseline_name: str, baseline_lr: float, requested_lr: float) -> float:\n"
             '    """Keep LR changes conservative relative to the active baseline."""\n'
             "    if target_name == baseline_name:\n"
@@ -151,8 +172,9 @@ def _module_patch_builder(agent_name: str) -> str:
             '    baseline_model = current_model(base_experiment)\n'
             '    baseline_name = str(baseline_model.get("name", "deepconvlstm"))\n'
             '    baseline_lr = float(baseline_model.get("learning_rate", 3e-4))\n'
-            '    target_name = str(CONFIG.get("name", baseline_name))\n'
+            '    target_name = choose_target_name(str(CONFIG.get("name", baseline_name)), baseline_name)\n'
             '    proposed_lr = float(CONFIG.get("learning_rate", baseline_lr))\n'
+            '    proposed_lr *= compatibility_bias(base_experiment, target_name)\n'
             '    proposed_lr = bounded_learning_rate(target_name, baseline_name, baseline_lr, proposed_lr)\n'
             "    return {\n"
             '        "model": {\n'
@@ -167,6 +189,18 @@ def _module_patch_builder(agent_name: str) -> str:
             "def current_augmentation(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the current baseline augmentation section."""\n'
             '    return dict(base_experiment.get("augmentation", {}))\n\n'
+            "def valid_augmentations() -> list[str]:\n"
+            '    """Return supported augmentation families."""\n'
+            '    return ["none", "rotation", "time_warp", "jitter", "mixup", "scaling", "drift", "permutation", "magnitude_warp"]\n\n'
+            "def choose_augmentation_name(base_experiment: dict[str, object], requested_name: str) -> str:\n"
+            '    """Apply simple compatibility heuristics for augmentation selection."""\n'
+            "    valid = valid_augmentations()\n"
+            "    if requested_name not in valid:\n"
+            '        requested_name = str(current_augmentation(base_experiment).get("name", "none"))\n'
+            '    model_name = str(base_experiment.get("model", {}).get("name", "deepconvlstm"))\n'
+            '    if requested_name == "mixup" and model_name in {"gru", "cnn"}:\n'
+            '        return "rotation"\n'
+            "    return requested_name\n\n"
             "def normalize_strength(target_name: str, requested_strength: str) -> str:\n"
             '    """Keep augmentation strength in the supported regime."""\n'
             '    valid_strengths = {"weak", "medium", "strong"}\n'
@@ -174,6 +208,16 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if target_name == "none":\n'
             '        return "medium"\n'
             '    return strength\n\n'
+            "def compatibility_strength(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str:\n"
+            '    """Downshift aggressive augmentation when the baseline context is fragile."""\n'
+            '    strength = normalize_strength(target_name, requested_strength)\n'
+            '    model_name = str(base_experiment.get("model", {}).get("name", "deepconvlstm"))\n'
+            '    preprocessing = str(base_experiment.get("data", {}).get("preprocessing", "raw"))\n'
+            '    if target_name in {"time_warp", "permutation", "magnitude_warp"} and strength == "strong":\n'
+            '        return "medium"\n'
+            '    if preprocessing != "raw" and model_name in {"tiny_transformer", "hart"} and strength == "strong":\n'
+            '        return "medium"\n'
+            "    return strength\n\n"
             "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
             '    """Describe the augmentation-side mutation relative to baseline."""\n'
             "    baseline = current_augmentation(base_experiment)\n"
@@ -183,9 +227,9 @@ def _module_patch_builder(agent_name: str) -> str:
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the augmentation-only patch owned by AugmentationAgent."""\n'
             '    baseline_aug = current_augmentation(base_experiment)\n'
-            '    target_name = str(CONFIG.get("name", baseline_aug.get("name", "none")))\n'
+            '    target_name = choose_augmentation_name(base_experiment, str(CONFIG.get("name", baseline_aug.get("name", "none"))))\n'
             '    target_strength = str(CONFIG.get("strength", baseline_aug.get("strength", "medium")))\n'
-            '    target_strength = normalize_strength(target_name, target_strength)\n'
+            '    target_strength = compatibility_strength(base_experiment, target_name, target_strength)\n'
             "    return {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
@@ -198,10 +242,29 @@ def _module_patch_builder(agent_name: str) -> str:
         "def current_data(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Return the current baseline data section."""\n'
         '    return dict(base_experiment.get("data", {}))\n\n'
+        "def valid_preprocessing_modes() -> list[str]:\n"
+        '    """Return supported preprocessing modes."""\n'
+        '    return ["raw", "normalized", "normalized+gravity_filter", "normalized+magnitude_channels"]\n\n'
         "def nearest_valid_window(requested_window: int) -> int:\n"
         '    """Snap a requested window size to the supported search space."""\n'
         "    valid_windows = [64, 96, 128, 192, 256]\n"
         "    return min(valid_windows, key=lambda candidate: (abs(candidate - requested_window), candidate))\n\n"
+        "def choose_preprocessing(base_experiment: dict[str, object], requested_mode: str) -> str:\n"
+        '    """Apply simple model-aware preprocessing preferences."""\n'
+        "    valid = valid_preprocessing_modes()\n"
+        "    if requested_mode not in valid:\n"
+        '        requested_mode = str(current_data(base_experiment).get("preprocessing", "raw"))\n'
+        '    model_name = str(base_experiment.get("model", {}).get("name", "deepconvlstm"))\n'
+        '    if requested_mode == "normalized+gravity_filter" and model_name in {"tiny_transformer", "hart"}:\n'
+        '        return "normalized"\n'
+        "    return requested_mode\n\n"
+        "def choose_window(base_experiment: dict[str, object], requested_window: int) -> int:\n"
+        '    """Apply simple compatibility heuristics for window size."""\n'
+        "    snapped = nearest_valid_window(requested_window)\n"
+        '    augmentation = str(base_experiment.get("augmentation", {}).get("name", "none"))\n'
+        '    if augmentation in {"time_warp", "permutation"} and snapped > 192:\n'
+        "        return 192\n"
+        "    return snapped\n\n"
         "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
         '    """Describe the data-side mutation relative to baseline."""\n'
         "    baseline = current_data(base_experiment)\n"
@@ -211,13 +274,13 @@ def _module_patch_builder(agent_name: str) -> str:
         "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Return the data-only patch owned by DataAgent."""\n'
         '    baseline_data = current_data(base_experiment)\n'
-        '    target_preprocessing = str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw")))\n'
+        '    target_preprocessing = choose_preprocessing(base_experiment, str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw"))))\n'
         '    requested_window = int(CONFIG.get("window_size", baseline_data.get("window_size", 128)))\n'
-        '    target_window = nearest_valid_window(requested_window)\n'
+        '    target_window = choose_window(base_experiment, requested_window)\n'
         "    return {\n"
         '        "data": {\n'
-        '            "preprocessing": target_preprocessing,\n'
-        '            "window_size": target_window,\n'
+            '            "preprocessing": target_preprocessing,\n'
+            '            "window_size": target_window,\n'
         '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
         "        }\n"
         "    }\n"
