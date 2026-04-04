@@ -7,11 +7,37 @@ from pathlib import Path
 from autohar_researcher.types import CandidateResult
 
 
-def write_history_csv(history: list[CandidateResult], output_path: Path) -> str:
+def write_history_csv(
+    history: list[CandidateResult],
+    output_path: Path,
+    *,
+    history_kind: str,
+) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["round_id", "agent_name", "branch_name", "val_score", "accepted", "best_so_far_score"])
+        if history_kind == "trial":
+            writer.writerow(
+                [
+                    "round_id",
+                    "candidate_name",
+                    "branch_name",
+                    "trial_val_score",
+                    "accepted_in_round",
+                    "best_so_far_score",
+                ]
+            )
+        else:
+            writer.writerow(
+                [
+                    "round_id",
+                    "accepted_agent_name",
+                    "accepted_branch_name",
+                    "accepted_val_score",
+                    "accepted",
+                    "best_so_far_score",
+                ]
+            )
         for result in history:
             writer.writerow(
                 [
@@ -31,6 +57,8 @@ def write_history_svg(
     output_path: Path,
     value_key: str,
     title: str,
+    *,
+    legend_labels: dict[str, str] | None = None,
 ) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     grouped: dict[str, list[tuple[int, float]]] = defaultdict(list)
@@ -92,7 +120,8 @@ def write_history_svg(
         color = colors.get(agent_name, "#555")
         y = legend_y + index * 22
         elements.append(f'<line x1="{legend_x}" y1="{y}" x2="{legend_x + 24}" y2="{y}" stroke="{color}" stroke-width="3"/>')
-        elements.append(f'<text x="{legend_x + 32}" y="{y + 4}" font-family="Arial, sans-serif" font-size="12" fill="#222">{agent_name}</text>')
+        label = legend_labels.get(agent_name, agent_name) if legend_labels else agent_name
+        elements.append(f'<text x="{legend_x + 32}" y="{y + 4}" font-family="Arial, sans-serif" font-size="12" fill="#222">{label}</text>')
         ordered = sorted(points)
         polyline = " ".join(f"{x_coord(round_id):.1f},{y_coord(score):.1f}" for round_id, score in ordered)
         elements.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>')

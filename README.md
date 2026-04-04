@@ -125,8 +125,8 @@ Important outputs after a run:
 
 How to read them:
 
-- `score_history.csv`: trial scores, can go up or down
-- `accepted_history.csv`: promoted baseline history, should stay flat or rise
+- `score_history.csv`: trial candidate scores, can go up or down
+- `accepted_history.csv`: accepted baseline history, should stay flat or rise
 - `promotion.json`: which candidate actually won the round
 - `planner_decision.json`: what the orchestrator and specialist LLMs decided before evaluation
 
@@ -184,7 +184,7 @@ What I did not fully validate in this pass:
 - [x] Agent-owned executable module files
 - [x] Bounded rewrite hooks for model / augmentation / data modules
 - [x] Combination-memory-aware orchestrator ordering
-- [ ] Freshly regenerate reports after the latest isolation fix
-- [ ] Make reporting clearer between trial curves and accepted baseline curves
+- [x] Freshly regenerate reports after the latest isolation fix
+- [x] Make reporting clearer between trial curves and accepted baseline curves
 - [ ] Add more datasets
 - [ ] Add richer compute-aware objectives like latency / memory / size

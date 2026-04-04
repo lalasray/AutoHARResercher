@@ -1023,14 +1023,23 @@ class HierarchicalOrchestrator:
         accepted_history: list[CandidateResult],
     ) -> RunOutputs:
         output_dir = Path.cwd() / "artifacts" / "reports"
-        trial_csv_path = write_history_csv(history, output_dir / "score_history.csv")
+        trial_csv_path = write_history_csv(
+            history,
+            output_dir / "score_history.csv",
+            history_kind="trial",
+        )
         trial_svg_path = write_history_svg(
             history,
             output_dir / "score_history.svg",
             value_key="val_score",
-            title="Trial Macro-F1 By Round",
+            title="Trial Candidate Macro-F1 By Round",
+            legend_labels={"orchestrator": "orchestrator_trial"},
         )
-        accepted_csv_path = write_history_csv(accepted_history, output_dir / "accepted_history.csv")
+        accepted_csv_path = write_history_csv(
+            accepted_history,
+            output_dir / "accepted_history.csv",
+            history_kind="accepted",
+        )
         accepted_svg_path = write_promotion_svg(
             accepted_history,
             output_dir / "accepted_history.svg",
