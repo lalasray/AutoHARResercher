@@ -134,6 +134,7 @@ The proposal policy is now adaptive:
 - the augmentation module now supports bounded LLM rewrites for both strength compatibility and augmentation-parameter compatibility inside the owned file
 - the data module now supports bounded LLM rewrites for both window compatibility and data-parameter compatibility inside the owned file
 - the orchestrator planner now receives explicit cross-agent combination memory so it can reason about which single-agent, pairwise, and three-way mixes have recently helped or conflicted
+- the orchestrator now uses that combination memory in actual combination ordering, prioritizing historically compatible mixes and de-prioritizing repeatedly conflicting ones
 
 ## Round Artifacts
 

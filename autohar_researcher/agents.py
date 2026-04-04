@@ -620,6 +620,7 @@ class HierarchicalOrchestrator:
             proposals=proposals,
             round_state=round_state,
             baseline_branch=str(round_plan["baseline_branch"]),
+            round_plan=round_plan,
         )
         return [*agent_results, result], round_state
 
@@ -632,6 +633,7 @@ class HierarchicalOrchestrator:
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         round_state: RoundState,
         baseline_branch: str,
+        round_plan: dict[str, object],
     ) -> CandidateResult:
         baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
         candidate_specs = [
@@ -640,6 +642,12 @@ class HierarchicalOrchestrator:
             ("augmentation+data", {"augmentation_agent", "data_agent"}),
             ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}),
         ]
+        candidate_specs = self._rank_candidate_specs(
+            candidate_specs=candidate_specs,
+            combination_memory=dict(round_plan.get("combination_memory", {})),
+            orchestrator_plan=dict(round_plan.get("orchestrator_plan", {})),
+        )
+        round_state.combination_order = [label for label, _ in candidate_specs]
         evaluated: list[CandidateResult] = []
         for label, included_agents in candidate_specs:
             experiment = self._compose_experiment_from_proposals(
@@ -675,6 +683,7 @@ class HierarchicalOrchestrator:
                     artifact_paths={
                         **round_state.proposal_artifacts,
                         "selected_combination": label,
+                        "combination_order": ",".join(round_state.combination_order),
                         "composed_candidate": round_state.composed_artifact,
                         **{
                             f"materialized_{agent_name}": path
@@ -690,6 +699,52 @@ class HierarchicalOrchestrator:
             f"{best_candidate.artifact_paths.get('selected_combination', 'unknown')}"
         )
         return best_candidate
+
+    def _rank_candidate_specs(
+        self,
+        candidate_specs: list[tuple[str, set[str]]],
+        combination_memory: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> list[tuple[str, set[str]]]:
+        accepted_best = dict(combination_memory.get("accepted_best_by_combination", {}))
+        recent_best = dict(combination_memory.get("recent_best_by_combination", {}))
+        recent_avg = dict(combination_memory.get("recent_avg_by_combination", {}))
+        compatible = {
+            str(item.get("label", "")): float(item.get("synergy", 0.0))
+            for item in combination_memory.get("compatible_patterns", [])
+            if isinstance(item, dict)
+        }
+        conflicting = {
+            str(item.get("label", "")): float(item.get("synergy", 0.0))
+            for item in combination_memory.get("conflicting_patterns", [])
+            if isinstance(item, dict)
+        }
+        combination_bias = str(orchestrator_plan.get("combination_bias", "")).lower()
+
+        def label_score(label: str) -> float:
+            score = 0.0
+            score += 3.0 * float(accepted_best.get(label, 0.0))
+            score += 2.0 * float(recent_best.get(label, 0.0))
+            score += 1.0 * float(recent_avg.get(label, 0.0))
+            score += 2.0 * float(compatible.get(label, 0.0))
+            score += 2.0 * float(conflicting.get(label, 0.0))
+            is_pair = label.count("+") == 1
+            is_three_way = label.count("+") == 2
+            if combination_bias in {"pairwise", "stability"}:
+                if is_pair:
+                    score += 0.25
+                if is_three_way:
+                    score -= 0.25
+            elif combination_bias in {"broader", "broad", "composition"}:
+                if is_three_way:
+                    score += 0.25
+            return score
+
+        return sorted(
+            candidate_specs,
+            key=lambda item: (label_score(item[0]), -item[0].count("+")),
+            reverse=True,
+        )
 
     def _evaluate_agent_results(
         self,
@@ -752,6 +807,7 @@ class HierarchicalOrchestrator:
             "best_score": round_plan.get("best_score"),
             "orchestrator_plan": round_plan.get("orchestrator_plan", {}),
             "combination_memory": combination_memory,
+            "planned_combination_order": [],
             "planner_hints": {
                 "model_agent": (
                     {
@@ -1000,8 +1056,20 @@ class HierarchicalOrchestrator:
         accepted_candidate: CandidateResult | None,
         current_best: CandidateResult | None,
     ) -> str:
+        orchestrator_order = next(
+            (
+                result.artifact_paths.get("combination_order", "")
+                for result in round_results
+                if result.agent_name == "orchestrator"
+                and result.artifact_paths.get("combination_order", "")
+            ),
+            "",
+        )
         payload = {
             "round_id": round_id,
+            "orchestrator_combination_order": (
+                orchestrator_order.split(",") if orchestrator_order else []
+            ),
             "previous_baseline": None
             if previous_best is None
             else {

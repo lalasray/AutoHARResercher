@@ -18,4 +18,5 @@ class RoundState:
     materialized_orchestrator_file: str = ""
     orchestrator_branch: str = ""
     orchestrator_worktree: str = ""
+    combination_order: list[str] = field(default_factory=list)
     pushed_branches: list[str] = field(default_factory=list)
