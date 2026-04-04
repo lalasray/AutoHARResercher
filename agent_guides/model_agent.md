@@ -54,6 +54,7 @@ Use that when you want to change the learning-rate bounding logic itself rather 
 Valid model families:
 
 - `deepconvlstm`
+- `deepconvlstmattention`
 - `hart`
 - `tinierhar`
 - `tinyhar`
@@ -69,6 +70,7 @@ You may also change model-side parameters such as:
 - `depth`
 - `temporal_pool`
 - `spectral_bins`
+- `attention_mix`
 - `use_interactions`
 - `use_multiscale`
 - learning rate

@@ -178,8 +178,8 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"ModelAgent local memory:\n{json.dumps(context['agent_memories']['model_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Use valid models from {deepconvlstm, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru}.\n"
-            "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, and use_multiscale.\n"
+            "Use valid models from {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, use_multiscale, and attention_mix.\n"
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
@@ -213,6 +213,7 @@ class OpenAIPlanner:
                         "spectral_bins": {"type": "integer"},
                         "use_interactions": {"type": "boolean"},
                         "use_multiscale": {"type": "boolean"},
+                        "attention_mix": {"type": "number"},
                     },
                     "required": [
                         "hidden_dim",
@@ -221,6 +222,7 @@ class OpenAIPlanner:
                         "spectral_bins",
                         "use_interactions",
                         "use_multiscale",
+                        "attention_mix",
                     ],
                 },
                 "rationale": {"type": "string"},

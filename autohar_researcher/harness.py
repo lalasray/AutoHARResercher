@@ -400,6 +400,7 @@ class DummyHARHarness:
         spectral_bins = max(2, int(model_params.get("spectral_bins", 6)))
         use_interactions = bool(model_params.get("use_interactions", True))
         use_multiscale = bool(model_params.get("use_multiscale", True))
+        attention_mix = max(0.0, min(1.0, float(model_params.get("attention_mix", 0.5))))
         means = [sum(row[i] for row in window) / len(window) for i in range(channels)]
         stds = []
         energies = []
@@ -418,6 +419,7 @@ class DummyHARHarness:
         interactions = self._interaction_features(window) if use_interactions else []
         temporal = self._temporal_pool_features(window, temporal_pool)
         spectral = self._spectral_features(window, spectral_bins)
+        attention = self._attention_pool_features(window, attention_mix)
 
         if config.model_name == "cnn":
             return means + stds + energies
@@ -433,6 +435,8 @@ class DummyHARHarness:
             return means + stds + temporal + [second_half[i] - first_half[i] for i in range(channels)] + spectral[: channels]
         if config.model_name == "deepconvlstm":
             return means + stds + energies + diffs + temporal + multiscale + interactions
+        if config.model_name == "deepconvlstmattention":
+            return means + stds + energies + attention + multiscale + interactions + spectral[: channels]
         if config.model_name == "hart":
             return means + stds + saliency + temporal + multiscale + interactions + spectral[: channels]
         if config.model_name == "tinierhar":
@@ -473,8 +477,8 @@ class DummyHARHarness:
                 min_epochs=min_epochs,
                 device_preference=device_preference,
             )
-        if model_name in {"deepconvlstm", "hart", "tinierhar", "tinyhar", "spectra"}:
-            hidden_dim = int(model_params.get("hidden_dim", 48 if model_name in {"deepconvlstm", "hart"} else 24))
+        if model_name in {"deepconvlstm", "deepconvlstmattention", "hart", "tinierhar", "tinyhar", "spectra"}:
+            hidden_dim = int(model_params.get("hidden_dim", 48 if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"} else 24))
             depth = int(model_params.get("depth", 2 if model_name != "tinierhar" else 1))
             return self._train_mlp_model(
                 train_features=train_features,
@@ -685,17 +689,26 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         device = self._resolve_device(device_preference)
-        if model_name in {"deepconvlstm", "hart", "tinierhar", "tinyhar", "spectra"}:
-            hidden_dim = int(model_params.get("hidden_dim", 64 if model_name in {"deepconvlstm", "hart"} else 32))
+        if model_name in {"deepconvlstm", "deepconvlstmattention", "hart", "tinierhar", "tinyhar", "spectra"}:
+            hidden_dim = int(model_params.get("hidden_dim", 64 if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"} else 32))
             depth = max(1, int(model_params.get("depth", 2 if model_name != "tinierhar" else 1)))
-            layers: list[object] = []
-            input_dim = feature_dim
-            for _ in range(depth):
-                layers.append(self._torch.nn.Linear(input_dim, hidden_dim))
-                layers.append(self._torch.nn.ReLU())
-                input_dim = hidden_dim
-            layers.append(self._torch.nn.Linear(input_dim, num_classes))
-            module = self._torch.nn.Sequential(*layers)
+            if model_name == "deepconvlstmattention":
+                module = self._build_torch_attention_mlp(
+                    feature_dim=feature_dim,
+                    hidden_dim=hidden_dim,
+                    depth=depth,
+                    num_classes=num_classes,
+                    attention_mix=float(model_params.get("attention_mix", 0.8)),
+                )
+            else:
+                layers: list[object] = []
+                input_dim = feature_dim
+                for _ in range(depth):
+                    layers.append(self._torch.nn.Linear(input_dim, hidden_dim))
+                    layers.append(self._torch.nn.ReLU())
+                    input_dim = hidden_dim
+                layers.append(self._torch.nn.Linear(input_dim, num_classes))
+                module = self._torch.nn.Sequential(*layers)
         else:
             module = self._torch.nn.Linear(feature_dim, num_classes)
         module = module.to(device)
@@ -806,6 +819,8 @@ class DummyHARHarness:
 
     def _temporal_pool_features(self, window: list[list[float]], mode: str) -> list[float]:
         channels = len(window[0])
+        if mode == "attention":
+            return self._attention_pool_features(window, 0.75)
         if mode == "last":
             return window[-1][:]
         midpoint = len(window) // 2
@@ -820,6 +835,25 @@ class DummyHARHarness:
         if mode == "concat":
             return first_half + second_half
         return [0.5 * (first_half[c] + second_half[c]) for c in range(channels)]
+
+    def _attention_pool_features(self, window: list[list[float]], attention_mix: float) -> list[float]:
+        channels = len(window[0])
+        energies = [sum(value * value for value in row) for row in window]
+        temperature = max(1e-4, 1.0 - (0.5 * attention_mix))
+        scaled = [energy / temperature for energy in energies]
+        max_scaled = max(scaled)
+        weights = [math.exp(value - max_scaled) for value in scaled]
+        normalizer = sum(weights) + 1e-8
+        normalized = [weight / normalizer for weight in weights]
+        attention = [
+            sum(weight * row[channel] for weight, row in zip(normalized, window))
+            for channel in range(channels)
+        ]
+        mean_pool = [sum(row[channel] for row in window) / len(window) for channel in range(channels)]
+        return [
+            ((1.0 - attention_mix) * mean_pool[channel]) + (attention_mix * attention[channel])
+            for channel in range(channels)
+        ]
 
     def _spectral_features(self, window: list[list[float]], spectral_bins: int) -> list[float]:
         channels = len(window[0])
@@ -838,6 +872,40 @@ class DummyHARHarness:
                 channel_features.append(math.sqrt((real * real) + (imag * imag)) / len(signal))
             features.extend(channel_features)
         return features
+
+    def _build_torch_attention_mlp(
+        self,
+        feature_dim: int,
+        hidden_dim: int,
+        depth: int,
+        num_classes: int,
+        attention_mix: float,
+    ):
+        assert self._torch is not None
+        torch = self._torch
+        mix = max(0.0, min(1.0, float(attention_mix)))
+
+        class AttentionMLP(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.backbone = torch.nn.ModuleList()
+                input_dim = feature_dim
+                for _ in range(max(1, depth)):
+                    self.backbone.append(torch.nn.Linear(input_dim, hidden_dim))
+                    input_dim = hidden_dim
+                self.attention = torch.nn.Linear(hidden_dim, hidden_dim)
+                self.classifier = torch.nn.Linear(hidden_dim, num_classes)
+                self.mix = mix
+
+            def forward(self, x):
+                h = x
+                for layer in self.backbone:
+                    h = torch.relu(layer(h))
+                gates = torch.sigmoid(self.attention(h))
+                pooled = ((1.0 - self.mix) * h) + (self.mix * (h * gates))
+                return self.classifier(pooled)
+
+        return AttentionMLP()
 
     def _multiscale_features(self, window: list[list[float]]) -> list[float]:
         channels = len(window[0])

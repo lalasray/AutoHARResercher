@@ -113,6 +113,7 @@ The harness now reads the experiment file, loads UCI HAR, and returns a real val
 The current model search space includes stronger HAR-inspired families such as:
 
 - `deepconvlstm`
+- `deepconvlstmattention`
 - `hart`
 - `tinierhar`
 - `tinyhar`
@@ -127,7 +128,7 @@ The proposal policy is now adaptive:
 - the augmentation agent searches both augmentation type and strength
 - the augmentation module now also owns concrete transform parameters such as rotation angle, jitter std, scaling span, time-warp compression, permutation segments, drift magnitude, magnitude-warp span, and mixup blend
 - the data module now also owns concrete data parameters such as channel layout, resampling mode, gravity subtraction scale, and magnitude-feature toggles
-- the model module now also owns concrete model parameters such as hidden size, depth, temporal pooling mode, spectral bins, and whether interaction/multiscale features are enabled
+- the model module now also owns concrete model parameters such as hidden size, depth, temporal pooling mode, spectral bins, attention mix, and whether interaction/multiscale features are enabled
 
 ## Round Artifacts
 

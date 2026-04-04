@@ -26,6 +26,7 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
         "spectral_bins": 6,
         "use_interactions": True,
         "use_multiscale": True,
+        "attention_mix": 0.5,
     }
     if name == "cnn":
         params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})
@@ -35,6 +36,16 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
         params.update({"hidden_dim": 48, "depth": 2, "temporal_pool": "concat"})
     elif name == "hart":
         params.update({"hidden_dim": 72, "depth": 2, "temporal_pool": "concat"})
+    elif name == "deepconvlstmattention":
+        params.update(
+            {
+                "hidden_dim": 80,
+                "depth": 2,
+                "temporal_pool": "attention",
+                "spectral_bins": 8,
+                "attention_mix": 0.8,
+            }
+        )
     elif name == "tinierhar":
         params.update({"hidden_dim": 32, "depth": 1, "temporal_pool": "avg", "use_multiscale": False})
     elif name == "tinyhar":
@@ -230,7 +241,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    return dict(base_experiment.get("model", {}))\n\n'
             "def stable_model_families() -> list[str]:\n"
             '    """Return model families that are usually safe early choices."""\n'
-            '    return ["deepconvlstm", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tinyhar", "spectra", "tiny_transformer"]\n\n'
+            '    return ["deepconvlstm", "deepconvlstmattention", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tinyhar", "spectra", "tiny_transformer"]\n\n'
             "def choose_target_name(requested_name: str, baseline_name: str) -> str:\n"
             '    """Prefer valid, stable model families and fall back safely."""\n'
             "    valid = stable_model_families()\n"
@@ -244,7 +255,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    augmentation = str(base_experiment.get("augmentation", {}).get("name", "none"))\n'
             '    preprocessing = str(base_experiment.get("data", {}).get("preprocessing", "raw"))\n'
             '    bias = 1.0\n'
-            '    if augmentation != "none" and target_name in {"deepconvlstm", "hart", "tiny_transformer"}:\n'
+            '    if augmentation != "none" and target_name in {"deepconvlstm", "deepconvlstmattention", "hart", "tiny_transformer"}:\n'
             "        bias *= 0.9\n"
             '    if preprocessing != "raw" and target_name in {"tiny_transformer", "hart"}:\n'
             "        bias *= 0.95\n"
@@ -265,6 +276,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '        "spectral_bins": 6,\n'
             '        "use_interactions": True,\n'
             '        "use_multiscale": True,\n'
+            '        "attention_mix": 0.5,\n'
             "    }\n"
             '    if target_name == "cnn":\n'
             '        params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})\n'
@@ -274,6 +286,8 @@ def _module_patch_builder(agent_name: str) -> str:
             '        params.update({"hidden_dim": 48, "depth": 2, "temporal_pool": "concat"})\n'
             '    elif target_name == "hart":\n'
             '        params.update({"hidden_dim": 72, "depth": 2, "temporal_pool": "concat"})\n'
+            '    elif target_name == "deepconvlstmattention":\n'
+            '        params.update({"hidden_dim": 80, "depth": 2, "temporal_pool": "attention", "spectral_bins": 8, "attention_mix": 0.8})\n'
             '    elif target_name == "tinierhar":\n'
             '        params.update({"hidden_dim": 32, "depth": 1, "temporal_pool": "avg", "use_multiscale": False})\n'
             '    elif target_name == "tinyhar":\n'

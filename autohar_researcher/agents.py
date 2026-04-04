@@ -50,6 +50,7 @@ class ModelAgent:
     name = "model_agent"
     MODEL_CANDIDATES = [
         "deepconvlstm",
+        "deepconvlstmattention",
         "hart",
         "tinierhar",
         "tinyhar",
