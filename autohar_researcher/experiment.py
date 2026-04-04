@@ -128,9 +128,9 @@ def base_experiment_config() -> dict[str, object]:
             "params": default_augmentation_params("none", "medium"),
         },
         "training": {
-            "epochs": 12,
+            "epochs": 30,
             "min_epochs": 4,
-            "early_stopping_patience": 3,
+            "early_stopping_patience": 5,
             "device": "auto",
             "metric": "macro_f1",
         },
