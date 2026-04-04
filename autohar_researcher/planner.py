@@ -338,10 +338,18 @@ class OpenAIPlanner:
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
             f"{rewrite_preference}"
+            "When the main mutation is preprocessing/window-dependent data parameter compatibility, prefer defining "
+            "`data_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
+            "Use `data_params_override(...)` when channel layout, resampling mode, gravity scale, or magnitude toggles "
+            "should depend on the current baseline context.\n"
             "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             "`choose_window_override(base_experiment, requested_window, config)`. "
             "Use this when you want to rewrite data window-selection logic itself inside the owned module. "
             "Return only an integer window size or `None` to fall back.\n"
+            "The same `function_rewrite` block may also define "
+            "`data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config)` "
+            "when you want to rewrite data-parameter compatibility logic itself inside the owned module. "
+            "That function must return only a dict of data param overrides or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             "`{\"data\": {\"preprocessing\": ..., \"window_size\": ...}}`. Use exact keys `preprocessing` and `window_size`. "
@@ -368,6 +376,10 @@ class OpenAIPlanner:
             name="autohar_data_agent_plan",
             prompt=prompt,
             schema=schema,
+        )
+        payload = self._prefer_data_param_rewrite(
+            round_id=int(context["round_id"]),
+            payload=payload,
         )
         return DataPlanHint(**payload)
 
@@ -481,6 +493,33 @@ class OpenAIPlanner:
             "    return merged\n"
         )
         if augmentation == "none":
+            return payload
+        payload["function_rewrite"] = body
+        return payload
+
+    def _prefer_data_param_rewrite(
+        self,
+        round_id: int,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        if round_id <= 1:
+            return payload
+        if str(payload.get("function_rewrite", "")).strip():
+            return payload
+        preprocessing = str(payload.get("preprocessing", "raw"))
+        window_size = int(payload.get("window_size", 128))
+        body = (
+            "def data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config):\n"
+            "    del base_experiment\n"
+            "    if target_preprocessing != config.get('preprocessing', target_preprocessing):\n"
+            "        return None\n"
+            "    if int(target_window) != int(config.get('window_size', target_window)):\n"
+            "        return None\n"
+            "    merged = dict(proposed_params)\n"
+            "    merged.update(dict(config.get('params', {})))\n"
+            "    return merged\n"
+        )
+        if preprocessing == "raw" and window_size == 128:
             return payload
         payload["function_rewrite"] = body
         return payload

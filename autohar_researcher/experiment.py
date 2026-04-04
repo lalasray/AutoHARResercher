@@ -731,6 +731,18 @@ def _module_patch_builder(agent_name: str) -> str:
         '    if isinstance(result, int):\n'
         "        return result\n"
         "    return None\n\n"
+        "def llm_data_params_override(base_experiment: dict[str, object], target_preprocessing: str, target_window: int, proposed_params: dict[str, object]) -> dict[str, object] | None:\n"
+        '    """Run a bounded rewrite of data-parameter compatibility if provided."""\n'
+        "    namespace = llm_function_namespace()\n"
+        '    chooser = namespace.get("data_params_override")\n'
+        '    if not callable(chooser):\n'
+        "        return None\n"
+        '    config = dict(CONFIG)\n'
+        '    try:\n'
+        '        result = chooser(base_experiment, target_preprocessing, target_window, dict(proposed_params), config)\n'
+        '    except Exception:\n'
+        "        return None\n"
+        '    return result if isinstance(result, dict) else None\n\n'
         "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
         "    namespace = llm_helper_namespace()\n"
@@ -773,6 +785,9 @@ def _module_patch_builder(agent_name: str) -> str:
         '    target_params = default_data_params(target_preprocessing, target_window)\n'
         '    if isinstance(CONFIG.get("params"), dict):\n'
         '        target_params.update(CONFIG["params"])\n'
+        '    rewritten_params = llm_data_params_override(base_experiment, target_preprocessing, target_window, target_params)\n'
+        '    if isinstance(rewritten_params, dict):\n'
+        '        target_params.update(rewritten_params)\n'
         "    patch = {\n"
         '        "data": {\n'
         '            "preprocessing": target_preprocessing,\n'

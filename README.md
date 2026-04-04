@@ -132,6 +132,7 @@ The proposal policy is now adaptive:
 - the model module now supports bounded LLM rewrites for both learning-rate compatibility and model-parameter compatibility inside the owned file
 - from round 2 onward, model-side parameter proposals are nudged toward `model_params_override(...)` so family/context compatibility evolves through bounded rewrites more often
 - the augmentation module now supports bounded LLM rewrites for both strength compatibility and augmentation-parameter compatibility inside the owned file
+- the data module now supports bounded LLM rewrites for both window compatibility and data-parameter compatibility inside the owned file
 
 ## Round Artifacts
 

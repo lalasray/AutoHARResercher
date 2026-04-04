@@ -42,11 +42,27 @@ Prefer helper code when the decision depends on:
 For deeper code evolution, you may also rewrite exactly one bounded helper function inside your owned module:
 
 - `choose_window_override(base_experiment, requested_window, config)`
+- `data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config)`
 
 Use that when you want to change the data window-selection logic itself rather than only propose a one-shot output. It must return only:
 
 - an integer window size
 - or `None` to fall back
+
+Use the data-params override when you want to adjust compatibility logic for:
+
+- channel layout
+- resampling mode
+- gravity scale
+- magnitude toggles
+- normalization-related guardrails
+
+That function must return only:
+
+- a dict of data param overrides
+- or `None` to fall back
+
+From round 2 onward, prefer `data_params_override(...)` whenever your main data mutation is really a compatibility rule rather than just a one-off static parameter choice.
 
 ## Allowed Search Space
 
