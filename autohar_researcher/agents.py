@@ -698,6 +698,7 @@ class HierarchicalOrchestrator:
             f"{best_candidate.summary} | selected_combination="
             f"{best_candidate.artifact_paths.get('selected_combination', 'unknown')}"
         )
+        best_candidate.artifact_paths["evaluation_report"] = self._write_result_artifact(best_candidate)
         return best_candidate
 
     def _rank_candidate_specs(
@@ -1118,6 +1119,32 @@ class HierarchicalOrchestrator:
         }
         round_dir = ensure_round_dir(round_id)
         return write_json_artifact(round_dir / "promotion.json", payload)
+
+    def _write_result_artifact(self, result: CandidateResult) -> str:
+        round_dir = ensure_round_dir(result.round_id)
+        return write_json_artifact(
+            round_dir / "results" / f"{result.agent_name}.json",
+            {
+                "round_id": result.round_id,
+                "agent_name": result.agent_name,
+                "branch_name": result.branch_name,
+                "summary": result.summary,
+                "config": {
+                    "model_name": result.config.model_name,
+                    "model_params": result.config.model_params,
+                    "preprocessing": result.config.preprocessing,
+                    "data_params": result.config.data_params,
+                    "augmentation": result.config.augmentation,
+                    "augmentation_strength": result.config.augmentation_strength,
+                    "augmentation_params": result.config.augmentation_params,
+                    "learning_rate": result.config.learning_rate,
+                    "window_size": result.config.window_size,
+                    "notes": result.config.notes,
+                },
+                "score_breakdown": result.score_breakdown,
+                "details": result.details,
+            },
+        )
 
     def finalize_actions(self, best_result: CandidateResult) -> list[GitAction]:
         return [
