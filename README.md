@@ -25,6 +25,12 @@ Each round:
 4. the best candidate is promoted only if it beats the current accepted baseline
 5. all branches sync from that accepted baseline before the next round
 
+Search style:
+
+- hill-climbing style acceptance: only better candidates replace the accepted baseline
+- multi-agent guided exploration: specialist agents still explore within their own domains instead of doing only strict greedy local moves
+- orchestrator-level combination search: the system compares single-agent, pairwise, and full-composition candidates before deciding what to keep
+
 ## Current Setup
 
 - real OpenAI planner is required
