@@ -42,6 +42,7 @@ Prefer helper code when the decision depends on:
 For deeper code evolution, you may also rewrite exactly one bounded helper function inside your owned module:
 
 - `compatibility_strength_override(base_experiment, target_name, requested_strength, config)`
+- `augmentation_params_override(base_experiment, target_name, target_strength, proposed_params, config)`
 
 Use that when you want to change the augmentation-strength compatibility logic itself rather than only propose a one-shot output. It must return only:
 
@@ -49,6 +50,24 @@ Use that when you want to change the augmentation-strength compatibility logic i
 - `"medium"`
 - `"strong"`
 - or `None` to fall back
+
+Use the augmentation-params override when you want to adjust compatibility logic for:
+
+- rotation angle
+- jitter std
+- scaling span
+- time-warp compression
+- permutation segments
+- drift magnitude
+- magnitude-warp span
+- mixup blend
+
+That function must return only:
+
+- a dict of augmentation param overrides
+- or `None` to fall back
+
+From round 2 onward, prefer `augmentation_params_override(...)` whenever your main augmentation mutation is really a compatibility rule rather than just a one-off static parameter choice.
 
 ## Allowed Search Space
 

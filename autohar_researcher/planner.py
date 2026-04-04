@@ -272,10 +272,18 @@ class OpenAIPlanner:
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
             f"{rewrite_preference}"
+            "When the main mutation is augmentation-family or strength-dependent parameter compatibility, prefer defining "
+            "`augmentation_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
+            "Use `augmentation_params_override(...)` when rotation angle, jitter std, time-warp compression, scaling span, "
+            "drift magnitude, permutation segments, magnitude-warp span, or mixup blend should depend on the current baseline context.\n"
             "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             "`compatibility_strength_override(base_experiment, target_name, requested_strength, config)`. "
             "Use this when you want to rewrite augmentation strength compatibility logic itself inside the owned module. "
             "Return only a valid strength string or `None` to fall back.\n"
+            "The same `function_rewrite` block may also define "
+            "`augmentation_params_override(base_experiment, target_name, target_strength, proposed_params, config)` "
+            "when you want to rewrite augmentation-parameter compatibility logic itself inside the owned module. "
+            "That function must return only a dict of augmentation param overrides or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             "`{\"augmentation\": {\"name\": ..., \"strength\": ...}}`. Use exact keys `name` and `strength`. "
@@ -302,6 +310,10 @@ class OpenAIPlanner:
             name="autohar_augmentation_agent_plan",
             prompt=prompt,
             schema=schema,
+        )
+        payload = self._prefer_augmentation_param_rewrite(
+            round_id=int(context["round_id"]),
+            payload=payload,
         )
         return AugmentationPlanHint(**payload)
 
@@ -444,6 +456,33 @@ class OpenAIPlanner:
             "    merged.update(overrides)\n"
             "    return merged\n"
         )
+        return payload
+
+    def _prefer_augmentation_param_rewrite(
+        self,
+        round_id: int,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        if round_id <= 1:
+            return payload
+        if str(payload.get("function_rewrite", "")).strip():
+            return payload
+        augmentation = str(payload.get("augmentation", "none"))
+        strength = str(payload.get("strength", "medium"))
+        body = (
+            "def augmentation_params_override(base_experiment, target_name, target_strength, proposed_params, config):\n"
+            "    del base_experiment\n"
+            "    if target_name != config.get('name', target_name):\n"
+            "        return None\n"
+            "    if target_strength != config.get('strength', target_strength):\n"
+            "        return None\n"
+            "    merged = dict(proposed_params)\n"
+            "    merged.update(dict(config.get('params', {})))\n"
+            "    return merged\n"
+        )
+        if augmentation == "none":
+            return payload
+        payload["function_rewrite"] = body
         return payload
 
     def _agent_memory_summary(

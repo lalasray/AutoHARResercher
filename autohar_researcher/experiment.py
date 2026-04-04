@@ -553,6 +553,18 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if isinstance(result, str) and result in {"weak", "medium", "strong"}:\n'
             "        return result\n"
             "    return None\n\n"
+            "def llm_augmentation_params_override(base_experiment: dict[str, object], target_name: str, target_strength: str, proposed_params: dict[str, object]) -> dict[str, object] | None:\n"
+            '    """Run a bounded rewrite of augmentation-parameter compatibility if provided."""\n'
+            "    namespace = llm_function_namespace()\n"
+            '    chooser = namespace.get("augmentation_params_override")\n'
+            '    if not callable(chooser):\n'
+            "        return None\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = chooser(base_experiment, target_name, target_strength, dict(proposed_params), config)\n'
+            '    except Exception:\n'
+            "        return None\n"
+            '    return result if isinstance(result, dict) else None\n\n'
             "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
             "    namespace = llm_helper_namespace()\n"
@@ -595,6 +607,9 @@ def _module_patch_builder(agent_name: str) -> str:
             '    target_params = default_augmentation_params(target_name, target_strength)\n'
             '    if isinstance(CONFIG.get("params"), dict):\n'
             '        target_params.update(CONFIG["params"])\n'
+            '    rewritten_params = llm_augmentation_params_override(base_experiment, target_name, target_strength, target_params)\n'
+            '    if isinstance(rewritten_params, dict):\n'
+            '        target_params.update(rewritten_params)\n'
             "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
