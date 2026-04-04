@@ -184,10 +184,18 @@ class OpenAIPlanner:
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
             f"{rewrite_preference}"
+            "When the main mutation is family-dependent parameter compatibility, prefer defining "
+            "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
+            "In particular, use `model_params_override(...)` when hidden_dim, depth, temporal_pool, spectral_bins, "
+            "use_interactions, use_multiscale, or attention_mix should depend on the current baseline context.\n"
             "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             "`bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`. "
             "Use this when you want to rewrite model learning-rate bounding logic itself inside the owned module. "
             "Return only a float learning rate or `None` to fall back.\n"
+            "The same `function_rewrite` block may also define "
+            "`model_params_override(base_experiment, target_name, proposed_params, config)` "
+            "when you want to rewrite model-parameter compatibility logic itself inside the owned module. "
+            "That function must return only a dict of model param overrides or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             "`{\"model\": {\"name\": ..., \"learning_rate\": ..., \"params\": {...}}}`. Use exact keys `name` and `learning_rate`. "
@@ -236,6 +244,10 @@ class OpenAIPlanner:
             name="autohar_model_agent_plan",
             prompt=prompt,
             schema=schema,
+        )
+        payload = self._prefer_model_param_rewrite(
+            round_id=int(context["round_id"]),
+            payload=payload,
         )
         return ModelPlanHint(**payload)
 
@@ -410,6 +422,29 @@ class OpenAIPlanner:
             "For round 2 and later, bounded `function_rewrite` is the preferred specialist path whenever the mutation depends on local reusable logic. "
             "Leave it empty only if the proposal is truly a trivial direct override.\n"
         )
+
+    def _prefer_model_param_rewrite(
+        self,
+        round_id: int,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        if round_id <= 1:
+            return payload
+        if str(payload.get("function_rewrite", "")).strip():
+            return payload
+        model_params = payload.get("model_params")
+        if not isinstance(model_params, dict) or not model_params:
+            return payload
+        serialized = json.dumps(model_params, sort_keys=True, indent=4)
+        payload["function_rewrite"] = (
+            "def model_params_override(base_experiment, target_name, proposed_params, config):\n"
+            "    del base_experiment, target_name, config\n"
+            f"    overrides = {serialized}\n"
+            "    merged = dict(proposed_params)\n"
+            "    merged.update(overrides)\n"
+            "    return merged\n"
+        )
+        return payload
 
     def _agent_memory_summary(
         self,

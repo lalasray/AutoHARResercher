@@ -358,6 +358,18 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if isinstance(result, (int, float)):\n'
             '        return float(result)\n'
             "    return None\n\n"
+            "def llm_model_params_override(base_experiment: dict[str, object], target_name: str, proposed_params: dict[str, object]) -> dict[str, object] | None:\n"
+            '    """Run a bounded rewrite of model-parameter compatibility if provided."""\n'
+            "    namespace = llm_function_namespace()\n"
+            '    chooser = namespace.get("model_params_override")\n'
+            '    if not callable(chooser):\n'
+            "        return None\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = chooser(base_experiment, target_name, dict(proposed_params), config)\n'
+            '    except Exception:\n'
+            "        return None\n"
+            '    return result if isinstance(result, dict) else None\n\n'
             "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
             "    namespace = llm_helper_namespace()\n"
@@ -403,6 +415,9 @@ def _module_patch_builder(agent_name: str) -> str:
             '    target_params = default_model_params(target_name)\n'
             '    if isinstance(CONFIG.get("params"), dict):\n'
             '        target_params.update(CONFIG["params"])\n'
+            '    rewritten_params = llm_model_params_override(base_experiment, target_name, target_params)\n'
+            '    if isinstance(rewritten_params, dict):\n'
+            '        target_params.update(rewritten_params)\n'
             "    patch = {\n"
             '        "model": {\n'
             '            "name": target_name,\n'

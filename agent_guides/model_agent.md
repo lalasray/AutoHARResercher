@@ -43,11 +43,29 @@ Prefer helper code when the decision depends on:
 For deeper code evolution, you may also rewrite exactly one bounded helper function inside your owned module:
 
 - `bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`
+- `model_params_override(base_experiment, target_name, proposed_params, config)`
 
 Use that when you want to change the learning-rate bounding logic itself rather than only propose a one-shot output. It must return only:
 
 - a float learning rate
 - or `None` to fall back
+
+Use the model-params override when you want to adjust compatibility logic for:
+
+- hidden size
+- depth
+- temporal pooling
+- spectral bins
+- interaction usage
+- multiscale usage
+- attention mix
+
+That function must return only:
+
+- a dict of param overrides
+- or `None` to fall back
+
+From round 2 onward, prefer `model_params_override(...)` whenever your main model mutation is really a compatibility rule rather than just a one-off static parameter choice.
 
 ## Allowed Search Space
 
