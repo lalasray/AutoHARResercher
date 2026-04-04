@@ -38,6 +38,11 @@ def main() -> None:
         action="store_true",
         help="Push agent branches and orchestrator-main to origin after commit, but never push main.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from the latest completed round on disk and continue with additional rounds.",
+    )
     args = parser.parse_args()
 
     orchestrator = HierarchicalOrchestrator(harness=DummyHARHarness())
@@ -45,6 +50,7 @@ def main() -> None:
         rounds=args.rounds,
         materialize_git=args.materialize_git,
         auto_push_non_main=args.auto_push_non_main,
+        resume=args.resume,
     )
 
     history = results["history"]
@@ -62,6 +68,7 @@ def main() -> None:
     print(f"Candidates evaluated: {len(history)}")
     print(f"Materialize git: {args.materialize_git}")
     print(f"Auto-push non-main: {args.auto_push_non_main}")
+    print(f"Resume mode: {args.resume}")
     print(f"Planner: {planner_name}")
     print()
     print("Agent workspaces:")

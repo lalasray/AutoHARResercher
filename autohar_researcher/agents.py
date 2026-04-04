@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import json
 from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
@@ -394,11 +395,19 @@ class HierarchicalOrchestrator:
         rounds: int = 3,
         materialize_git: bool = False,
         auto_push_non_main: bool = False,
+        resume: bool = False,
     ) -> dict[str, object]:
-        history: list[CandidateResult] = []
-        accepted_history: list[CandidateResult] = []
-        best_result: CandidateResult | None = None
-        best_by_agent: dict[str, float] = {}
+        if resume:
+            history, accepted_history = self._load_round_history()
+            best_result = None if not accepted_history else self._clone_result(accepted_history[-1])
+            best_by_agent = self._best_by_agent_from_history(history)
+            start_round = (max((result.round_id for result in history), default=0) + 1)
+        else:
+            history = []
+            accepted_history = []
+            best_result = None
+            best_by_agent = {}
+            start_round = 1
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
 
@@ -409,8 +418,9 @@ class HierarchicalOrchestrator:
                 orchestrator_worktree=self.orchestrator_workspace.worktree_path,
             )
 
-        for round_id in range(1, rounds + 1):
-            print(f"[AutoHAR] round {round_id}/{rounds}", flush=True)
+        final_round = start_round + rounds - 1
+        for round_id in range(start_round, final_round + 1):
+            print(f"[AutoHAR] round {round_id}/{final_round}", flush=True)
             previous_best = None if best_result is None else self._clone_result(best_result)
             round_plan = self.plan_round(
                 round_id=round_id,
@@ -462,6 +472,94 @@ class HierarchicalOrchestrator:
             "run_outputs": run_outputs,
             "planner_name": getattr(self.planner, "name", "unknown"),
         }
+
+    def _load_round_history(self) -> tuple[list[CandidateResult], list[CandidateResult]]:
+        history: list[CandidateResult] = []
+        accepted_history: list[CandidateResult] = []
+        artifacts_root = Path.cwd() / "artifacts"
+        round_dirs = sorted(
+            [
+                path
+                for path in artifacts_root.glob("round_*")
+                if path.is_dir() and path.name.split("_")[-1].isdigit()
+            ],
+            key=lambda path: int(path.name.split("_")[-1]),
+        )
+        accepted_best = float("-inf")
+        best_by_agent: dict[str, float] = {}
+
+        for round_dir in round_dirs:
+            round_id = int(round_dir.name.split("_")[-1])
+            promotion_path = round_dir / "promotion.json"
+            results_dir = round_dir / "results"
+            if not promotion_path.exists() or not results_dir.exists():
+                continue
+
+            round_results: list[CandidateResult] = []
+            for result_path in sorted(results_dir.glob("*.json")):
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+                config_payload = dict(payload["config"])
+                result = CandidateResult(
+                    round_id=round_id,
+                    agent_name=str(payload["agent_name"]),
+                    branch_name=str(payload["branch_name"]),
+                    worktree_path=self._workspace_for_branch(str(payload["branch_name"])).worktree_path,
+                    config=CandidateConfig(
+                        model_name=str(config_payload["model_name"]),
+                        preprocessing=str(config_payload["preprocessing"]),
+                        augmentation=str(config_payload["augmentation"]),
+                        augmentation_strength=str(config_payload["augmentation_strength"]),
+                        learning_rate=float(config_payload["learning_rate"]),
+                        window_size=int(config_payload["window_size"]),
+                        model_params=dict(config_payload.get("model_params", {})),
+                        data_params=dict(config_payload.get("data_params", {})),
+                        augmentation_params=dict(config_payload.get("augmentation_params", {})),
+                        notes=str(config_payload.get("notes", "")),
+                    ),
+                    val_score=float(payload["score_breakdown"]["macro_f1"]),
+                    summary=str(payload.get("summary", "")),
+                    score_breakdown={key: float(value) for key, value in payload.get("score_breakdown", {}).items()},
+                    details=dict(payload.get("details", {})),
+                )
+                best_by_agent[result.agent_name] = max(
+                    best_by_agent.get(result.agent_name, float("-inf")),
+                    result.val_score,
+                )
+                result.best_so_far_score = best_by_agent[result.agent_name]
+                round_results.append(result)
+                history.append(result)
+
+            if not round_results:
+                continue
+
+            promotion_payload = json.loads(promotion_path.read_text(encoding="utf-8"))
+            if promotion_payload.get("accepted_new_baseline"):
+                winner = dict(promotion_payload.get("round_winner", {}))
+                accepted_match = next(
+                    (
+                        result
+                        for result in round_results
+                        if result.agent_name == str(winner.get("agent_name", ""))
+                        and result.branch_name == str(winner.get("branch_name", ""))
+                    ),
+                    None,
+                )
+                if accepted_match is not None:
+                    accepted_match.accepted = True
+                    accepted_best = max(accepted_best, accepted_match.val_score)
+                    accepted_match.best_so_far_score = accepted_best
+                    accepted_history.append(self._clone_result(accepted_match))
+
+        return history, accepted_history
+
+    def _best_by_agent_from_history(self, history: list[CandidateResult]) -> dict[str, float]:
+        best_by_agent: dict[str, float] = {}
+        for result in history:
+            best_by_agent[result.agent_name] = max(
+                best_by_agent.get(result.agent_name, float("-inf")),
+                result.val_score,
+            )
+        return best_by_agent
 
     def _build_workspaces(self) -> dict[str, AgentWorkspace]:
         root = Path.cwd()

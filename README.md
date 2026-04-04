@@ -85,12 +85,14 @@ AUTOHAR_ROUNDS=50 ./run_autohar.sh
 AUTOHAR_ROUNDS=10 AUTOHAR_MATERIALIZE_GIT=0 ./run_autohar.sh
 AUTOHAR_ROUNDS=10 AUTOHAR_AUTO_PUSH_NON_MAIN=1 ./run_autohar.sh
 ./run_autohar.sh --rounds 20 --materialize-git --auto-push-non-main
+./run_autohar.sh --rounds 10 --resume
 ```
 
 Direct Python entrypoint:
 
 ```bash
 python3 -m autohar_researcher.main --rounds 20 --materialize-git
+python3 -m autohar_researcher.main --rounds 10 --materialize-git --resume
 ```
 
 ## Planner Config
