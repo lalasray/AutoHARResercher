@@ -99,6 +99,11 @@ class DummyHARHarness:
                 "feature_dim": float(feature_dim),
                 "epochs_trained": float(training_report["epochs_trained"]),
                 "best_epoch": float(training_report["best_epoch"]),
+                "checkpoint_payload": self._checkpoint_payload(
+                    model=model,
+                    config=config,
+                    training_report=training_report,
+                ),
                 "details": {
                     "labels": list(self.LABELS),
                     "confusion_matrix": confusion_matrix,
@@ -127,8 +132,15 @@ class DummyHARHarness:
             score_breakdown=score_breakdown,
             details=details,
         )
+        checkpoint_artifact = self._write_checkpoint_artifact(
+            round_id=round_id,
+            agent_name=agent_name,
+            branch_name=branch_name,
+            checkpoint_payload=cached["checkpoint_payload"],
+        )
         merged_artifacts = dict(artifact_paths or {})
         merged_artifacts["evaluation_report"] = evaluation_artifact
+        merged_artifacts["best_checkpoint"] = checkpoint_artifact
         return CandidateResult(
             round_id=round_id,
             agent_name=agent_name,
@@ -835,3 +847,74 @@ class DummyHARHarness:
                 "details": details,
             },
         )
+
+    def _checkpoint_payload(
+        self,
+        model: dict[str, object],
+        config: CandidateConfig,
+        training_report: dict[str, object],
+    ) -> dict[str, object]:
+        payload = {
+            "kind": str(model["kind"]),
+            "config": {
+                "model_name": config.model_name,
+                "preprocessing": config.preprocessing,
+                "augmentation": config.augmentation,
+                "augmentation_strength": config.augmentation_strength,
+                "learning_rate": config.learning_rate,
+                "window_size": config.window_size,
+            },
+            "training_report": dict(training_report),
+        }
+        if model["kind"] == "linear":
+            payload["weights"] = model["weights"]
+        elif model["kind"] == "mlp":
+            payload["hidden"] = model["hidden"]
+            payload["output"] = model["output"]
+        elif model["kind"] == "torch":
+            assert self._torch is not None
+            payload["state_dict"] = {
+                key: value.detach().cpu()
+                for key, value in model["module"].state_dict().items()
+            }
+        return payload
+
+    def _write_checkpoint_artifact(
+        self,
+        round_id: int,
+        agent_name: str,
+        branch_name: str,
+        checkpoint_payload: dict[str, object],
+    ) -> str:
+        round_dir = ensure_round_dir(round_id)
+        checkpoint_dir = round_dir / "checkpoints"
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        if checkpoint_payload["kind"] == "torch":
+            checkpoint_path = checkpoint_dir / f"{agent_name}.pt"
+            assert self._torch is not None
+            self._torch.save(
+                {
+                    "agent_name": agent_name,
+                    "branch_name": branch_name,
+                    **checkpoint_payload,
+                },
+                checkpoint_path,
+            )
+            metadata_path = checkpoint_dir / f"{agent_name}.json"
+            metadata_payload = {
+                "agent_name": agent_name,
+                "branch_name": branch_name,
+                "kind": checkpoint_payload["kind"],
+                "config": checkpoint_payload["config"],
+                "training_report": checkpoint_payload["training_report"],
+                "checkpoint_file": str(checkpoint_path),
+            }
+            write_json_artifact(metadata_path, metadata_payload)
+            return str(checkpoint_path)
+        checkpoint_path = checkpoint_dir / f"{agent_name}.json"
+        checkpoint_payload = {
+            "agent_name": agent_name,
+            "branch_name": branch_name,
+            **checkpoint_payload,
+        }
+        return write_json_artifact(checkpoint_path, checkpoint_payload)

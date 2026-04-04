@@ -138,6 +138,10 @@ Each round now materializes concrete files:
 - `artifacts/round_N/agent_proposals/data_agent.json`
 - `artifacts/round_N/orchestrator_candidate.json`
 - `artifacts/round_N/promotion.json`
+- `artifacts/round_N/checkpoints/model_agent.pt|json`
+- `artifacts/round_N/checkpoints/augmentation_agent.pt|json`
+- `artifacts/round_N/checkpoints/data_agent.pt|json`
+- `artifacts/round_N/checkpoints/orchestrator.pt|json`
 - `artifacts/round_N/results/model_agent.json`
 - `artifacts/round_N/results/augmentation_agent.json`
 - `artifacts/round_N/results/data_agent.json`
@@ -333,14 +337,14 @@ autohar_researcher/
 ### Phase 2: extend the real-data baseline
 
 - [x] Replace synthetic harness with a real train/val pipeline for one IMU dataset
-- [ ] Add dataset module for windowing, normalization, and label mapping
+- [x] Add dataset module for windowing, normalization, and label mapping
 - [x] Log metrics such as accuracy, macro-F1, and confusion matrix
 - [x] Add adaptive proposal mutation around the accepted best experiment
 - [x] Add augmentation type and strength search
 - [x] Add stronger HAR-inspired model choices
 - [x] Add optional Torch-backed training with CPU/CUDA device selection
 - [x] Add validation-based early stopping
-- [ ] Save best checkpoint and experiment metadata
+- [x] Save best checkpoint and experiment metadata
 
 ### Phase 3: match your architecture sketch
 
@@ -364,7 +368,7 @@ autohar_researcher/
 
 ### Phase 4: evolve toward `autoresearch`
 
-- [ ] Let agents edit real files in their own worktrees
+- [x] Let agents edit real files in their own worktrees
 - [ ] Let the harness launch actual training jobs from each worktree
 - [ ] Let the orchestrator read metrics from branch-specific outputs
 - [ ] Let the orchestrator create richer composed commits by combining selected agent commits
