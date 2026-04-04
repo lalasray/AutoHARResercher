@@ -11,6 +11,7 @@ class CandidateConfig:
     augmentation_strength: str
     learning_rate: float
     window_size: int
+    model_params: dict[str, float | int | str | bool] = field(default_factory=dict)
     data_params: dict[str, float | int | str | bool] = field(default_factory=dict)
     augmentation_params: dict[str, float | int | str] = field(default_factory=dict)
     notes: str = ""
@@ -37,6 +38,7 @@ class CandidateResult:
 class ModelProposal:
     model_name: str
     learning_rate: float
+    model_params: dict[str, float | int | str | bool] = field(default_factory=dict)
     notes: str = ""
     logic_expression: str = ""
     helper_code: str = ""
@@ -89,6 +91,7 @@ class RunOutputs:
 class ModelPlanHint:
     model_name: str
     learning_rate: float
+    model_params: dict[str, float | int | str | bool] = field(default_factory=dict)
     rationale: str = ""
     logic_expression: str = ""
     helper_code: str = ""

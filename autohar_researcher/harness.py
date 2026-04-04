@@ -22,7 +22,7 @@ class DummyHARHarness:
 
     def __init__(self) -> None:
         self._dataset: UCIHARDataset | None = None
-        self._evaluation_cache: dict[tuple[str, str, str, float, int], dict[str, object]] = {}
+        self._evaluation_cache: dict[tuple[object, ...], dict[str, object]] = {}
         self._torch = torch
 
     def evaluate(
@@ -39,7 +39,9 @@ class DummyHARHarness:
         experiment = experiment or self._load_experiment(Path(worktree_path))
         cache_key = (
             config.model_name,
+            json.dumps(config.model_params, sort_keys=True),
             config.preprocessing,
+            json.dumps(config.data_params, sort_keys=True),
             config.augmentation,
             config.augmentation_strength,
             json.dumps(config.augmentation_params, sort_keys=True),
@@ -69,6 +71,7 @@ class DummyHARHarness:
 
             model, training_report = self._train_model(
                 model_name=config.model_name,
+                model_params=config.model_params,
                 train_features=inner_train_features,
                 train_labels=inner_train_labels,
                 stop_features=stop_features,
@@ -117,7 +120,8 @@ class DummyHARHarness:
             f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
             f"{config.augmentation}:{config.augmentation_strength}, "
             f"lr={config.learning_rate}, window={config.window_size}, "
-            f"data_params={config.data_params}, aug_params={config.augmentation_params}"
+            f"model_params={config.model_params}, data_params={config.data_params}, "
+            f"aug_params={config.augmentation_params}"
         )
         details = dict(cached["details"])
         score_breakdown = {
@@ -391,6 +395,11 @@ class DummyHARHarness:
 
     def _extract_features(self, window: list[list[float]], config: CandidateConfig) -> list[float]:
         channels = len(window[0])
+        model_params = config.model_params
+        temporal_pool = str(model_params.get("temporal_pool", "avg"))
+        spectral_bins = max(2, int(model_params.get("spectral_bins", 6)))
+        use_interactions = bool(model_params.get("use_interactions", True))
+        use_multiscale = bool(model_params.get("use_multiscale", True))
         means = [sum(row[i] for row in window) / len(window) for i in range(channels)]
         stds = []
         energies = []
@@ -404,9 +413,11 @@ class DummyHARHarness:
                 / max(len(window) - 1, 1)
             )
 
-        multiscale = self._multiscale_features(window)
+        multiscale = self._multiscale_features(window) if use_multiscale else []
         saliency = self._saliency_features(window)
-        interactions = self._interaction_features(window)
+        interactions = self._interaction_features(window) if use_interactions else []
+        temporal = self._temporal_pool_features(window, temporal_pool)
+        spectral = self._spectral_features(window, spectral_bins)
 
         if config.model_name == "cnn":
             return means + stds + energies
@@ -419,18 +430,25 @@ class DummyHARHarness:
                 sum(window[i][c] for i in range(midpoint, len(window))) / max(len(window) - midpoint, 1)
                 for c in range(channels)
             ]
-            return means + stds + [second_half[i] - first_half[i] for i in range(channels)]
+            return means + stds + temporal + [second_half[i] - first_half[i] for i in range(channels)] + spectral[: channels]
         if config.model_name == "deepconvlstm":
-            return means + stds + energies + diffs + multiscale + interactions
+            return means + stds + energies + diffs + temporal + multiscale + interactions
         if config.model_name == "hart":
-            return means + stds + saliency + multiscale + interactions
+            return means + stds + saliency + temporal + multiscale + interactions + spectral[: channels]
         if config.model_name == "tinierhar":
-            return means + stds + saliency + interactions
-        return means + stds + energies + diffs
+            return means + stds + saliency + temporal + interactions
+        if config.model_name == "tinyhar":
+            return means + stds + temporal + spectral[: channels]
+        if config.model_name == "spectra":
+            return means + stds + spectral + diffs
+        if config.model_name == "cnn_gru":
+            return means + stds + energies + diffs + temporal + interactions
+        return means + stds + energies + diffs + temporal
 
     def _train_model(
         self,
         model_name: str,
+        model_params: dict[str, float | int | str | bool],
         train_features: list[list[float]],
         train_labels: list[int],
         stop_features: list[list[float]],
@@ -444,6 +462,7 @@ class DummyHARHarness:
         if self._torch is not None:
             return self._train_torch_model(
                 model_name=model_name,
+                model_params=model_params,
                 train_features=train_features,
                 train_labels=train_labels,
                 stop_features=stop_features,
@@ -454,8 +473,9 @@ class DummyHARHarness:
                 min_epochs=min_epochs,
                 device_preference=device_preference,
             )
-        if model_name in {"deepconvlstm", "hart", "tinierhar"}:
-            hidden_dim = 48 if model_name in {"deepconvlstm", "hart"} else 24
+        if model_name in {"deepconvlstm", "hart", "tinierhar", "tinyhar", "spectra"}:
+            hidden_dim = int(model_params.get("hidden_dim", 48 if model_name in {"deepconvlstm", "hart"} else 24))
+            depth = int(model_params.get("depth", 2 if model_name != "tinierhar" else 1))
             return self._train_mlp_model(
                 train_features=train_features,
                 train_labels=train_labels,
@@ -464,6 +484,7 @@ class DummyHARHarness:
                 learning_rate=learning_rate,
                 epochs=epochs,
                 hidden_dim=hidden_dim,
+                depth=depth,
                 patience=patience,
                 min_epochs=min_epochs,
             )
@@ -543,23 +564,30 @@ class DummyHARHarness:
         learning_rate: float,
         epochs: int,
         hidden_dim: int,
+        depth: int,
         patience: int,
         min_epochs: int,
     ) -> tuple[dict[str, object], dict[str, object]]:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         rng = random.Random(feature_dim + hidden_dim + epochs)
-        hidden = [
-            [rng.uniform(-0.05, 0.05) for _ in range(feature_dim + 1)]
-            for _ in range(hidden_dim)
-        ]
+        hidden_layers: list[list[list[float]]] = []
+        input_dim = feature_dim
+        for _ in range(max(1, depth)):
+            hidden_layers.append(
+                [
+                    [rng.uniform(-0.05, 0.05) for _ in range(input_dim + 1)]
+                    for _ in range(hidden_dim)
+                ]
+            )
+            input_dim = hidden_dim
         output = [
             [rng.uniform(-0.05, 0.05) for _ in range(hidden_dim + 1)]
             for _ in range(num_classes)
         ]
         scaled_lr = max(0.003, min(learning_rate * 60.0, 0.03))
         order = list(range(len(train_features)))
-        best_hidden = [row[:] for row in hidden]
+        best_hidden_layers = [[row[:] for row in layer] for layer in hidden_layers]
         best_output = [row[:] for row in output]
         best_score = float("-inf")
         best_epoch = 0
@@ -569,44 +597,67 @@ class DummyHARHarness:
             for sample_index in order:
                 features = train_features[sample_index]
                 label = train_labels[sample_index]
-                hidden_linear = [self._dot(weight, features) for weight in hidden]
-                hidden_state = [math.tanh(value) for value in hidden_linear]
+                layer_inputs = [features]
+                layer_states: list[list[float]] = []
+                for layer in hidden_layers:
+                    hidden_linear = [self._dot(weight, layer_inputs[-1]) for weight in layer]
+                    hidden_state = [math.tanh(value) for value in hidden_linear]
+                    layer_states.append(hidden_state)
+                    layer_inputs.append(hidden_state)
                 logits = [self._dot(weight, hidden_state) for weight in output]
                 probs = self._softmax(logits)
                 output_errors = [
                     probs[class_index] - (1.0 if class_index == label else 0.0)
                     for class_index in range(num_classes)
                 ]
-                hidden_errors = []
+                downstream_errors: list[list[float]] = []
+                last_hidden = layer_states[-1]
+                last_errors = []
                 for hidden_index in range(hidden_dim):
                     downstream = sum(
                         output[class_index][hidden_index] * output_errors[class_index]
                         for class_index in range(num_classes)
                     )
-                    hidden_errors.append((1.0 - (hidden_state[hidden_index] ** 2)) * downstream)
+                    last_errors.append((1.0 - (last_hidden[hidden_index] ** 2)) * downstream)
+                downstream_errors.append(last_errors)
                 for class_index in range(num_classes):
-                    for hidden_index, value in enumerate(hidden_state):
+                    for hidden_index, value in enumerate(last_hidden):
                         output[class_index][hidden_index] -= scaled_lr * output_errors[class_index] * value
                     output[class_index][-1] -= scaled_lr * output_errors[class_index]
-                for hidden_index in range(hidden_dim):
-                    for feature_index, value in enumerate(features):
-                        hidden[hidden_index][feature_index] -= scaled_lr * hidden_errors[hidden_index] * value
-                    hidden[hidden_index][-1] -= scaled_lr * hidden_errors[hidden_index]
-            stop_model = {"kind": "mlp", "hidden": hidden, "output": output}
+                for layer_index in range(len(hidden_layers) - 2, -1, -1):
+                    layer_state = layer_states[layer_index]
+                    next_layer = hidden_layers[layer_index + 1]
+                    next_errors = downstream_errors[0]
+                    current_errors = []
+                    for hidden_index in range(hidden_dim):
+                        downstream = sum(
+                            next_layer[next_index][hidden_index] * next_errors[next_index]
+                            for next_index in range(hidden_dim)
+                        )
+                        current_errors.append((1.0 - (layer_state[hidden_index] ** 2)) * downstream)
+                    downstream_errors.insert(0, current_errors)
+                for layer_index, layer in enumerate(hidden_layers):
+                    errors = downstream_errors[layer_index]
+                    inputs = layer_inputs[layer_index]
+                    for hidden_index in range(hidden_dim):
+                        for feature_index, value in enumerate(inputs):
+                            layer[hidden_index][feature_index] -= scaled_lr * errors[hidden_index] * value
+                        layer[hidden_index][-1] -= scaled_lr * errors[hidden_index]
+            stop_model = {"kind": "mlp", "hidden_layers": hidden_layers, "output": output}
             stop_predictions = [self._predict(stop_model, features) for features in stop_features]
             stop_score = self._macro_f1(stop_predictions, stop_labels)
             if stop_score > best_score:
                 best_score = stop_score
                 best_epoch = epoch + 1
                 stale_epochs = 0
-                best_hidden = [row[:] for row in hidden]
+                best_hidden_layers = [[row[:] for row in layer] for layer in hidden_layers]
                 best_output = [row[:] for row in output]
             else:
                 stale_epochs += 1
             if (epoch + 1) >= min_epochs and stale_epochs >= patience:
                 break
         return (
-            {"kind": "mlp", "hidden": best_hidden, "output": best_output},
+            {"kind": "mlp", "hidden_layers": best_hidden_layers, "output": best_output},
             {
                 "device": "cpu",
                 "epochs_trained": epoch + 1,
@@ -619,6 +670,7 @@ class DummyHARHarness:
     def _train_torch_model(
         self,
         model_name: str,
+        model_params: dict[str, float | int | str | bool],
         train_features: list[list[float]],
         train_labels: list[int],
         stop_features: list[list[float]],
@@ -633,13 +685,17 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         device = self._resolve_device(device_preference)
-        if model_name in {"deepconvlstm", "hart", "tinierhar"}:
-            hidden_dim = 64 if model_name in {"deepconvlstm", "hart"} else 32
-            module = self._torch.nn.Sequential(
-                self._torch.nn.Linear(feature_dim, hidden_dim),
-                self._torch.nn.ReLU(),
-                self._torch.nn.Linear(hidden_dim, num_classes),
-            )
+        if model_name in {"deepconvlstm", "hart", "tinierhar", "tinyhar", "spectra"}:
+            hidden_dim = int(model_params.get("hidden_dim", 64 if model_name in {"deepconvlstm", "hart"} else 32))
+            depth = max(1, int(model_params.get("depth", 2 if model_name != "tinierhar" else 1)))
+            layers: list[object] = []
+            input_dim = feature_dim
+            for _ in range(depth):
+                layers.append(self._torch.nn.Linear(input_dim, hidden_dim))
+                layers.append(self._torch.nn.ReLU())
+                input_dim = hidden_dim
+            layers.append(self._torch.nn.Linear(input_dim, num_classes))
+            module = self._torch.nn.Sequential(*layers)
         else:
             module = self._torch.nn.Linear(feature_dim, num_classes)
         module = module.to(device)
@@ -699,8 +755,10 @@ class DummyHARHarness:
                 tensor = self._torch.tensor(features, dtype=self._torch.float32).unsqueeze(0)
                 logits = model["module"](tensor).squeeze(0).tolist()
         else:
-            hidden = [math.tanh(self._dot(weight, features)) for weight in model["hidden"]]
-            logits = [self._dot(weight, hidden) for weight in model["output"]]
+            hidden_state = features
+            for layer in model["hidden_layers"]:
+                hidden_state = [math.tanh(self._dot(weight, hidden_state)) for weight in layer]
+            logits = [self._dot(weight, hidden_state) for weight in model["output"]]
         return max(range(len(logits)), key=lambda index: logits[index])
 
     def _parameter_count(self, model: dict[str, object]) -> int:
@@ -708,9 +766,10 @@ class DummyHARHarness:
             return len(model["weights"]) * len(model["weights"][0])
         if model["kind"] == "torch":
             return sum(parameter.numel() for parameter in model["module"].parameters())
-        hidden = model["hidden"]
+        hidden_layers = model["hidden_layers"]
         output = model["output"]
-        return (len(hidden) * len(hidden[0])) + (len(output) * len(output[0]))
+        hidden_params = sum(len(layer) * len(layer[0]) for layer in hidden_layers)
+        return hidden_params + (len(output) * len(output[0]))
 
     def _resolve_device(self, device_preference: str) -> str:
         if self._torch is None:
@@ -744,6 +803,41 @@ class DummyHARHarness:
                 stop_features.append(feature)
                 stop_labels.append(label)
         return train_features, train_labels, stop_features, stop_labels
+
+    def _temporal_pool_features(self, window: list[list[float]], mode: str) -> list[float]:
+        channels = len(window[0])
+        if mode == "last":
+            return window[-1][:]
+        midpoint = len(window) // 2
+        first_half = [
+            sum(window[i][c] for i in range(midpoint)) / max(midpoint, 1)
+            for c in range(channels)
+        ]
+        second_half = [
+            sum(window[i][c] for i in range(midpoint, len(window))) / max(len(window) - midpoint, 1)
+            for c in range(channels)
+        ]
+        if mode == "concat":
+            return first_half + second_half
+        return [0.5 * (first_half[c] + second_half[c]) for c in range(channels)]
+
+    def _spectral_features(self, window: list[list[float]], spectral_bins: int) -> list[float]:
+        channels = len(window[0])
+        bins = max(2, min(spectral_bins, max(2, len(window) // 8)))
+        features: list[float] = []
+        for channel in range(channels):
+            signal = [row[channel] for row in window]
+            channel_features: list[float] = []
+            for k in range(1, bins + 1):
+                real = 0.0
+                imag = 0.0
+                for index, value in enumerate(signal):
+                    angle = (2.0 * math.pi * k * index) / len(signal)
+                    real += value * math.cos(angle)
+                    imag -= value * math.sin(angle)
+                channel_features.append(math.sqrt((real * real) + (imag * imag)) / len(signal))
+            features.extend(channel_features)
+        return features
 
     def _multiscale_features(self, window: list[list[float]]) -> list[float]:
         channels = len(window[0])
@@ -871,6 +965,7 @@ class DummyHARHarness:
                 "summary": summary,
                 "config": {
                     "model_name": config.model_name,
+                    "model_params": config.model_params,
                     "preprocessing": config.preprocessing,
                     "data_params": config.data_params,
                     "augmentation": config.augmentation,
@@ -895,6 +990,7 @@ class DummyHARHarness:
             "kind": str(model["kind"]),
             "config": {
                 "model_name": config.model_name,
+                "model_params": config.model_params,
                 "preprocessing": config.preprocessing,
                 "data_params": config.data_params,
                 "augmentation": config.augmentation,
@@ -908,7 +1004,7 @@ class DummyHARHarness:
         if model["kind"] == "linear":
             payload["weights"] = model["weights"]
         elif model["kind"] == "mlp":
-            payload["hidden"] = model["hidden"]
+            payload["hidden_layers"] = model["hidden_layers"]
             payload["output"] = model["output"]
         elif model["kind"] == "torch":
             assert self._torch is not None

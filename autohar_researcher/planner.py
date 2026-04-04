@@ -171,14 +171,15 @@ class OpenAIPlanner:
         rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
         prompt = (
             "You are ModelAgent in an IMU HAR auto-research system.\n"
-            "You only control model_name and learning_rate.\n"
+            "You only control model_name, learning_rate, and model-side params.\n"
             "Propose one model-side mutation for this round.\n"
             "Do not change augmentation or data settings.\n\n"
             f"ModelAgent guide:\n{self.guides['model_agent']}\n\n"
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"ModelAgent local memory:\n{json.dumps(context['agent_memories']['model_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Use valid models from {deepconvlstm, hart, tinierhar, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "Use valid models from {deepconvlstm, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, and use_multiscale.\n"
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
@@ -189,7 +190,7 @@ class OpenAIPlanner:
             "Return only a float learning rate or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            "`{\"model\": {\"name\": ..., \"learning_rate\": ...}}`. Use exact keys `name` and `learning_rate`. "
+            "`{\"model\": {\"name\": ..., \"learning_rate\": ..., \"params\": {...}}}`. Use exact keys `name` and `learning_rate`. "
             "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
             "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned model updates. "
@@ -202,12 +203,32 @@ class OpenAIPlanner:
             "properties": {
                 "model_name": {"type": "string"},
                 "learning_rate": {"type": "number"},
+                "model_params": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "hidden_dim": {"type": "integer"},
+                        "depth": {"type": "integer"},
+                        "temporal_pool": {"type": "string"},
+                        "spectral_bins": {"type": "integer"},
+                        "use_interactions": {"type": "boolean"},
+                        "use_multiscale": {"type": "boolean"},
+                    },
+                    "required": [
+                        "hidden_dim",
+                        "depth",
+                        "temporal_pool",
+                        "spectral_bins",
+                        "use_interactions",
+                        "use_multiscale",
+                    ],
+                },
                 "rationale": {"type": "string"},
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
             },
-            "required": ["model_name", "learning_rate", "rationale", "logic_expression", "helper_code", "function_rewrite"],
+            "required": ["model_name", "learning_rate", "model_params", "rationale", "logic_expression", "helper_code", "function_rewrite"],
         }
         payload = self._call_json_schema(
             name="autohar_model_agent_plan",

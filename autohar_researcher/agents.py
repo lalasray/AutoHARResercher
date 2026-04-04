@@ -11,6 +11,7 @@ from autohar_researcher.experiment import (
     base_experiment_config,
     clone_experiment,
     compose_experiment_from_workspace,
+    default_model_params,
     experiment_to_candidate_config,
 )
 from autohar_researcher.git_runtime import GitRuntime
@@ -51,6 +52,8 @@ class ModelAgent:
         "deepconvlstm",
         "hart",
         "tinierhar",
+        "tinyhar",
+        "spectra",
         "cnn_gru",
         "cnn",
         "tiny_transformer",
@@ -71,6 +74,7 @@ class ModelAgent:
             return ModelProposal(
                 model_name=planner_hint.model_name,
                 learning_rate=planner_hint.learning_rate,
+                model_params=dict(planner_hint.model_params),
                 notes=f"LLM planner hint: {planner_hint.rationale}",
                 logic_expression=planner_hint.logic_expression,
                 helper_code=planner_hint.helper_code,
@@ -106,6 +110,7 @@ class ModelAgent:
         return ModelProposal(
             model_name=model_name,
             learning_rate=learning_rate,
+            model_params=default_model_params(model_name),
             notes=f"{note_prefix} Exploring {model_name} at lr={learning_rate}.",
             logic_expression="",
             helper_code="",

@@ -18,6 +18,42 @@ MODULE_FILENAMES = {
 }
 
 
+def default_model_params(name: str) -> dict[str, float | int | str | bool]:
+    params: dict[str, float | int | str | bool] = {
+        "hidden_dim": 64,
+        "depth": 2,
+        "temporal_pool": "avg",
+        "spectral_bins": 6,
+        "use_interactions": True,
+        "use_multiscale": True,
+    }
+    if name == "cnn":
+        params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})
+    elif name == "gru":
+        params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "last"})
+    elif name == "tiny_transformer":
+        params.update({"hidden_dim": 48, "depth": 2, "temporal_pool": "concat"})
+    elif name == "hart":
+        params.update({"hidden_dim": 72, "depth": 2, "temporal_pool": "concat"})
+    elif name == "tinierhar":
+        params.update({"hidden_dim": 32, "depth": 1, "temporal_pool": "avg", "use_multiscale": False})
+    elif name == "tinyhar":
+        params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "avg", "spectral_bins": 4})
+    elif name == "spectra":
+        params.update(
+            {
+                "hidden_dim": 56,
+                "depth": 2,
+                "temporal_pool": "concat",
+                "spectral_bins": 10,
+                "use_interactions": False,
+            }
+        )
+    elif name == "cnn_gru":
+        params.update({"hidden_dim": 56, "depth": 2, "temporal_pool": "last"})
+    return params
+
+
 def default_augmentation_params(name: str, strength: str) -> dict[str, float | int]:
     strength_key = strength if strength in {"weak", "medium", "strong"} else "medium"
     strength_scale = {
@@ -68,6 +104,7 @@ def base_experiment_config() -> dict[str, object]:
         "model": {
             "name": "deepconvlstm",
             "learning_rate": 3e-4,
+            "params": default_model_params("deepconvlstm"),
         },
         "data": {
             "preprocessing": "raw",
@@ -95,7 +132,7 @@ def module_relative_path(agent_name: str) -> Path:
 
 def module_owned_fields(agent_name: str) -> list[str]:
     return {
-        "model_agent": ["model.name", "model.learning_rate"],
+        "model_agent": ["model.name", "model.learning_rate", "model.params"],
         "augmentation_agent": ["augmentation.name", "augmentation.strength", "augmentation.params"],
         "data_agent": ["data.preprocessing", "data.window_size", "data.params"],
     }[agent_name]
@@ -109,6 +146,7 @@ def module_config_from_experiment(
         return {
             "name": experiment["model"]["name"],
             "learning_rate": experiment["model"]["learning_rate"],
+            "params": dict(experiment["model"].get("params", {})),
             "notes": experiment["model"].get("notes", ""),
         }
     if agent_name == "augmentation_agent":
@@ -192,7 +230,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    return dict(base_experiment.get("model", {}))\n\n'
             "def stable_model_families() -> list[str]:\n"
             '    """Return model families that are usually safe early choices."""\n'
-            '    return ["deepconvlstm", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tiny_transformer"]\n\n'
+            '    return ["deepconvlstm", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tinyhar", "spectra", "tiny_transformer"]\n\n'
             "def choose_target_name(requested_name: str, baseline_name: str) -> str:\n"
             '    """Prefer valid, stable model families and fall back safely."""\n'
             "    valid = stable_model_families()\n"
@@ -218,12 +256,40 @@ def _module_patch_builder(agent_name: str) -> str:
             "        upper = min(5e-3, baseline_lr * 1.5)\n"
             "        return max(lower, min(upper, requested_lr))\n"
             "    return max(1e-4, min(5e-3, requested_lr))\n\n"
+            "def default_model_params(target_name: str) -> dict[str, float | int | str | bool]:\n"
+            '    """Return concrete model-side parameters for the chosen family."""\n'
+            "    params = {\n"
+            '        "hidden_dim": 64,\n'
+            '        "depth": 2,\n'
+            '        "temporal_pool": "avg",\n'
+            '        "spectral_bins": 6,\n'
+            '        "use_interactions": True,\n'
+            '        "use_multiscale": True,\n'
+            "    }\n"
+            '    if target_name == "cnn":\n'
+            '        params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})\n'
+            '    elif target_name == "gru":\n'
+            '        params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "last"})\n'
+            '    elif target_name == "tiny_transformer":\n'
+            '        params.update({"hidden_dim": 48, "depth": 2, "temporal_pool": "concat"})\n'
+            '    elif target_name == "hart":\n'
+            '        params.update({"hidden_dim": 72, "depth": 2, "temporal_pool": "concat"})\n'
+            '    elif target_name == "tinierhar":\n'
+            '        params.update({"hidden_dim": 32, "depth": 1, "temporal_pool": "avg", "use_multiscale": False})\n'
+            '    elif target_name == "tinyhar":\n'
+            '        params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "avg", "spectral_bins": 4})\n'
+            '    elif target_name == "spectra":\n'
+            '        params.update({"hidden_dim": 56, "depth": 2, "temporal_pool": "concat", "spectral_bins": 10, "use_interactions": False})\n'
+            '    elif target_name == "cnn_gru":\n'
+            '        params.update({"hidden_dim": 56, "depth": 2, "temporal_pool": "last"})\n'
+            "    return params\n\n"
             "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
             '    """Describe the model-side mutation relative to baseline."""\n'
             "    baseline = current_model(base_experiment)\n"
             '    baseline_name = str(baseline.get("name", "deepconvlstm"))\n'
             '    baseline_lr = float(baseline.get("learning_rate", 3e-4))\n'
-            '    return f"baseline_model={baseline_name}, baseline_lr={baseline_lr}"\n\n'
+            '    baseline_params = dict(baseline.get("params", {}))\n'
+            '    return f"baseline_model={baseline_name}, baseline_lr={baseline_lr}, baseline_params={baseline_params}"\n\n'
             "def allowed_builtins() -> dict[str, object]:\n"
             '    """Return a small builtins set for LLM helper execution."""\n'
             "    return {\n"
@@ -320,10 +386,14 @@ def _module_patch_builder(agent_name: str) -> str:
             '    rewritten_lr = llm_bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr)\n'
             '    if rewritten_lr is not None:\n'
             '        proposed_lr = max(1e-4, min(5e-3, rewritten_lr))\n'
+            '    target_params = default_model_params(target_name)\n'
+            '    if isinstance(CONFIG.get("params"), dict):\n'
+            '        target_params.update(CONFIG["params"])\n'
             "    patch = {\n"
             '        "model": {\n'
             '            "name": target_name,\n'
             '            "learning_rate": proposed_lr,\n'
+            '            "params": target_params,\n'
             '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
             "        }\n"
             "    }\n"
@@ -331,6 +401,10 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if isinstance(adjustments.get("model"), dict):\n'
             '        if "model_name" in adjustments["model"] and "name" not in adjustments["model"]:\n'
             '            adjustments["model"]["name"] = adjustments["model"].pop("model_name")\n'
+            '        if isinstance(adjustments["model"].get("params"), dict):\n'
+            '            merged_params = dict(patch["model"].get("params", {}))\n'
+            '            merged_params.update(adjustments["model"]["params"])\n'
+            '            adjustments["model"]["params"] = merged_params\n'
             '        patch["model"].update(adjustments["model"])\n'
             "    return patch\n"
         )
@@ -490,6 +564,8 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if rewritten_strength is not None:\n'
             '        target_strength = rewritten_strength\n'
             '    target_params = default_augmentation_params(target_name, target_strength)\n'
+            '    if isinstance(CONFIG.get("params"), dict):\n'
+            '        target_params.update(CONFIG["params"])\n'
             "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
@@ -651,6 +727,8 @@ def _module_patch_builder(agent_name: str) -> str:
         '    if rewritten_window is not None:\n'
         '        target_window = nearest_valid_window(rewritten_window)\n'
         '    target_params = default_data_params(target_preprocessing, target_window)\n'
+        '    if isinstance(CONFIG.get("params"), dict):\n'
+        '        target_params.update(CONFIG["params"])\n'
         "    patch = {\n"
         '        "data": {\n'
         '            "preprocessing": target_preprocessing,\n'
@@ -705,6 +783,7 @@ def apply_module_python(
                 "model": {
                     "name": str(config["name"]),
                     "learning_rate": float(config["learning_rate"]),
+                    "params": dict(config.get("params", {})),
                     "notes": str(config.get("notes", "")),
                 }
             }
@@ -768,6 +847,7 @@ def apply_model_proposal(
     updated = clone_experiment(experiment)
     updated["model"]["name"] = proposal.model_name
     updated["model"]["learning_rate"] = proposal.learning_rate
+    updated["model"]["params"] = dict(proposal.model_params) if proposal.model_params else default_model_params(proposal.model_name)
     updated["model"]["notes"] = proposal.notes
     return updated
 
@@ -805,6 +885,7 @@ def apply_data_proposal(
 def experiment_to_candidate_config(experiment: dict[str, object], notes: str) -> CandidateConfig:
     return CandidateConfig(
         model_name=str(experiment["model"]["name"]),
+        model_params=dict(experiment["model"].get("params", {})),
         preprocessing=str(experiment["data"]["preprocessing"]),
         data_params=dict(experiment["data"].get("params", {})),
         augmentation=str(experiment["augmentation"]["name"]),
@@ -819,7 +900,10 @@ def experiment_to_candidate_config(experiment: dict[str, object], notes: str) ->
 def clone_experiment(experiment: dict[str, object]) -> dict[str, object]:
     return {
         "dataset": dict(experiment["dataset"]),
-        "model": dict(experiment["model"]),
+        "model": {
+            **dict(experiment["model"]),
+            "params": dict(experiment["model"].get("params", {})),
+        },
         "data": {
             **dict(experiment["data"]),
             "params": dict(experiment["data"].get("params", {})),

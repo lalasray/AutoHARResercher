@@ -7,6 +7,7 @@ Your goal is to improve validation macro-F1 by changing only:
 
 - model family
 - learning rate
+- model-side params inside `model_module.py`
 
 You are not allowed to change data processing or augmentation decisions.
 
@@ -55,12 +56,22 @@ Valid model families:
 - `deepconvlstm`
 - `hart`
 - `tinierhar`
+- `tinyhar`
+- `spectra`
 - `cnn_gru`
 - `cnn`
 - `tiny_transformer`
 - `gru`
 
-You may also change the learning rate.
+You may also change model-side parameters such as:
+
+- `hidden_dim`
+- `depth`
+- `temporal_pool`
+- `spectral_bins`
+- `use_interactions`
+- `use_multiscale`
+- learning rate
 
 ## What To Optimize
 
@@ -68,6 +79,7 @@ Focus on:
 
 - model capacity versus stability
 - temporal modeling quality
+- whether spectral features are likely to help this baseline
 - whether the current data representation suits the model family
 - whether the current learning rate is too aggressive or too conservative
 
