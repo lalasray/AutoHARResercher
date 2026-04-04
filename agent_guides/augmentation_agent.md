@@ -7,6 +7,7 @@ Your goal is to improve validation macro-F1 by changing only:
 
 - augmentation type
 - augmentation strength
+- augmentation parameterization inside `augmentation_module.py`
 
 You are not allowed to change the model family, learning rate, preprocessing, or window size.
 
@@ -80,6 +81,7 @@ Focus on:
 - robustness to orientation and small signal shifts
 - whether the current baseline benefits from augmentation at all
 - whether the current model/data context can tolerate stronger transforms
+- whether the actual augmentation parameters are too weak, too strong, or poorly shaped for the current context
 
 `none` is a valid proposal when augmentation appears harmful.
 
@@ -129,6 +131,7 @@ A good proposal:
 - respects current model/data context
 - explains why this augmentation should help robustness without overwhelming the signal
 - if helper code is used, it stays short, local, and only affects augmentation-side decisions
+- if parameterization changes are made, they stay plausible for the chosen augmentation family
 
 A bad proposal:
 

@@ -11,6 +11,7 @@ class CandidateConfig:
     augmentation_strength: str
     learning_rate: float
     window_size: int
+    augmentation_params: dict[str, float | int | str] = field(default_factory=dict)
     notes: str = ""
 
 

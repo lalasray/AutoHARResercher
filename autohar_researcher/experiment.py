@@ -18,6 +18,32 @@ MODULE_FILENAMES = {
 }
 
 
+def default_augmentation_params(name: str, strength: str) -> dict[str, float | int]:
+    strength_key = strength if strength in {"weak", "medium", "strong"} else "medium"
+    strength_scale = {
+        "weak": 0.5,
+        "medium": 1.0,
+        "strong": 1.5,
+    }[strength_key]
+    if name == "rotation":
+        return {"angle_deg": round(10.0 * strength_scale, 3)}
+    if name == "jitter":
+        return {"jitter_std": round(0.02 * strength_scale, 5)}
+    if name == "scaling":
+        return {"scale_span": round(0.10 * strength_scale, 5)}
+    if name == "time_warp":
+        return {"compression_ratio": round(max(0.7, 1.0 - (0.08 * strength_scale)), 5)}
+    if name == "permutation":
+        return {"segment_count": int(min(6, max(3, round(2 + (2 * strength_scale)))))}
+    if name == "drift":
+        return {"drift_max": round(0.015 * strength_scale, 5)}
+    if name == "magnitude_warp":
+        return {"warp_span": round(0.15 * strength_scale, 5)}
+    if name == "mixup":
+        return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}
+    return {}
+
+
 def base_experiment_config() -> dict[str, object]:
     return {
         "dataset": {
@@ -35,6 +61,7 @@ def base_experiment_config() -> dict[str, object]:
         "augmentation": {
             "name": "none",
             "strength": "medium",
+            "params": default_augmentation_params("none", "medium"),
         },
         "training": {
             "epochs": 12,
@@ -53,7 +80,7 @@ def module_relative_path(agent_name: str) -> Path:
 def module_owned_fields(agent_name: str) -> list[str]:
     return {
         "model_agent": ["model.name", "model.learning_rate"],
-        "augmentation_agent": ["augmentation.name", "augmentation.strength"],
+        "augmentation_agent": ["augmentation.name", "augmentation.strength", "augmentation.params"],
         "data_agent": ["data.preprocessing", "data.window_size"],
     }[agent_name]
 
@@ -72,6 +99,7 @@ def module_config_from_experiment(
         return {
             "name": experiment["augmentation"]["name"],
             "strength": experiment["augmentation"]["strength"],
+            "params": dict(experiment["augmentation"].get("params", {})),
             "notes": experiment["augmentation"].get("notes", ""),
         }
     return {
@@ -313,6 +341,27 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if target_name == "none":\n'
             '        return "medium"\n'
             '    return strength\n\n'
+            "def default_augmentation_params(target_name: str, target_strength: str) -> dict[str, float | int]:\n"
+            '    """Return concrete augmentation parameters for the chosen family and strength."""\n'
+            '    strength_key = target_strength if target_strength in {"weak", "medium", "strong"} else "medium"\n'
+            '    strength_scale = {"weak": 0.5, "medium": 1.0, "strong": 1.5}[strength_key]\n'
+            '    if target_name == "rotation":\n'
+            '        return {"angle_deg": round(10.0 * strength_scale, 3)}\n'
+            '    if target_name == "jitter":\n'
+            '        return {"jitter_std": round(0.02 * strength_scale, 5)}\n'
+            '    if target_name == "scaling":\n'
+            '        return {"scale_span": round(0.10 * strength_scale, 5)}\n'
+            '    if target_name == "time_warp":\n'
+            '        return {"compression_ratio": round(max(0.7, 1.0 - (0.08 * strength_scale)), 5)}\n'
+            '    if target_name == "permutation":\n'
+            '        return {"segment_count": int(min(6, max(3, round(2 + (2 * strength_scale)))))}\n'
+            '    if target_name == "drift":\n'
+            '        return {"drift_max": round(0.015 * strength_scale, 5)}\n'
+            '    if target_name == "magnitude_warp":\n'
+            '        return {"warp_span": round(0.15 * strength_scale, 5)}\n'
+            '    if target_name == "mixup":\n'
+            '        return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}\n'
+            '    return {}\n\n'
             "def compatibility_strength(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str:\n"
             '    """Downshift aggressive augmentation when the baseline context is fragile."""\n'
             '    strength = normalize_strength(target_name, requested_strength)\n'
@@ -328,7 +377,8 @@ def _module_patch_builder(agent_name: str) -> str:
             "    baseline = current_augmentation(base_experiment)\n"
             '    baseline_name = str(baseline.get("name", "none"))\n'
             '    baseline_strength = str(baseline.get("strength", "medium"))\n'
-            '    return f"baseline_augmentation={baseline_name}:{baseline_strength}"\n\n'
+            '    baseline_params = dict(baseline.get("params", {}))\n'
+            '    return f"baseline_augmentation={baseline_name}:{baseline_strength}, baseline_params={baseline_params}"\n\n'
             "def allowed_builtins() -> dict[str, object]:\n"
             '    """Return a small builtins set for LLM helper execution."""\n'
             "    return {\n"
@@ -422,10 +472,12 @@ def _module_patch_builder(agent_name: str) -> str:
             '    rewritten_strength = llm_compatibility_strength_override(base_experiment, target_name, target_strength)\n'
             '    if rewritten_strength is not None:\n'
             '        target_strength = rewritten_strength\n'
+            '    target_params = default_augmentation_params(target_name, target_strength)\n'
             "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
             '            "strength": target_strength,\n'
+            '            "params": target_params,\n'
             '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
             "        }\n"
             "    }\n"
@@ -433,6 +485,10 @@ def _module_patch_builder(agent_name: str) -> str:
             '    if isinstance(adjustments.get("augmentation"), dict):\n'
             '        if "type" in adjustments["augmentation"] and "name" not in adjustments["augmentation"]:\n'
             '            adjustments["augmentation"]["name"] = adjustments["augmentation"].pop("type")\n'
+            '        if isinstance(adjustments["augmentation"].get("params"), dict):\n'
+            '            merged_params = dict(patch["augmentation"].get("params", {}))\n'
+            '            merged_params.update(adjustments["augmentation"]["params"])\n'
+            '            adjustments["augmentation"]["params"] = merged_params\n'
             '        patch["augmentation"].update(adjustments["augmentation"])\n'
             "    return patch\n"
         )
@@ -619,6 +675,7 @@ def apply_module_python(
                 "augmentation": {
                     "name": str(config["name"]),
                     "strength": str(config["strength"]),
+                    "params": dict(config.get("params", {})),
                     "notes": str(config.get("notes", "")),
                 }
             }
@@ -683,6 +740,10 @@ def apply_augmentation_proposal(
     updated = clone_experiment(experiment)
     updated["augmentation"]["name"] = proposal.augmentation
     updated["augmentation"]["strength"] = proposal.strength
+    updated["augmentation"]["params"] = default_augmentation_params(
+        proposal.augmentation,
+        proposal.strength,
+    )
     updated["augmentation"]["notes"] = proposal.notes
     return updated
 
@@ -706,6 +767,7 @@ def experiment_to_candidate_config(experiment: dict[str, object], notes: str) ->
         augmentation_strength=str(experiment["augmentation"].get("strength", "medium")),
         learning_rate=float(experiment["model"]["learning_rate"]),
         window_size=int(experiment["data"]["window_size"]),
+        augmentation_params=dict(experiment["augmentation"].get("params", {})),
         notes=notes,
     )
 
@@ -715,6 +777,9 @@ def clone_experiment(experiment: dict[str, object]) -> dict[str, object]:
         "dataset": dict(experiment["dataset"]),
         "model": dict(experiment["model"]),
         "data": dict(experiment["data"]),
-        "augmentation": dict(experiment["augmentation"]),
+        "augmentation": {
+            **dict(experiment["augmentation"]),
+            "params": dict(experiment["augmentation"].get("params", {})),
+        },
         "training": dict(experiment["training"]),
     }

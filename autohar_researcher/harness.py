@@ -42,6 +42,7 @@ class DummyHARHarness:
             config.preprocessing,
             config.augmentation,
             config.augmentation_strength,
+            json.dumps(config.augmentation_params, sort_keys=True),
             float(config.learning_rate),
             int(config.window_size),
         )
@@ -115,7 +116,8 @@ class DummyHARHarness:
         summary = (
             f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
             f"{config.augmentation}:{config.augmentation_strength}, "
-            f"lr={config.learning_rate}, window={config.window_size}"
+            f"lr={config.learning_rate}, window={config.window_size}, "
+            f"aug_params={config.augmentation_params}"
         )
         details = dict(cached["details"])
         score_breakdown = {
@@ -201,6 +203,7 @@ class DummyHARHarness:
                 processed,
                 config.augmentation,
                 config.augmentation_strength,
+                config.augmentation_params,
                 rng=rng,
             )
         return processed
@@ -264,6 +267,7 @@ class DummyHARHarness:
         window: list[list[float]],
         mode: str,
         strength: str,
+        params: dict[str, float | int | str],
         rng: random.Random,
     ) -> list[list[float]]:
         augmented = [row[:] for row in window]
@@ -275,14 +279,15 @@ class DummyHARHarness:
         if mode == "none":
             return augmented
         if mode == "jitter":
-            radius = 0.02 * strength_scale
+            radius = float(params.get("jitter_std", 0.02 * strength_scale))
             return [[value + rng.uniform(-radius, radius) for value in row] for row in augmented]
         if mode == "scaling":
-            span = 0.1 * strength_scale
+            span = float(params.get("scale_span", 0.1 * strength_scale))
             scales = [rng.uniform(1.0 - span, 1.0 + span) for _ in range(len(augmented[0]))]
             return [[value * scales[index] for index, value in enumerate(row)] for row in augmented]
         if mode == "rotation":
-            angle = (math.pi / 18.0) * strength_scale
+            angle_deg = float(params.get("angle_deg", 10.0 * strength_scale))
+            angle = math.radians(angle_deg)
             cos_a = math.cos(angle)
             sin_a = math.sin(angle)
             rotated: list[list[float]] = []
@@ -302,7 +307,7 @@ class DummyHARHarness:
             return rotated
         if mode == "time_warp":
             warped = []
-            compression = max(0.7, 1.0 - (0.08 * strength_scale))
+            compression = float(params.get("compression_ratio", max(0.7, 1.0 - (0.08 * strength_scale))))
             for index in range(len(augmented)):
                 source_index = min(len(augmented) - 1, int(index * compression))
                 warped.append(augmented[source_index][:])
@@ -310,7 +315,7 @@ class DummyHARHarness:
         if mode == "permutation":
             if len(augmented) < 8:
                 return augmented
-            segment_count = min(6, max(3, int(round(2 + (2 * strength_scale)))))
+            segment_count = int(params.get("segment_count", min(6, max(3, int(round(2 + (2 * strength_scale)))))))
             segment_size = max(len(augmented) // segment_count, 1)
             segments = [
                 augmented[index : index + segment_size]
@@ -319,7 +324,7 @@ class DummyHARHarness:
             rng.shuffle(segments)
             return [row[:] for segment in segments for row in segment]
         if mode == "drift":
-            drift_radius = 0.015 * strength_scale
+            drift_radius = float(params.get("drift_max", 0.015 * strength_scale))
             drifts = [rng.uniform(-drift_radius, drift_radius) for _ in range(len(augmented[0]))]
             drifted: list[list[float]] = []
             for step, row in enumerate(augmented):
@@ -330,7 +335,7 @@ class DummyHARHarness:
             return drifted
         if mode == "magnitude_warp":
             anchors = [0.0, 0.33, 0.66, 1.0]
-            span = 0.15 * strength_scale
+            span = float(params.get("warp_span", 0.15 * strength_scale))
             knots = [rng.uniform(1.0 - span, 1.0 + span) for _ in anchors]
             warped: list[list[float]] = []
             for step, row in enumerate(augmented):
@@ -346,7 +351,7 @@ class DummyHARHarness:
                 warped.append([value * scale for value in row])
             return warped
         if mode == "mixup":
-            blend = min(0.45, 0.15 + (0.15 * strength_scale))
+            blend = float(params.get("blend", min(0.45, 0.15 + (0.15 * strength_scale))))
             mixed = []
             reversed_window = list(reversed(augmented))
             for left, right in zip(augmented, reversed_window):
@@ -839,6 +844,7 @@ class DummyHARHarness:
                     "preprocessing": config.preprocessing,
                     "augmentation": config.augmentation,
                     "augmentation_strength": config.augmentation_strength,
+                    "augmentation_params": config.augmentation_params,
                     "learning_rate": config.learning_rate,
                     "window_size": config.window_size,
                     "notes": config.notes,
@@ -861,6 +867,7 @@ class DummyHARHarness:
                 "preprocessing": config.preprocessing,
                 "augmentation": config.augmentation,
                 "augmentation_strength": config.augmentation_strength,
+                "augmentation_params": config.augmentation_params,
                 "learning_rate": config.learning_rate,
                 "window_size": config.window_size,
             },
