@@ -168,6 +168,7 @@ class OpenAIPlanner:
         context: dict[str, object],
         orchestrator_plan: dict[str, object],
     ) -> ModelPlanHint:
+        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
         prompt = (
             "You are ModelAgent in an IMU HAR auto-research system.\n"
             "You only control model_name and learning_rate.\n"
@@ -181,6 +182,11 @@ class OpenAIPlanner:
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            f"{rewrite_preference}"
+            "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
+            "`bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`. "
+            "Use this when you want to rewrite model learning-rate bounding logic itself inside the owned module. "
+            "Return only a float learning rate or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             "`{\"model\": {\"name\": ..., \"learning_rate\": ...}}`. Use exact keys `name` and `learning_rate`. "
@@ -199,8 +205,9 @@ class OpenAIPlanner:
                 "rationale": {"type": "string"},
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
+                "function_rewrite": {"type": "string"},
             },
-            "required": ["model_name", "learning_rate", "rationale", "logic_expression", "helper_code"],
+            "required": ["model_name", "learning_rate", "rationale", "logic_expression", "helper_code", "function_rewrite"],
         }
         payload = self._call_json_schema(
             name="autohar_model_agent_plan",
@@ -214,6 +221,7 @@ class OpenAIPlanner:
         context: dict[str, object],
         orchestrator_plan: dict[str, object],
     ) -> AugmentationPlanHint:
+        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
         prompt = (
             "You are AugmentationAgent in an IMU HAR auto-research system.\n"
             "You only control augmentation and strength.\n"
@@ -228,6 +236,7 @@ class OpenAIPlanner:
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            f"{rewrite_preference}"
             "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             "`compatibility_strength_override(base_experiment, target_name, requested_strength, config)`. "
             "Use this when you want to rewrite augmentation strength compatibility logic itself inside the owned module. "
@@ -266,6 +275,7 @@ class OpenAIPlanner:
         context: dict[str, object],
         orchestrator_plan: dict[str, object],
     ) -> DataPlanHint:
+        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
         prompt = (
             "You are DataAgent in an IMU HAR auto-research system.\n"
             "You only control preprocessing and window_size.\n"
@@ -280,6 +290,11 @@ class OpenAIPlanner:
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            f"{rewrite_preference}"
+            "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
+            "`choose_window_override(base_experiment, requested_window, config)`. "
+            "Use this when you want to rewrite data window-selection logic itself inside the owned module. "
+            "Return only an integer window size or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             "`{\"data\": {\"preprocessing\": ..., \"window_size\": ...}}`. Use exact keys `preprocessing` and `window_size`. "
@@ -298,8 +313,9 @@ class OpenAIPlanner:
                 "rationale": {"type": "string"},
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
+                "function_rewrite": {"type": "string"},
             },
-            "required": ["preprocessing", "window_size", "rationale", "logic_expression", "helper_code"],
+            "required": ["preprocessing", "window_size", "rationale", "logic_expression", "helper_code", "function_rewrite"],
         }
         payload = self._call_json_schema(
             name="autohar_data_agent_plan",
@@ -361,6 +377,16 @@ class OpenAIPlanner:
             "accepted_count": len(accepted_history),
             "recent_accept_plateau": plateau,
         }
+
+    def _rewrite_preference_note(self, round_id: int) -> str:
+        if round_id <= 1:
+            return (
+                "In round 1, bounded function rewrites are optional; prefer them only when they add real value.\n"
+            )
+        return (
+            "For round 2 and later, bounded `function_rewrite` is the preferred specialist path whenever the mutation depends on local reusable logic. "
+            "Leave it empty only if the proposal is truly a trivial direct override.\n"
+        )
 
     def _agent_memory_summary(
         self,

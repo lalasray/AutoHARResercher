@@ -38,6 +38,7 @@ class ModelProposal:
     notes: str = ""
     logic_expression: str = ""
     helper_code: str = ""
+    function_rewrite: str = ""
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,7 @@ class DataProposal:
     notes: str = ""
     logic_expression: str = ""
     helper_code: str = ""
+    function_rewrite: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ class ModelPlanHint:
     rationale: str = ""
     logic_expression: str = ""
     helper_code: str = ""
+    function_rewrite: str = ""
 
 
 @dataclass(frozen=True)
@@ -107,3 +110,4 @@ class DataPlanHint:
     rationale: str = ""
     logic_expression: str = ""
     helper_code: str = ""
+    function_rewrite: str = ""

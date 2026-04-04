@@ -38,6 +38,15 @@ Prefer helper code when the decision depends on:
 - conservative guardrails around window size or preprocessing mode
 - reusable local reasoning you would want to keep in the owned module
 
+For deeper code evolution, you may also rewrite exactly one bounded helper function inside your owned module:
+
+- `choose_window_override(base_experiment, requested_window, config)`
+
+Use that when you want to change the data window-selection logic itself rather than only propose a one-shot output. It must return only:
+
+- an integer window size
+- or `None` to fall back
+
 ## Allowed Search Space
 
 Valid preprocessing:

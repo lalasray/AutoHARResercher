@@ -209,6 +209,30 @@ def _module_patch_builder(agent_name: str) -> str:
             '    except Exception:\n'
             "        return {}\n"
             "    return namespace\n\n"
+            "def llm_function_namespace() -> dict[str, object]:\n"
+            '    """Load a bounded LLM function rewrite inside a constrained namespace."""\n'
+            '    if not LLM_FUNCTION_REWRITE:\n'
+            "        return {}\n"
+            '    namespace = {"__builtins__": allowed_builtins()}\n'
+            '    try:\n'
+            '        exec(LLM_FUNCTION_REWRITE, namespace, namespace)\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            "    return namespace\n\n"
+            "def llm_bounded_learning_rate_override(base_experiment: dict[str, object], target_name: str, baseline_name: str, baseline_lr: float, proposed_lr: float) -> float | None:\n"
+            '    """Run a bounded rewrite of LR bounding if provided."""\n'
+            "    namespace = llm_function_namespace()\n"
+            '    chooser = namespace.get("bounded_learning_rate_override")\n'
+            '    if not callable(chooser):\n'
+            "        return None\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = chooser(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)\n'
+            '    except Exception:\n'
+            "        return None\n"
+            '    if isinstance(result, (int, float)):\n'
+            '        return float(result)\n'
+            "    return None\n\n"
             "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
             "    namespace = llm_helper_namespace()\n"
@@ -248,6 +272,9 @@ def _module_patch_builder(agent_name: str) -> str:
             '    proposed_lr = float(CONFIG.get("learning_rate", baseline_lr))\n'
             '    proposed_lr *= compatibility_bias(base_experiment, target_name)\n'
             '    proposed_lr = bounded_learning_rate(target_name, baseline_name, baseline_lr, proposed_lr)\n'
+            '    rewritten_lr = llm_bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr)\n'
+            '    if rewritten_lr is not None:\n'
+            '        proposed_lr = max(1e-4, min(5e-3, rewritten_lr))\n'
             "    patch = {\n"
             '        "model": {\n'
             '            "name": target_name,\n'
@@ -472,6 +499,30 @@ def _module_patch_builder(agent_name: str) -> str:
         '    except Exception:\n'
         "        return {}\n"
         "    return namespace\n\n"
+        "def llm_function_namespace() -> dict[str, object]:\n"
+        '    """Load a bounded LLM function rewrite inside a constrained namespace."""\n'
+        '    if not LLM_FUNCTION_REWRITE:\n'
+        "        return {}\n"
+        '    namespace = {"__builtins__": allowed_builtins()}\n'
+        '    try:\n'
+        '        exec(LLM_FUNCTION_REWRITE, namespace, namespace)\n'
+        '    except Exception:\n'
+        "        return {}\n"
+        "    return namespace\n\n"
+        "def llm_choose_window_override(base_experiment: dict[str, object], requested_window: int) -> int | None:\n"
+        '    """Run a bounded rewrite of data window selection if provided."""\n'
+        "    namespace = llm_function_namespace()\n"
+        '    chooser = namespace.get("choose_window_override")\n'
+        '    if not callable(chooser):\n'
+        "        return None\n"
+        '    config = dict(CONFIG)\n'
+        '    try:\n'
+        '        result = chooser(base_experiment, requested_window, config)\n'
+        '    except Exception:\n'
+        "        return None\n"
+        '    if isinstance(result, int):\n'
+        "        return result\n"
+        "    return None\n\n"
         "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
         "    namespace = llm_helper_namespace()\n"
@@ -508,6 +559,9 @@ def _module_patch_builder(agent_name: str) -> str:
         '    target_preprocessing = choose_preprocessing(base_experiment, str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw"))))\n'
         '    requested_window = int(CONFIG.get("window_size", baseline_data.get("window_size", 128)))\n'
         '    target_window = choose_window(base_experiment, requested_window)\n'
+        '    rewritten_window = llm_choose_window_override(base_experiment, requested_window)\n'
+        '    if rewritten_window is not None:\n'
+        '        target_window = nearest_valid_window(rewritten_window)\n'
         "    patch = {\n"
         '        "data": {\n'
             '            "preprocessing": target_preprocessing,\n'

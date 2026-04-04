@@ -39,6 +39,15 @@ Prefer helper code when the decision depends on:
 - conservative guardrails around LR or family choice
 - reusable local reasoning you would want to keep in the owned module
 
+For deeper code evolution, you may also rewrite exactly one bounded helper function inside your owned module:
+
+- `bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`
+
+Use that when you want to change the learning-rate bounding logic itself rather than only propose a one-shot output. It must return only:
+
+- a float learning rate
+- or `None` to fall back
+
 ## Allowed Search Space
 
 Valid model families:

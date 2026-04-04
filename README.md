@@ -210,11 +210,15 @@ The intended split is:
 - it is executed through a narrow module-local entry point
 - it still cannot directly own another agent's file or section
 
-For the first bounded step into deeper code evolution, `AugmentationAgent` can now also rewrite one specific owned helper function:
+For the first bounded step into deeper code evolution, each specialist can now rewrite one specific owned helper function:
 
-- `compatibility_strength_override(base_experiment, target_name, requested_strength, config)`
+- `ModelAgent`: `bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`
+- `AugmentationAgent`: `compatibility_strength_override(base_experiment, target_name, requested_strength, config)`
+- `DataAgent`: `choose_window_override(base_experiment, requested_window, config)`
 
-That rewrite lives only inside `research/modules/augmentation_module.py`, is preserved in the agent branch, and is evaluated through the normal harness/promotion loop just like any other candidate.
+These rewrites live only inside the agent-owned module files, are preserved in the agent branches, and are evaluated through the normal harness/promotion loop just like any other candidate.
+
+From round 2 onward, bounded `function_rewrite` is now the preferred specialist path whenever the mutation depends on reusable local logic rather than a trivial direct override.
 
 This is the bridge between the current dummy prototype and a real Git-based system:
 

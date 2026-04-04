@@ -74,6 +74,7 @@ class ModelAgent:
                 notes=f"LLM planner hint: {planner_hint.rationale}",
                 logic_expression=planner_hint.logic_expression,
                 helper_code=planner_hint.helper_code,
+                function_rewrite=planner_hint.function_rewrite,
             )
         tried = {
             (result.config.model_name, round(result.config.learning_rate, 7))
@@ -108,6 +109,7 @@ class ModelAgent:
             notes=f"{note_prefix} Exploring {model_name} at lr={learning_rate}.",
             logic_expression="",
             helper_code="",
+            function_rewrite="",
         )
 
     def _pick_candidate(
@@ -295,6 +297,7 @@ class DataAgent:
                 notes=f"LLM planner hint: {planner_hint.rationale}",
                 logic_expression=planner_hint.logic_expression,
                 helper_code=planner_hint.helper_code,
+                function_rewrite=planner_hint.function_rewrite,
             )
         tried = {
             (result.config.preprocessing, int(result.config.window_size))
@@ -334,6 +337,7 @@ class DataAgent:
             notes=f"{note_prefix} Testing {preprocessing} with window={window_size}.",
             logic_expression="",
             helper_code="",
+            function_rewrite="",
         )
 
     def _rank_windows(self, base_window: int) -> list[int]:
@@ -747,6 +751,7 @@ class HierarchicalOrchestrator:
                         "rationale": planner_hints["model_agent"].rationale,
                         "logic_expression": planner_hints["model_agent"].logic_expression,
                         "helper_code": planner_hints["model_agent"].helper_code,
+                        "function_rewrite": planner_hints["model_agent"].function_rewrite,
                     }
                     if "model_agent" in planner_hints
                     else {}
@@ -770,6 +775,7 @@ class HierarchicalOrchestrator:
                         "rationale": planner_hints["data_agent"].rationale,
                         "logic_expression": planner_hints["data_agent"].logic_expression,
                         "helper_code": planner_hints["data_agent"].helper_code,
+                        "function_rewrite": planner_hints["data_agent"].function_rewrite,
                     }
                     if "data_agent" in planner_hints
                     else {}

@@ -151,15 +151,11 @@ class GitRuntime:
                     sync_from_branch=baseline_branch,
                     logic_expression=str(proposal.logic_expression),
                     helper_code=str(proposal.helper_code),
-                    function_rewrite=str(
-                        proposal.function_rewrite if isinstance(proposal, AugmentationProposal) else ""
-                    ),
+                    function_rewrite=str(proposal.function_rewrite),
                 )["config"],
                 "logic_expression": str(proposal.logic_expression),
                 "helper_code": str(proposal.helper_code),
-                "function_rewrite": str(
-                    proposal.function_rewrite if isinstance(proposal, AugmentationProposal) else ""
-                ),
+                "function_rewrite": str(proposal.function_rewrite),
             }
             module_abs = Path(workspace.worktree_path) / module_rel
             write_module_python(module_abs, payload)
