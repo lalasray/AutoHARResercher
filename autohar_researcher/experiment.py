@@ -130,60 +130,95 @@ def write_module_python(path: Path, payload: dict[str, object]) -> None:
 def _module_patch_builder(agent_name: str) -> str:
     if agent_name == "model_agent":
         return (
+            "def current_model(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+            '    """Return the current baseline model section."""\n'
+            '    return dict(base_experiment.get("model", {}))\n\n'
+            "def bounded_learning_rate(target_name: str, baseline_name: str, baseline_lr: float, requested_lr: float) -> float:\n"
+            '    """Keep LR changes conservative relative to the active baseline."""\n'
+            "    if target_name == baseline_name:\n"
+            "        lower = max(1e-4, baseline_lr * 0.5)\n"
+            "        upper = min(5e-3, baseline_lr * 1.5)\n"
+            "        return max(lower, min(upper, requested_lr))\n"
+            "    return max(1e-4, min(5e-3, requested_lr))\n\n"
+            "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
+            '    """Describe the model-side mutation relative to baseline."""\n'
+            "    baseline = current_model(base_experiment)\n"
+            '    baseline_name = str(baseline.get("name", "deepconvlstm"))\n'
+            '    baseline_lr = float(baseline.get("learning_rate", 3e-4))\n'
+            '    return f"baseline_model={baseline_name}, baseline_lr={baseline_lr}"\n\n'
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the model-only patch owned by ModelAgent."""\n'
-            '    baseline_model = dict(base_experiment.get("model", {}))\n'
+            '    baseline_model = current_model(base_experiment)\n'
             '    baseline_name = str(baseline_model.get("name", "deepconvlstm"))\n'
             '    baseline_lr = float(baseline_model.get("learning_rate", 3e-4))\n'
             '    target_name = str(CONFIG.get("name", baseline_name))\n'
             '    proposed_lr = float(CONFIG.get("learning_rate", baseline_lr))\n'
-            '    if target_name == baseline_name:\n'
-            '        lower = max(1e-4, baseline_lr * 0.5)\n'
-            '        upper = min(5e-3, baseline_lr * 1.5)\n'
-            '        proposed_lr = max(lower, min(upper, proposed_lr))\n'
-            '    else:\n'
-            '        proposed_lr = max(1e-4, min(5e-3, proposed_lr))\n'
+            '    proposed_lr = bounded_learning_rate(target_name, baseline_name, baseline_lr, proposed_lr)\n'
             "    return {\n"
             '        "model": {\n'
             '            "name": target_name,\n'
             '            "learning_rate": proposed_lr,\n'
-            '            "notes": str(CONFIG.get("notes", "")),\n'
+            '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
             "        }\n"
             "    }\n"
         )
     if agent_name == "augmentation_agent":
         return (
+            "def current_augmentation(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+            '    """Return the current baseline augmentation section."""\n'
+            '    return dict(base_experiment.get("augmentation", {}))\n\n'
+            "def normalize_strength(target_name: str, requested_strength: str) -> str:\n"
+            '    """Keep augmentation strength in the supported regime."""\n'
+            '    valid_strengths = {"weak", "medium", "strong"}\n'
+            '    strength = requested_strength if requested_strength in valid_strengths else "medium"\n'
+            '    if target_name == "none":\n'
+            '        return "medium"\n'
+            '    return strength\n\n'
+            "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
+            '    """Describe the augmentation-side mutation relative to baseline."""\n'
+            "    baseline = current_augmentation(base_experiment)\n"
+            '    baseline_name = str(baseline.get("name", "none"))\n'
+            '    baseline_strength = str(baseline.get("strength", "medium"))\n'
+            '    return f"baseline_augmentation={baseline_name}:{baseline_strength}"\n\n'
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the augmentation-only patch owned by AugmentationAgent."""\n'
-            '    baseline_aug = dict(base_experiment.get("augmentation", {}))\n'
+            '    baseline_aug = current_augmentation(base_experiment)\n'
             '    target_name = str(CONFIG.get("name", baseline_aug.get("name", "none")))\n'
             '    target_strength = str(CONFIG.get("strength", baseline_aug.get("strength", "medium")))\n'
-            '    valid_strengths = {"weak", "medium", "strong"}\n'
-            '    if target_strength not in valid_strengths:\n'
-            '        target_strength = "medium"\n'
-            '    if target_name == "none":\n'
-            '        target_strength = "medium"\n'
+            '    target_strength = normalize_strength(target_name, target_strength)\n'
             "    return {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
             '            "strength": target_strength,\n'
-            '            "notes": str(CONFIG.get("notes", "")),\n'
+            '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
             "        }\n"
             "    }\n"
         )
     return (
+        "def current_data(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+        '    """Return the current baseline data section."""\n'
+        '    return dict(base_experiment.get("data", {}))\n\n'
+        "def nearest_valid_window(requested_window: int) -> int:\n"
+        '    """Snap a requested window size to the supported search space."""\n'
+        "    valid_windows = [64, 96, 128, 192, 256]\n"
+        "    return min(valid_windows, key=lambda candidate: (abs(candidate - requested_window), candidate))\n\n"
+        "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
+        '    """Describe the data-side mutation relative to baseline."""\n'
+        "    baseline = current_data(base_experiment)\n"
+        '    baseline_pre = str(baseline.get("preprocessing", "raw"))\n'
+        '    baseline_window = int(baseline.get("window_size", 128))\n'
+        '    return f"baseline_data={baseline_pre}, baseline_window={baseline_window}"\n\n'
         "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Return the data-only patch owned by DataAgent."""\n'
-        '    baseline_data = dict(base_experiment.get("data", {}))\n'
+        '    baseline_data = current_data(base_experiment)\n'
         '    target_preprocessing = str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw")))\n'
         '    requested_window = int(CONFIG.get("window_size", baseline_data.get("window_size", 128)))\n'
-        '    valid_windows = [64, 96, 128, 192, 256]\n'
-        '    target_window = min(valid_windows, key=lambda candidate: (abs(candidate - requested_window), candidate))\n'
+        '    target_window = nearest_valid_window(requested_window)\n'
         "    return {\n"
         '        "data": {\n'
         '            "preprocessing": target_preprocessing,\n'
         '            "window_size": target_window,\n'
-        '            "notes": str(CONFIG.get("notes", "")),\n'
+        '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
         "        }\n"
         "    }\n"
     )

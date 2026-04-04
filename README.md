@@ -50,12 +50,24 @@ The agent relationship is intentionally asymmetric:
 - they share only the accepted baseline and evaluation metric
 - the `Orchestrator` is the coordination and memory layer that tracks results across all agents
 
-So the orchestrator is the only component with a global view of:
+Each specialist agent should still reason over a scoped history of its own search axis. For example:
+
+- `ModelAgent` should care about which model families and learning-rate mutations helped or hurt
+- `AugmentationAgent` should care about which augmentations and strengths helped or hurt in the current context
+- `DataAgent` should care about which preprocessing and window choices helped or hurt
+
+So the orchestrator is not the only component with memory. It is the only component with the full cross-agent global view of:
 
 - recent trials
 - accepted history
 - current best baseline
 - which kinds of proposals are helping or hurting
+- which combinations across model, augmentation, and data are compatible or conflicting
+
+A good mental model is:
+
+- each specialist agent has a strong local view over its own dimension
+- the orchestrator has the full system view over all dimensions and their combinations
 
 The orchestrator now uses a real OpenAI-based planner:
 
@@ -113,6 +125,10 @@ The proposal policy is now adaptive:
 Each round now materializes concrete files:
 
 - `artifacts/round_N/planner_decision.json`
+- `artifacts/round_N/baseline_sync.json`
+- `artifacts/round_N/agent_memories/model_agent.json`
+- `artifacts/round_N/agent_memories/augmentation_agent.json`
+- `artifacts/round_N/agent_memories/data_agent.json`
 - `artifacts/round_N/agent_proposals/model_agent.json`
 - `artifacts/round_N/agent_proposals/augmentation_agent.json`
 - `artifacts/round_N/agent_proposals/data_agent.json`
@@ -140,6 +156,20 @@ This is important because `results/orchestrator.json` is only the orchestrator c
 - augmentation-agent hint
 - data-agent hint
 
+The per-agent memory files are the easiest place to inspect each specialist agent's local view:
+
+- recent trials for that agent only
+- accepted history for that agent only
+- that agent's best trial so far
+- basic trial/accept counts for that search axis
+
+`baseline_sync.json` is the easiest file to inspect if you want to know how the accepted baseline was propagated before the next proposals:
+
+- which baseline branch was used
+- which workspaces were synced
+- which common module files were written into each branch
+- whether the sync created a new Git commit in that branch
+
 And in the Git materialized flow, each branch now owns explicit Python module files:
 
 - `research/modules/model_module.py`
@@ -153,7 +183,7 @@ Ownership is now strict at the file level:
 - `DataAgent` only proposes changes through `research/modules/data_module.py`
 - `orchestrator-main` composes those modules and writes the shared `research/experiment.json`
 
-Those module files are now executable Python modules, not just static payload holders. Each one exposes module metadata plus a `build_patch(base_experiment)` function that returns only the owned section update for that agent. The patch builder can inspect the incoming baseline and apply small safety/compatibility rules before returning its owned update.
+Those module files are now executable Python modules, not just static payload holders. Each one exposes module metadata plus a `build_patch(base_experiment)` function that returns only the owned section update for that agent. The patch builder can inspect the incoming baseline and apply small safety/compatibility rules before returning its owned update. Each generated module now also contains small helper functions, such as baseline summarizers and safe normalization utilities, so the owned file behaves more like a local strategy module instead of a pure config dump.
 
 This is the bridge between the current dummy prototype and a real Git-based system:
 

@@ -497,6 +497,7 @@ class HierarchicalOrchestrator:
             "planner_summary": planner_output.get("summary", ""),
             "planner_hints": planner_output.get("hints", {}),
             "orchestrator_plan": planner_output.get("orchestrator_plan", {}),
+            "agent_memories": planner_output.get("agent_memories", {}),
         }
 
     def plan_git_actions(
@@ -716,6 +717,7 @@ class HierarchicalOrchestrator:
         proposal_dir = round_dir / "agent_proposals"
         proposal_artifacts: dict[str, str] = {}
         planner_hints = round_plan.get("planner_hints", {})
+        agent_memories = round_plan.get("agent_memories", {})
         planner_payload = {
             "round_id": round_id,
             "planner_name": round_plan.get("planner_name", ""),
@@ -754,6 +756,11 @@ class HierarchicalOrchestrator:
             },
         }
         planner_artifact = write_json_artifact(round_dir / "planner_decision.json", planner_payload)
+        memory_dir = round_dir / "agent_memories"
+        memory_artifacts = {
+            agent_name: write_json_artifact(memory_dir / f"{agent_name}.json", memory_payload)
+            for agent_name, memory_payload in agent_memories.items()
+        }
 
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
@@ -799,6 +806,7 @@ class HierarchicalOrchestrator:
         return RoundState(
             round_id=round_id,
             planner_artifact=planner_artifact,
+            memory_artifacts=memory_artifacts,
             proposal_artifacts=proposal_artifacts,
             composed_artifact=composed_artifact,
             orchestrator_branch=self.orchestrator_workspace.branch_name,

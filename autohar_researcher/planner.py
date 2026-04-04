@@ -62,12 +62,14 @@ class OpenAIPlanner:
             "augmentation_agent": self._plan_augmentation_agent(context, orchestrator_plan),
             "data_agent": self._plan_data_agent(context, orchestrator_plan),
         }
+        agent_memories = context["agent_memories"]
         return {
             "planner": self.name,
             "model": self.model,
             "summary": orchestrator_plan["summary"],
             "hints": hints,
             "orchestrator_plan": orchestrator_plan,
+            "agent_memories": agent_memories,
         }
 
     def _shared_context(
@@ -114,6 +116,11 @@ class OpenAIPlanner:
             "trend_summary": trend_summary,
             "recent_trials": recent_trials,
             "accepted_history": accepted,
+            "agent_memories": {
+                "model_agent": self._agent_memory_summary("model_agent", history, accepted_history),
+                "augmentation_agent": self._agent_memory_summary("augmentation_agent", history, accepted_history),
+                "data_agent": self._agent_memory_summary("data_agent", history, accepted_history),
+            },
         }
 
     def _plan_orchestrator(self, context: dict[str, object]) -> dict[str, object]:
@@ -168,6 +175,7 @@ class OpenAIPlanner:
             "Do not change augmentation or data settings.\n\n"
             f"ModelAgent guide:\n{self.guides['model_agent']}\n\n"
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"ModelAgent local memory:\n{json.dumps(context['agent_memories']['model_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
             "Use valid models from {deepconvlstm, hart, tinierhar, cnn_gru, cnn, tiny_transformer, gru}.\n"
             "Keep the rationale short and trend-aware.\n"
@@ -201,6 +209,7 @@ class OpenAIPlanner:
             "Do not change model or data settings.\n\n"
             f"AugmentationAgent guide:\n{self.guides['augmentation_agent']}\n\n"
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"AugmentationAgent local memory:\n{json.dumps(context['agent_memories']['augmentation_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
             "Use valid augmentations from {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}.\n"
             "Use valid strengths from {weak, medium, strong}.\n"
@@ -235,6 +244,7 @@ class OpenAIPlanner:
             "Do not change model or augmentation settings.\n\n"
             f"DataAgent guide:\n{self.guides['data_agent']}\n\n"
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"DataAgent local memory:\n{json.dumps(context['agent_memories']['data_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
             "Use valid preprocessing from {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}.\n"
             "Use valid window sizes from {64, 96, 128, 192, 256}.\n"
@@ -309,6 +319,50 @@ class OpenAIPlanner:
             "recent_avg_by_agent": avg_by_agent,
             "accepted_count": len(accepted_history),
             "recent_accept_plateau": plateau,
+        }
+
+    def _agent_memory_summary(
+        self,
+        agent_name: str,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> dict[str, object]:
+        scoped_history = [result for result in history if result.agent_name == agent_name]
+        accepted_scoped = [result for result in accepted_history if result.agent_name == agent_name]
+        recent_trials = [
+            {
+                "round_id": result.round_id,
+                "score": round(result.val_score, 4),
+                "config": asdict(result.config),
+                "summary": result.summary,
+            }
+            for result in scoped_history[-6:]
+        ]
+        accepted = [
+            {
+                "round_id": result.round_id,
+                "score": round(result.val_score, 4),
+                "config": asdict(result.config),
+                "summary": result.summary,
+            }
+            for result in accepted_scoped[-4:]
+        ]
+        best_trial = None
+        if scoped_history:
+            best = max(scoped_history, key=lambda result: result.val_score)
+            best_trial = {
+                "round_id": best.round_id,
+                "score": round(best.val_score, 4),
+                "config": asdict(best.config),
+                "summary": best.summary,
+            }
+        return {
+            "agent_name": agent_name,
+            "recent_trials": recent_trials,
+            "accepted_history": accepted,
+            "best_trial": best_trial,
+            "trial_count": len(scoped_history),
+            "accepted_count": len(accepted_scoped),
         }
 
 

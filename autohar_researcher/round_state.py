@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 class RoundState:
     round_id: int
     planner_artifact: str = ""
+    sync_artifact: str = ""
+    memory_artifacts: dict[str, str] = field(default_factory=dict)
     proposal_artifacts: dict[str, str] = field(default_factory=dict)
     composed_artifact: str = ""
     promotion_artifact: str = ""

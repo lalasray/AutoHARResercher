@@ -55,6 +55,11 @@ class GitRuntime:
     ) -> RoundState:
         self.bootstrap_agent_workspaces(workspaces)
         round_state.baseline_branch = baseline_branch
+        sync_report: dict[str, object] = {
+            "round_id": round_id,
+            "baseline_branch": baseline_branch,
+            "synced_workspaces": {},
+        }
         baseline_experiment = self._load_baseline_experiment(
             baseline_branch=baseline_branch,
             orchestrator_worktree=Path(round_state.orchestrator_worktree),
@@ -85,6 +90,9 @@ class GitRuntime:
             }
             experiment_abs = Path(workspace.worktree_path) / experiment_rel
             self.write_json(experiment_abs, sync_payload)
+            workspace_sync_paths: dict[str, str] = {
+                "experiment": str(experiment_abs),
+            }
             for sync_agent_name in workspaces:
                 sync_module_abs = Path(workspace.worktree_path) / module_relative_path(sync_agent_name)
                 write_module_python(
@@ -97,11 +105,18 @@ class GitRuntime:
                         sync_from_branch=baseline_branch,
                     ),
                 )
+                workspace_sync_paths[sync_agent_name] = str(sync_module_abs)
             sync_committed = self.commit_paths_if_changed(
                 worktree=Path(workspace.worktree_path),
                 rel_paths=[experiment_rel, *[module_relative_path(name) for name in workspaces]],
                 message=f"round {round_id}: sync from {baseline_branch}",
             )
+            sync_report["synced_workspaces"][agent_name] = {
+                "branch_name": workspace.branch_name,
+                "worktree_path": workspace.worktree_path,
+                "paths": workspace_sync_paths,
+                "committed_sync": sync_committed,
+            }
             if sync_committed:
                 round_state.synced_branches.append(workspace.branch_name)
                 if auto_push_non_main:
@@ -184,6 +199,11 @@ class GitRuntime:
         if auto_push_non_main and committed and orchestrator_branch != "main":
             self.push_branch(orchestrator_branch, cwd=orchestrator_worktree)
             round_state.pushed_branches.append(orchestrator_branch)
+        round_dir = self.repo_root / "artifacts" / f"round_{round_id}"
+        round_dir.mkdir(parents=True, exist_ok=True)
+        sync_artifact = round_dir / "baseline_sync.json"
+        self.write_json(sync_artifact, sync_report)
+        round_state.sync_artifact = str(sync_artifact)
         return round_state
 
     def ensure_branch(self, branch_name: str, start_point: str) -> None:
