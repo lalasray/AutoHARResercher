@@ -399,7 +399,12 @@ class HierarchicalOrchestrator:
     ) -> dict[str, object]:
         if resume:
             history, accepted_history = self._load_round_history()
-            best_result = None if not accepted_history else self._clone_result(accepted_history[-1])
+            if accepted_history:
+                best_result = self._clone_result(accepted_history[-1])
+            elif history:
+                best_result = self._clone_result(max(history, key=lambda item: item.val_score))
+            else:
+                best_result = None
             best_by_agent = self._best_by_agent_from_history(history)
             start_round = (max((result.round_id for result in history), default=0) + 1)
         else:
@@ -459,7 +464,10 @@ class HierarchicalOrchestrator:
             if best_result is None:
                 best_result = round_best
 
-        assert best_result is not None
+        if best_result is None:
+            raise RuntimeError(
+                "No best result is available. Run at least one round, or use --resume only when completed round artifacts exist."
+            )
         actions.extend(self.finalize_actions(best_result=best_result))
         run_outputs = self._write_run_outputs(history, accepted_history)
         return {
