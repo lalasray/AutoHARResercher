@@ -258,6 +258,42 @@ The orchestrator does not need to "be" a branch. It is better thought of as a co
 - creates or tracks the agent branches
 - creates one worktree per agent
 - tells each agent when to make its aspect-specific change
+
+## Running From Terminal
+
+The simplest way to run the project is:
+
+```bash
+cd /home/lala/Documents/GitHub/AutoHARResercher
+./run_autohar.sh
+```
+
+By default that runs:
+
+- `5` rounds
+- with Git materialization enabled
+- without auto-pushing branches
+
+You can override the defaults with environment variables:
+
+```bash
+AUTOHAR_ROUNDS=50 ./run_autohar.sh
+AUTOHAR_ROUNDS=10 AUTOHAR_MATERIALIZE_GIT=0 ./run_autohar.sh
+AUTOHAR_ROUNDS=10 AUTOHAR_AUTO_PUSH_NON_MAIN=1 ./run_autohar.sh
+```
+
+You can also pass extra CLI flags through directly:
+
+```bash
+./run_autohar.sh --materialize-git
+./run_autohar.sh --rounds 20 --materialize-git --auto-push-non-main
+```
+
+If you prefer not to use the helper script, the direct command is:
+
+```bash
+python3 -m autohar_researcher.main --rounds 5 --materialize-git
+```
 - keeps one persistent orchestrator branch and adds one commit per round
 - runs the harness on the latest orchestrator commit
 - selects the best branch to merge back into `main`
