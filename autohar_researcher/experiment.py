@@ -878,6 +878,8 @@ def apply_module_python(
 def compose_experiment_from_workspace(
     worktree_path: Path,
     fallback_experiment: dict[str, object] | None = None,
+    *,
+    apply_modules: bool = True,
 ) -> dict[str, object]:
     experiment_path = worktree_path / "research" / "experiment.json"
     if experiment_path.exists():
@@ -890,6 +892,9 @@ def compose_experiment_from_workspace(
         experiment = clone_experiment(fallback_experiment)
     else:
         experiment = base_experiment_config()
+
+    if not apply_modules:
+        return experiment
 
     for agent_name in MODULE_FILENAMES:
         module_path = worktree_path / module_relative_path(agent_name)

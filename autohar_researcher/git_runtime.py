@@ -290,6 +290,7 @@ class GitRuntime:
             return compose_experiment_from_workspace(
                 orchestrator_worktree,
                 fallback_experiment=base_experiment_config(),
+                apply_modules=False,
             )
         else:
             branch_directory = baseline_branch.replace("agent-", "").replace("-main", "")
@@ -303,6 +304,7 @@ class GitRuntime:
             return compose_experiment_from_workspace(
                 branch_worktree,
                 fallback_experiment=base_experiment_config(),
+                apply_modules=False,
             )
 
     def _load_baseline_module_payloads(

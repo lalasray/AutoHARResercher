@@ -970,6 +970,7 @@ class HierarchicalOrchestrator:
         return compose_experiment_from_workspace(
             Path(workspace.worktree_path),
             fallback_experiment=base_experiment_config(),
+            apply_modules=False,
         )
 
     def _compose_experiment_from_proposals(
