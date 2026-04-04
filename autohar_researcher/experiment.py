@@ -132,11 +132,21 @@ def _module_patch_builder(agent_name: str) -> str:
         return (
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the model-only patch owned by ModelAgent."""\n'
-            "    del base_experiment\n"
+            '    baseline_model = dict(base_experiment.get("model", {}))\n'
+            '    baseline_name = str(baseline_model.get("name", "deepconvlstm"))\n'
+            '    baseline_lr = float(baseline_model.get("learning_rate", 3e-4))\n'
+            '    target_name = str(CONFIG.get("name", baseline_name))\n'
+            '    proposed_lr = float(CONFIG.get("learning_rate", baseline_lr))\n'
+            '    if target_name == baseline_name:\n'
+            '        lower = max(1e-4, baseline_lr * 0.5)\n'
+            '        upper = min(5e-3, baseline_lr * 1.5)\n'
+            '        proposed_lr = max(lower, min(upper, proposed_lr))\n'
+            '    else:\n'
+            '        proposed_lr = max(1e-4, min(5e-3, proposed_lr))\n'
             "    return {\n"
             '        "model": {\n'
-            '            "name": str(CONFIG["name"]),\n'
-            '            "learning_rate": float(CONFIG["learning_rate"]),\n'
+            '            "name": target_name,\n'
+            '            "learning_rate": proposed_lr,\n'
             '            "notes": str(CONFIG.get("notes", "")),\n'
             "        }\n"
             "    }\n"
@@ -145,11 +155,18 @@ def _module_patch_builder(agent_name: str) -> str:
         return (
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the augmentation-only patch owned by AugmentationAgent."""\n'
-            "    del base_experiment\n"
+            '    baseline_aug = dict(base_experiment.get("augmentation", {}))\n'
+            '    target_name = str(CONFIG.get("name", baseline_aug.get("name", "none")))\n'
+            '    target_strength = str(CONFIG.get("strength", baseline_aug.get("strength", "medium")))\n'
+            '    valid_strengths = {"weak", "medium", "strong"}\n'
+            '    if target_strength not in valid_strengths:\n'
+            '        target_strength = "medium"\n'
+            '    if target_name == "none":\n'
+            '        target_strength = "medium"\n'
             "    return {\n"
             '        "augmentation": {\n'
-            '            "name": str(CONFIG["name"]),\n'
-            '            "strength": str(CONFIG["strength"]),\n'
+            '            "name": target_name,\n'
+            '            "strength": target_strength,\n'
             '            "notes": str(CONFIG.get("notes", "")),\n'
             "        }\n"
             "    }\n"
@@ -157,11 +174,15 @@ def _module_patch_builder(agent_name: str) -> str:
     return (
         "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Return the data-only patch owned by DataAgent."""\n'
-        "    del base_experiment\n"
+        '    baseline_data = dict(base_experiment.get("data", {}))\n'
+        '    target_preprocessing = str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw")))\n'
+        '    requested_window = int(CONFIG.get("window_size", baseline_data.get("window_size", 128)))\n'
+        '    valid_windows = [64, 96, 128, 192, 256]\n'
+        '    target_window = min(valid_windows, key=lambda candidate: (abs(candidate - requested_window), candidate))\n'
         "    return {\n"
         '        "data": {\n'
-        '            "preprocessing": str(CONFIG["preprocessing"]),\n'
-        '            "window_size": int(CONFIG["window_size"]),\n'
+        '            "preprocessing": target_preprocessing,\n'
+        '            "window_size": target_window,\n'
         '            "notes": str(CONFIG.get("notes", "")),\n'
         "        }\n"
         "    }\n"
