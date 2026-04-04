@@ -31,6 +31,13 @@ That helper code must stay model-scoped and should expose:
 - `llm_choose_patch(base_experiment, config)`
 
 It must return only `{"model": ...}` updates.
+Use `logic_expression` only for trivial one-shot overrides.
+Prefer helper code when the decision depends on:
+
+- baseline-dependent branching
+- compatibility with current data or augmentation context
+- conservative guardrails around LR or family choice
+- reusable local reasoning you would want to keep in the owned module
 
 ## Allowed Search Space
 

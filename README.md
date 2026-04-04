@@ -194,6 +194,11 @@ The specialist LLM now has two ways to influence owned-module behavior:
 - `logic_expression`: a small expression or lambda for simple owned-section overrides
 - `helper_code`: a larger helper block that can define local utilities plus `llm_choose_patch(base_experiment, config)`
 
+The intended split is:
+
+- use `logic_expression` for trivial direct overrides
+- prefer `helper_code` when the mutation depends on baseline context, compatibility, guardrails, or reusable local decision logic
+
 `helper_code` is the current bridge from config-guided modules toward true code-evolving modules:
 
 - it lives only inside the agent's owned Python file

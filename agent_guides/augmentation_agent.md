@@ -30,6 +30,13 @@ That helper code must stay augmentation-scoped and should expose:
 - `llm_choose_patch(base_experiment, config)`
 
 It must return only `{"augmentation": ...}` updates.
+Use `logic_expression` only for trivial one-shot overrides.
+Prefer helper code when the decision depends on:
+
+- baseline-dependent branching
+- compatibility with the current model or preprocessing context
+- conservative guardrails around augmentation strength
+- reusable local reasoning you would want to keep in the owned module
 
 ## Allowed Search Space
 
