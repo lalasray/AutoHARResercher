@@ -133,6 +133,7 @@ The proposal policy is now adaptive:
 - from round 2 onward, model-side parameter proposals are nudged toward `model_params_override(...)` so family/context compatibility evolves through bounded rewrites more often
 - the augmentation module now supports bounded LLM rewrites for both strength compatibility and augmentation-parameter compatibility inside the owned file
 - the data module now supports bounded LLM rewrites for both window compatibility and data-parameter compatibility inside the owned file
+- the orchestrator planner now receives explicit cross-agent combination memory so it can reason about which single-agent, pairwise, and three-way mixes have recently helped or conflicted
 
 ## Round Artifacts
 

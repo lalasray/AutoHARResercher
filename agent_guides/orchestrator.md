@@ -20,6 +20,7 @@ You are the only role that should think globally across:
 - recent trials
 - accepted promotions
 - compatibility between agents
+- which pairwise or three-way combinations are helping or conflicting
 - exploitation versus exploration
 - whether the search is improving or plateauing
 
@@ -54,6 +55,7 @@ Your plan should help the system answer:
 - which axis is most likely to improve next
 - which axis is risky right now
 - whether combinations are likely to help or interfere
+- whether a strong single-agent branch should stay isolated instead of being forced into composition
 
 ## Promotion Policy
 

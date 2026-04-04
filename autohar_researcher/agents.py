@@ -522,6 +522,7 @@ class HierarchicalOrchestrator:
             "planner_hints": planner_output.get("hints", {}),
             "orchestrator_plan": planner_output.get("orchestrator_plan", {}),
             "agent_memories": planner_output.get("agent_memories", {}),
+            "combination_memory": planner_output.get("combination_memory", {}),
         }
 
     def plan_git_actions(
@@ -742,6 +743,7 @@ class HierarchicalOrchestrator:
         proposal_artifacts: dict[str, str] = {}
         planner_hints = round_plan.get("planner_hints", {})
         agent_memories = round_plan.get("agent_memories", {})
+        combination_memory = round_plan.get("combination_memory", {})
         planner_payload = {
             "round_id": round_id,
             "planner_name": round_plan.get("planner_name", ""),
@@ -749,6 +751,7 @@ class HierarchicalOrchestrator:
             "baseline_branch": round_plan.get("baseline_branch", ""),
             "best_score": round_plan.get("best_score"),
             "orchestrator_plan": round_plan.get("orchestrator_plan", {}),
+            "combination_memory": combination_memory,
             "planner_hints": {
                 "model_agent": (
                     {

@@ -70,6 +70,7 @@ class OpenAIPlanner:
             "hints": hints,
             "orchestrator_plan": orchestrator_plan,
             "agent_memories": agent_memories,
+            "combination_memory": context["combination_memory"],
         }
 
     def _shared_context(
@@ -116,6 +117,7 @@ class OpenAIPlanner:
             "trend_summary": trend_summary,
             "recent_trials": recent_trials,
             "accepted_history": accepted,
+            "combination_memory": self._combination_memory_summary(history, accepted_history),
             "agent_memories": {
                 "model_agent": self._agent_memory_summary("model_agent", history, accepted_history),
                 "augmentation_agent": self._agent_memory_summary("augmentation_agent", history, accepted_history),
@@ -133,6 +135,7 @@ class OpenAIPlanner:
             "Return a concise JSON strategy for this round.\n"
             "The accepted baseline should only be replaced if a candidate scores better.\n"
             "Use valid focus values from {model, augmentation, data, combination, exploit, explore, stability}.\n"
+            "Use the combination_memory to reason explicitly about which single-agent, pairwise, or broader combinations are helping or conflicting.\n"
         )
         schema = {
             "type": "object",
@@ -435,6 +438,94 @@ class OpenAIPlanner:
             "recent_avg_by_agent": avg_by_agent,
             "accepted_count": len(accepted_history),
             "recent_accept_plateau": plateau,
+        }
+
+    def _combination_memory_summary(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> dict[str, object]:
+        labels = [
+            "model_agent",
+            "augmentation_agent",
+            "data_agent",
+            "model+augmentation",
+            "model+data",
+            "augmentation+data",
+            "model+augmentation+data",
+        ]
+        by_label: dict[str, list[float]] = {label: [] for label in labels}
+        accepted_by_label: dict[str, list[float]] = {label: [] for label in labels}
+        synergy_records: list[dict[str, object]] = []
+        round_groups: dict[int, list[CandidateResult]] = {}
+        for result in history:
+            round_groups.setdefault(result.round_id, []).append(result)
+            if result.agent_name == "orchestrator":
+                label = str(result.artifact_paths.get("selected_combination", "model+augmentation+data"))
+            else:
+                label = result.agent_name
+            if label in by_label:
+                by_label[label].append(result.val_score)
+        for result in accepted_history:
+            if result.agent_name == "orchestrator":
+                label = str(result.artifact_paths.get("selected_combination", "model+augmentation+data"))
+            else:
+                label = result.agent_name
+            if label in accepted_by_label:
+                accepted_by_label[label].append(result.val_score)
+        included_map = {
+            "model+augmentation": ["model_agent", "augmentation_agent"],
+            "model+data": ["model_agent", "data_agent"],
+            "augmentation+data": ["augmentation_agent", "data_agent"],
+            "model+augmentation+data": ["model_agent", "augmentation_agent", "data_agent"],
+        }
+        for round_id, round_results in round_groups.items():
+            singles = {
+                result.agent_name: result.val_score
+                for result in round_results
+                if result.agent_name in {"model_agent", "augmentation_agent", "data_agent"}
+            }
+            for result in round_results:
+                if result.agent_name != "orchestrator":
+                    continue
+                label = str(result.artifact_paths.get("selected_combination", "model+augmentation+data"))
+                included = included_map.get(label)
+                if not included:
+                    continue
+                component_best = max((singles.get(name, float("-inf")) for name in included), default=float("-inf"))
+                if component_best == float("-inf"):
+                    continue
+                synergy_records.append(
+                    {
+                        "round_id": round_id,
+                        "label": label,
+                        "score": round(result.val_score, 4),
+                        "best_component_score": round(component_best, 4),
+                        "synergy": round(result.val_score - component_best, 4),
+                    }
+                )
+        recent_best = {
+            label: round(max(scores), 4)
+            for label, scores in by_label.items()
+            if scores
+        }
+        recent_avg = {
+            label: round(sum(scores) / len(scores), 4)
+            for label, scores in by_label.items()
+            if scores
+        }
+        accepted_best = {
+            label: round(max(scores), 4)
+            for label, scores in accepted_by_label.items()
+            if scores
+        }
+        synergy_sorted = sorted(synergy_records, key=lambda item: item["synergy"], reverse=True)
+        return {
+            "recent_best_by_combination": recent_best,
+            "recent_avg_by_combination": recent_avg,
+            "accepted_best_by_combination": accepted_best,
+            "compatible_patterns": synergy_sorted[:3],
+            "conflicting_patterns": list(reversed(synergy_sorted[-3:])) if synergy_sorted else [],
         }
 
     def _rewrite_preference_note(self, round_id: int) -> str:
