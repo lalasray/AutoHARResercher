@@ -1175,6 +1175,7 @@ class HierarchicalOrchestrator:
             ),
             "",
         )
+        previous_baseline_score = None if previous_best is None else float(previous_best.val_score)
         payload = {
             "round_id": round_id,
             "orchestrator_combination_order": (
@@ -1205,19 +1206,75 @@ class HierarchicalOrchestrator:
                 accepted_candidate is None and previous_best is not None
             ),
             "candidates": [
-                {
-                    "agent_name": result.agent_name,
-                    "branch_name": result.branch_name,
-                    "val_score": round(result.val_score, 4),
-                    "accepted": result.accepted,
-                    "summary": result.summary,
-                    "selected_combination": result.artifact_paths.get("selected_combination", ""),
-                }
+                self._promotion_candidate_payload(
+                    result=result,
+                    round_best=round_best,
+                    previous_baseline_score=previous_baseline_score,
+                    accepted_candidate=accepted_candidate,
+                )
                 for result in sorted(round_results, key=lambda item: item.val_score, reverse=True)
             ],
         }
         round_dir = ensure_round_dir(round_id)
         return write_json_artifact(round_dir / "promotion.json", payload)
+
+    def _promotion_candidate_payload(
+        self,
+        result: CandidateResult,
+        round_best: CandidateResult,
+        previous_baseline_score: float | None,
+        accepted_candidate: CandidateResult | None,
+    ) -> dict[str, object]:
+        selected_combination = result.artifact_paths.get("selected_combination", "")
+        is_round_winner = (
+            result.agent_name == round_best.agent_name
+            and result.branch_name == round_best.branch_name
+            and abs(result.val_score - round_best.val_score) < 1e-9
+        )
+        beats_previous_baseline = (
+            previous_baseline_score is None or result.val_score > previous_baseline_score
+        )
+        accepted_as_new_baseline = (
+            accepted_candidate is not None
+            and result.agent_name == accepted_candidate.agent_name
+            and result.branch_name == accepted_candidate.branch_name
+            and abs(result.val_score - accepted_candidate.val_score) < 1e-9
+        )
+        if result.agent_name == "model_agent":
+            domain_focus = "model"
+        elif result.agent_name == "augmentation_agent":
+            domain_focus = "augmentation"
+        elif result.agent_name == "data_agent":
+            domain_focus = "data"
+        else:
+            domain_focus = f"composition:{selected_combination or 'orchestrator'}"
+
+        if accepted_as_new_baseline:
+            decision = "promoted"
+        elif not beats_previous_baseline:
+            decision = "rejected_below_previous_baseline"
+        elif not is_round_winner:
+            decision = "rejected_not_best_in_round"
+        else:
+            decision = "round_winner_but_not_promoted"
+
+        return {
+            "agent_name": result.agent_name,
+            "branch_name": result.branch_name,
+            "domain_focus": domain_focus,
+            "candidate_type": (
+                "orchestrator_combination" if result.agent_name == "orchestrator" else "specialist_agent"
+            ),
+            "val_score": round(result.val_score, 4),
+            "selected_combination": selected_combination,
+            "is_round_winner": is_round_winner,
+            "beats_previous_baseline": beats_previous_baseline,
+            "accepted_as_new_baseline": accepted_as_new_baseline,
+            "decision": decision,
+            "summary": result.summary,
+            "proposal_summary": result.config.notes,
+            "component_summaries": dict(result.component_summaries),
+        }
 
     def _write_result_artifact(self, result: CandidateResult) -> str:
         round_dir = ensure_round_dir(result.round_id)

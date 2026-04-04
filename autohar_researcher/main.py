@@ -70,6 +70,7 @@ def main() -> None:
     print(f"Auto-push non-main: {args.auto_push_non_main}")
     print(f"Resume mode: {args.resume}")
     print(f"Planner: {planner_name}")
+    print(f"Training backend: {orchestrator.harness.runtime_backend_summary()}")
     print()
     print("Agent workspaces:")
     for workspace in workspaces.values():

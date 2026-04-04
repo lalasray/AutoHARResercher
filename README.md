@@ -63,6 +63,7 @@ Mental model:
 - specialists improve one axis only
 - the orchestrator decides which candidate actually wins the round
 - the accepted winner becomes the baseline for all branches in the next round
+- when a search axis starts repeating the same accepted pattern too much, the planner now applies explicit exploration pressure inside that agent's own domain
 
 ## Running
 

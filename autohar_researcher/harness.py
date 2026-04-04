@@ -25,6 +25,13 @@ class DummyHARHarness:
         self._evaluation_cache: dict[tuple[object, ...], dict[str, object]] = {}
         self._torch = torch
 
+    def runtime_backend_summary(self) -> str:
+        if self._torch is None:
+            return "PyTorch not available; using CPU fallback path."
+        if self._torch.cuda.is_available():
+            return "PyTorch available; CUDA GPU detected and will be used when training device is auto."
+        return "PyTorch available; no GPU found, using CPU."
+
     def evaluate(
         self,
         round_id: int,

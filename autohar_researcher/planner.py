@@ -35,6 +35,37 @@ def load_local_env(path: Path | None = None) -> None:
 
 class OpenAIPlanner:
     name = "openai_responses_multiagent"
+    MODEL_FAMILIES = [
+        "deepconvlstm",
+        "deepconvlstmattention",
+        "hart",
+        "tinierhar",
+        "tinyhar",
+        "spectra",
+        "cnn_gru",
+        "cnn",
+        "tiny_transformer",
+        "gru",
+    ]
+    AUGMENTATIONS = [
+        "none",
+        "rotation",
+        "time_warp",
+        "jitter",
+        "mixup",
+        "scaling",
+        "drift",
+        "permutation",
+        "magnitude_warp",
+    ]
+    AUGMENTATION_STRENGTHS = ["weak", "medium", "strong"]
+    PREPROCESSING_MODES = [
+        "raw",
+        "normalized",
+        "normalized+gravity_filter",
+        "normalized+magnitude_channels",
+    ]
+    WINDOW_SIZES = [64, 96, 128, 192, 256]
 
     def __init__(self, model: str | None = None) -> None:
         if OpenAI is None:
@@ -117,6 +148,7 @@ class OpenAIPlanner:
             "trend_summary": trend_summary,
             "recent_trials": recent_trials,
             "accepted_history": accepted,
+            "exploration_pressure": self._exploration_pressure_summary(best_result, history, accepted_history),
             "combination_memory": self._combination_memory_summary(history, accepted_history),
             "agent_memories": {
                 "model_agent": self._agent_memory_summary("model_agent", history, accepted_history),
@@ -248,6 +280,7 @@ class OpenAIPlanner:
             prompt=prompt,
             schema=schema,
         )
+        payload = self._apply_model_exploration_pressure(context, payload)
         payload = self._prefer_model_param_rewrite(
             round_id=int(context["round_id"]),
             payload=payload,
@@ -314,6 +347,7 @@ class OpenAIPlanner:
             prompt=prompt,
             schema=schema,
         )
+        payload = self._apply_augmentation_exploration_pressure(context, payload)
         payload = self._prefer_augmentation_param_rewrite(
             round_id=int(context["round_id"]),
             payload=payload,
@@ -380,6 +414,7 @@ class OpenAIPlanner:
             prompt=prompt,
             schema=schema,
         )
+        payload = self._apply_data_exploration_pressure(context, payload)
         payload = self._prefer_data_param_rewrite(
             round_id=int(context["round_id"]),
             payload=payload,
@@ -658,6 +693,153 @@ class OpenAIPlanner:
             "trial_count": len(scoped_history),
             "accepted_count": len(accepted_scoped),
         }
+
+    def _exploration_pressure_summary(
+        self,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> dict[str, object]:
+        def repeated_count(values: list[object]) -> int:
+            if not values:
+                return 0
+            last = values[-1]
+            count = 0
+            for value in reversed(values):
+                if value == last:
+                    count += 1
+                else:
+                    break
+            return count
+
+        plateau = False
+        if len(accepted_history) >= 3:
+            recent_accepts = [result.val_score for result in accepted_history[-3:]]
+            plateau = max(recent_accepts) - min(recent_accepts) < 0.01
+
+        model_values = [result.config.model_name for result in history if result.agent_name == "model_agent"]
+        augmentation_values = [
+            (result.config.augmentation, result.config.augmentation_strength)
+            for result in history
+            if result.agent_name == "augmentation_agent"
+        ]
+        data_values = [
+            (result.config.preprocessing, int(result.config.window_size))
+            for result in history
+            if result.agent_name == "data_agent"
+        ]
+        baseline_config = None if best_result is None else asdict(best_result.config)
+        return {
+            "plateau": plateau,
+            "baseline_config": baseline_config,
+            "model_repeat_streak": repeated_count(model_values),
+            "augmentation_repeat_streak": repeated_count(augmentation_values),
+            "data_repeat_streak": repeated_count(data_values),
+        }
+
+    def _apply_model_exploration_pressure(
+        self,
+        context: dict[str, object],
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        pressure = dict(context.get("exploration_pressure", {}))
+        baseline = dict(pressure.get("baseline_config") or {})
+        baseline_model = str(baseline.get("model_name", ""))
+        repeat_streak = int(pressure.get("model_repeat_streak", 0))
+        plateau = bool(pressure.get("plateau", False))
+        current_model = str(payload.get("model_name", ""))
+        if current_model != baseline_model:
+            return payload
+        if not plateau and repeat_streak < 3:
+            return payload
+        recent_models = [
+            str(item["config"]["model_name"])
+            for item in context["agent_memories"]["model_agent"].get("recent_trials", [])
+            if isinstance(item, dict)
+        ]
+        for candidate in self.MODEL_FAMILIES:
+            if candidate != baseline_model and candidate not in recent_models[-3:]:
+                payload["model_name"] = candidate
+                payload["rationale"] = (
+                    f"{payload.get('rationale', '').strip()} "
+                    f"[exploration pressure: diversify away from repeated baseline family {baseline_model} -> {candidate}]"
+                ).strip()
+                break
+        return payload
+
+    def _apply_augmentation_exploration_pressure(
+        self,
+        context: dict[str, object],
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        pressure = dict(context.get("exploration_pressure", {}))
+        baseline = dict(pressure.get("baseline_config") or {})
+        baseline_aug = str(baseline.get("augmentation", ""))
+        baseline_strength = str(baseline.get("augmentation_strength", "medium"))
+        repeat_streak = int(pressure.get("augmentation_repeat_streak", 0))
+        plateau = bool(pressure.get("plateau", False))
+        current = (str(payload.get("augmentation", "")), str(payload.get("strength", "")))
+        if current != (baseline_aug, baseline_strength):
+            return payload
+        if not plateau and repeat_streak < 3:
+            return payload
+        recent_values = [
+            (
+                str(item["config"]["augmentation"]),
+                str(item["config"]["augmentation_strength"]),
+            )
+            for item in context["agent_memories"]["augmentation_agent"].get("recent_trials", [])
+            if isinstance(item, dict)
+        ]
+        for augmentation in self.AUGMENTATIONS:
+            for strength in self.AUGMENTATION_STRENGTHS:
+                candidate = (augmentation, strength)
+                if candidate != (baseline_aug, baseline_strength) and candidate not in recent_values[-3:]:
+                    payload["augmentation"] = augmentation
+                    payload["strength"] = strength
+                    payload["rationale"] = (
+                        f"{payload.get('rationale', '').strip()} "
+                        f"[exploration pressure: diversify away from repeated baseline augmentation {baseline_aug}:{baseline_strength} -> {augmentation}:{strength}]"
+                    ).strip()
+                    return payload
+        return payload
+
+    def _apply_data_exploration_pressure(
+        self,
+        context: dict[str, object],
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        pressure = dict(context.get("exploration_pressure", {}))
+        baseline = dict(pressure.get("baseline_config") or {})
+        baseline_pre = str(baseline.get("preprocessing", ""))
+        baseline_window = int(baseline.get("window_size", 128)) if baseline else 128
+        repeat_streak = int(pressure.get("data_repeat_streak", 0))
+        plateau = bool(pressure.get("plateau", False))
+        current = (str(payload.get("preprocessing", "")), int(payload.get("window_size", 128)))
+        if current != (baseline_pre, baseline_window):
+            return payload
+        if not plateau and repeat_streak < 3:
+            return payload
+        recent_values = [
+            (
+                str(item["config"]["preprocessing"]),
+                int(item["config"]["window_size"]),
+            )
+            for item in context["agent_memories"]["data_agent"].get("recent_trials", [])
+            if isinstance(item, dict)
+        ]
+        for preprocessing in self.PREPROCESSING_MODES:
+            for window_size in self.WINDOW_SIZES:
+                candidate = (preprocessing, window_size)
+                if candidate != (baseline_pre, baseline_window) and candidate not in recent_values[-3:]:
+                    payload["preprocessing"] = preprocessing
+                    payload["window_size"] = window_size
+                    payload["rationale"] = (
+                        f"{payload.get('rationale', '').strip()} "
+                        f"[exploration pressure: diversify away from repeated baseline data setting {baseline_pre}:{baseline_window} -> {preprocessing}:{window_size}]"
+                    ).strip()
+                    return payload
+        return payload
 
 
 def build_planner() -> OpenAIPlanner:
