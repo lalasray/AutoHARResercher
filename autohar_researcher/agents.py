@@ -72,6 +72,8 @@ class ModelAgent:
                 model_name=planner_hint.model_name,
                 learning_rate=planner_hint.learning_rate,
                 notes=f"LLM planner hint: {planner_hint.rationale}",
+                logic_expression=planner_hint.logic_expression,
+                helper_code=planner_hint.helper_code,
             )
         tried = {
             (result.config.model_name, round(result.config.learning_rate, 7))
@@ -104,6 +106,8 @@ class ModelAgent:
             model_name=model_name,
             learning_rate=learning_rate,
             notes=f"{note_prefix} Exploring {model_name} at lr={learning_rate}.",
+            logic_expression="",
+            helper_code="",
         )
 
     def _pick_candidate(
@@ -148,6 +152,8 @@ class AugmentationAgent:
                 augmentation=planner_hint.augmentation,
                 strength=planner_hint.strength,
                 notes=f"LLM planner hint: {planner_hint.rationale}",
+                logic_expression=planner_hint.logic_expression,
+                helper_code=planner_hint.helper_code,
             )
         best_config = best_result.config if best_result else None
         accepted_aug = best_config.augmentation if best_config else "none"
@@ -199,6 +205,8 @@ class AugmentationAgent:
                 f"{note_prefix} Testing augmentation={augmentation} "
                 f"strength={strength} for context={context_key}."
             ),
+            logic_expression="",
+            helper_code="",
         )
 
     def _context_key(self, config: CandidateConfig | None) -> str:
@@ -283,6 +291,8 @@ class DataAgent:
                 preprocessing=planner_hint.preprocessing,
                 window_size=planner_hint.window_size,
                 notes=f"LLM planner hint: {planner_hint.rationale}",
+                logic_expression=planner_hint.logic_expression,
+                helper_code=planner_hint.helper_code,
             )
         tried = {
             (result.config.preprocessing, int(result.config.window_size))
@@ -320,6 +330,8 @@ class DataAgent:
             preprocessing=preprocessing,
             window_size=window_size,
             notes=f"{note_prefix} Testing {preprocessing} with window={window_size}.",
+            logic_expression="",
+            helper_code="",
         )
 
     def _rank_windows(self, base_window: int) -> list[int]:
@@ -731,6 +743,8 @@ class HierarchicalOrchestrator:
                         "model_name": planner_hints["model_agent"].model_name,
                         "learning_rate": planner_hints["model_agent"].learning_rate,
                         "rationale": planner_hints["model_agent"].rationale,
+                        "logic_expression": planner_hints["model_agent"].logic_expression,
+                        "helper_code": planner_hints["model_agent"].helper_code,
                     }
                     if "model_agent" in planner_hints
                     else {}
@@ -740,6 +754,8 @@ class HierarchicalOrchestrator:
                         "augmentation": planner_hints["augmentation_agent"].augmentation,
                         "strength": planner_hints["augmentation_agent"].strength,
                         "rationale": planner_hints["augmentation_agent"].rationale,
+                        "logic_expression": planner_hints["augmentation_agent"].logic_expression,
+                        "helper_code": planner_hints["augmentation_agent"].helper_code,
                     }
                     if "augmentation_agent" in planner_hints
                     else {}
@@ -749,6 +765,8 @@ class HierarchicalOrchestrator:
                         "preprocessing": planner_hints["data_agent"].preprocessing,
                         "window_size": planner_hints["data_agent"].window_size,
                         "rationale": planner_hints["data_agent"].rationale,
+                        "logic_expression": planner_hints["data_agent"].logic_expression,
+                        "helper_code": planner_hints["data_agent"].helper_code,
                     }
                     if "data_agent" in planner_hints
                     else {}

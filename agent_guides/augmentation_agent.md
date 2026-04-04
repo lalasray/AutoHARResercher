@@ -24,6 +24,13 @@ Do not try to edit or conceptually control:
 
 The orchestrator will compose your module with the others.
 
+When you need more than a plain config tweak, you may also propose small owned helper code for `augmentation_module.py`.
+That helper code must stay augmentation-scoped and should expose:
+
+- `llm_choose_patch(base_experiment, config)`
+
+It must return only `{"augmentation": ...}` updates.
+
 ## Allowed Search Space
 
 Valid augmentations:
@@ -103,6 +110,7 @@ A good proposal:
 - is realistic for IMU sensing
 - respects current model/data context
 - explains why this augmentation should help robustness without overwhelming the signal
+- if helper code is used, it stays short, local, and only affects augmentation-side decisions
 
 A bad proposal:
 

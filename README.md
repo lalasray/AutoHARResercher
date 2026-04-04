@@ -80,6 +80,10 @@ The orchestrator now uses a real OpenAI-based planner:
   - 1 `ModelAgent` planning call
   - 1 `AugmentationAgent` planning call
   - 1 `DataAgent` planning call
+- specialist agent calls can now also return:
+  - a constrained local `logic_expression` hook
+  - a larger `helper_code` block that defines `llm_choose_patch(base_experiment, config)`
+- both mechanisms are still restricted to that agent's owned module and owned section only
 
 Planner-readable agent guides now live in:
 
@@ -184,6 +188,18 @@ Ownership is now strict at the file level:
 - `orchestrator-main` composes those modules and writes the shared `research/experiment.json`
 
 Those module files are now executable Python modules, not just static payload holders. Each one exposes module metadata plus a `build_patch(base_experiment)` function that returns only the owned section update for that agent. The patch builder can inspect the incoming baseline and apply small safety/compatibility rules before returning its owned update. Each generated module now also contains small helper functions, such as baseline summarizers, candidate selection utilities, and compatibility heuristics, so the owned file behaves more like a local strategy module instead of a pure config dump.
+
+The specialist LLM now has two ways to influence owned-module behavior:
+
+- `logic_expression`: a small expression or lambda for simple owned-section overrides
+- `helper_code`: a larger helper block that can define local utilities plus `llm_choose_patch(base_experiment, config)`
+
+`helper_code` is the current bridge from config-guided modules toward true code-evolving modules:
+
+- it lives only inside the agent's owned Python file
+- it can inspect the baseline and config before choosing an owned patch
+- it is executed through a narrow module-local entry point
+- it still cannot directly own another agent's file or section
 
 This is the bridge between the current dummy prototype and a real Git-based system:
 

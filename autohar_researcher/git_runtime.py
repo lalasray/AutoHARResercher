@@ -64,6 +64,11 @@ class GitRuntime:
             baseline_branch=baseline_branch,
             orchestrator_worktree=Path(round_state.orchestrator_worktree),
         )
+        baseline_module_payloads = self._load_baseline_module_payloads(
+            baseline_branch=baseline_branch,
+            orchestrator_worktree=Path(round_state.orchestrator_worktree),
+            workspaces=workspaces,
+        )
         agent_experiments: dict[str, dict[str, object]] = {}
 
         for proposal in proposals:
@@ -103,6 +108,12 @@ class GitRuntime:
                         round_id=round_id,
                         branch_name=workspace.branch_name,
                         sync_from_branch=baseline_branch,
+                        logic_expression=str(
+                            baseline_module_payloads.get(sync_agent_name, {}).get("logic_expression", "")
+                        ),
+                        helper_code=str(
+                            baseline_module_payloads.get(sync_agent_name, {}).get("helper_code", "")
+                        ),
                     ),
                 )
                 workspace_sync_paths[sync_agent_name] = str(sync_module_abs)
@@ -135,7 +146,11 @@ class GitRuntime:
                     round_id=round_id,
                     branch_name=workspace.branch_name,
                     sync_from_branch=baseline_branch,
+                    logic_expression=str(proposal.logic_expression),
+                    helper_code=str(proposal.helper_code),
                 )["config"],
+                "logic_expression": str(proposal.logic_expression),
+                "helper_code": str(proposal.helper_code),
             }
             module_abs = Path(workspace.worktree_path) / module_rel
             write_module_python(module_abs, payload)
@@ -188,6 +203,12 @@ class GitRuntime:
                     round_id=round_id,
                     branch_name=orchestrator_branch,
                     sync_from_branch=baseline_branch,
+                    logic_expression=str(
+                        source_payload.get(source_agent_name, {}).get("logic_expression", "")
+                    ),
+                    helper_code=str(
+                        source_payload.get(source_agent_name, {}).get("helper_code", "")
+                    ),
                 ),
             )
         committed = self.commit_paths_if_changed(
@@ -275,6 +296,33 @@ class GitRuntime:
                 branch_worktree,
                 fallback_experiment=base_experiment_config(),
             )
+
+    def _load_baseline_module_payloads(
+        self,
+        baseline_branch: str,
+        orchestrator_worktree: Path,
+        workspaces: dict[str, AgentWorkspace],
+    ) -> dict[str, dict[str, object]]:
+        if baseline_branch == "main":
+            return {}
+        if baseline_branch == "orchestrator-main":
+            baseline_worktree = orchestrator_worktree
+        else:
+            branch_directory = baseline_branch.replace("agent-", "").replace("-main", "")
+            if branch_directory == "augmentation":
+                branch_directory = "augmentation_agent"
+            elif branch_directory == "data":
+                branch_directory = "data_agent"
+            elif branch_directory == "model":
+                branch_directory = "model_agent"
+            baseline_worktree = self.repo_root / ".worktrees" / branch_directory
+
+        payloads: dict[str, dict[str, object]] = {}
+        for agent_name in workspaces:
+            module_path = baseline_worktree / module_relative_path(agent_name)
+            if module_path.exists():
+                payloads[agent_name] = load_module_python(module_path)
+        return payloads
 
     def run_git(
         self,

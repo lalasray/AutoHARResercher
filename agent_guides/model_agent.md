@@ -25,6 +25,13 @@ Do not try to edit or conceptually control:
 
 The orchestrator will compose your module with the others.
 
+When you need more than a plain config tweak, you may also propose small owned helper code for `model_module.py`.
+That helper code must stay model-scoped and should expose:
+
+- `llm_choose_patch(base_experiment, config)`
+
+It must return only `{"model": ...}` updates.
+
 ## Allowed Search Space
 
 Valid model families:
@@ -100,6 +107,7 @@ A good proposal:
 - is easy to test against the current baseline
 - explains why the chosen model/LR has a plausible path to improvement
 - respects recent wins and failures
+- if helper code is used, it stays short, local, and only affects model-side decisions
 
 A bad proposal:
 

@@ -179,6 +179,13 @@ class OpenAIPlanner:
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
             "Use valid models from {deepconvlstm, hart, tinierhar, cnn_gru, cnn, tiny_transformer, gru}.\n"
             "Keep the rationale short and trend-aware.\n"
+            "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
+            "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
+            "`{\"model\": {\"name\": ..., \"learning_rate\": ...}}`. Use exact keys `name` and `learning_rate`. "
+            "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
+            "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
+            "`llm_choose_patch(base_experiment, config)` function. That function must return only owned model updates. "
+            "Keep helper_code short, self-contained, and limited to model-side reasoning. Use an empty string when unnecessary.\n"
         )
         schema = {
             "type": "object",
@@ -187,8 +194,10 @@ class OpenAIPlanner:
                 "model_name": {"type": "string"},
                 "learning_rate": {"type": "number"},
                 "rationale": {"type": "string"},
+                "logic_expression": {"type": "string"},
+                "helper_code": {"type": "string"},
             },
-            "required": ["model_name", "learning_rate", "rationale"],
+            "required": ["model_name", "learning_rate", "rationale", "logic_expression", "helper_code"],
         }
         payload = self._call_json_schema(
             name="autohar_model_agent_plan",
@@ -214,6 +223,13 @@ class OpenAIPlanner:
             "Use valid augmentations from {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}.\n"
             "Use valid strengths from {weak, medium, strong}.\n"
             "Keep the rationale short and trend-aware.\n"
+            "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
+            "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
+            "`{\"augmentation\": {\"name\": ..., \"strength\": ...}}`. Use exact keys `name` and `strength`. "
+            "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
+            "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
+            "`llm_choose_patch(base_experiment, config)` function. That function must return only owned augmentation updates. "
+            "Keep helper_code short, self-contained, and limited to augmentation-side reasoning. Use an empty string when unnecessary.\n"
         )
         schema = {
             "type": "object",
@@ -222,8 +238,10 @@ class OpenAIPlanner:
                 "augmentation": {"type": "string"},
                 "strength": {"type": "string"},
                 "rationale": {"type": "string"},
+                "logic_expression": {"type": "string"},
+                "helper_code": {"type": "string"},
             },
-            "required": ["augmentation", "strength", "rationale"],
+            "required": ["augmentation", "strength", "rationale", "logic_expression", "helper_code"],
         }
         payload = self._call_json_schema(
             name="autohar_augmentation_agent_plan",
@@ -249,6 +267,13 @@ class OpenAIPlanner:
             "Use valid preprocessing from {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}.\n"
             "Use valid window sizes from {64, 96, 128, 192, 256}.\n"
             "Keep the rationale short and trend-aware.\n"
+            "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
+            "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
+            "`{\"data\": {\"preprocessing\": ..., \"window_size\": ...}}`. Use exact keys `preprocessing` and `window_size`. "
+            "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
+            "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
+            "`llm_choose_patch(base_experiment, config)` function. That function must return only owned data updates. "
+            "Keep helper_code short, self-contained, and limited to data-side reasoning. Use an empty string when unnecessary.\n"
         )
         schema = {
             "type": "object",
@@ -257,8 +282,10 @@ class OpenAIPlanner:
                 "preprocessing": {"type": "string"},
                 "window_size": {"type": "integer"},
                 "rationale": {"type": "string"},
+                "logic_expression": {"type": "string"},
+                "helper_code": {"type": "string"},
             },
-            "required": ["preprocessing", "window_size", "rationale"],
+            "required": ["preprocessing", "window_size", "rationale", "logic_expression", "helper_code"],
         }
         payload = self._call_json_schema(
             name="autohar_data_agent_plan",

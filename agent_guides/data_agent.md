@@ -24,6 +24,13 @@ Do not try to edit or conceptually control:
 
 The orchestrator will compose your module with the others.
 
+When you need more than a plain config tweak, you may also propose small owned helper code for `data_module.py`.
+That helper code must stay data-scoped and should expose:
+
+- `llm_choose_patch(base_experiment, config)`
+
+It must return only `{"data": ...}` updates.
+
 ## Allowed Search Space
 
 Valid preprocessing:
@@ -106,6 +113,7 @@ A good proposal:
 - is compatible with the current accepted baseline
 - makes a clear representation hypothesis
 - is easy to evaluate against the current best setup
+- if helper code is used, it stays short, local, and only affects data-side decisions
 
 A bad proposal:
 

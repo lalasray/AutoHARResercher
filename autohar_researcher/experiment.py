@@ -88,6 +88,8 @@ def module_payload(
     round_id: int,
     branch_name: str,
     sync_from_branch: str,
+    logic_expression: str = "",
+    helper_code: str = "",
 ) -> dict[str, object]:
     return {
         "round_id": round_id,
@@ -96,6 +98,8 @@ def module_payload(
         "sync_from_branch": sync_from_branch,
         "owned_fields": module_owned_fields(agent_name),
         "config": module_config_from_experiment(agent_name, experiment),
+        "logic_expression": logic_expression,
+        "helper_code": helper_code,
     }
 
 
@@ -112,6 +116,8 @@ def write_module_python(path: Path, payload: dict[str, object]) -> None:
         f'SYNC_FROM_BRANCH = {payload["sync_from_branch"]!r}\n'
         f"OWNED_FIELDS = {owned_fields_body}\n"
         f"CONFIG = {config_body}\n\n"
+        f"LOGIC_EXPRESSION = {payload.get('logic_expression', '')!r}\n\n"
+        f"LLM_HELPER_CODE = {payload.get('helper_code', '')!r}\n\n"
         "def module_metadata() -> dict[str, object]:\n"
         '    """Return serializable metadata for this owned module."""\n'
         "    return {\n"
@@ -121,6 +127,8 @@ def write_module_python(path: Path, payload: dict[str, object]) -> None:
         '        "sync_from_branch": SYNC_FROM_BRANCH,\n'
         '        "owned_fields": list(OWNED_FIELDS),\n'
         '        "config": dict(CONFIG),\n'
+        '        "logic_expression": LOGIC_EXPRESSION,\n'
+        '        "helper_code": LLM_HELPER_CODE,\n'
         "    }\n\n"
         f"{patch_builder}\n",
         encoding="utf-8",
@@ -167,6 +175,66 @@ def _module_patch_builder(agent_name: str) -> str:
             '    baseline_name = str(baseline.get("name", "deepconvlstm"))\n'
             '    baseline_lr = float(baseline.get("learning_rate", 3e-4))\n'
             '    return f"baseline_model={baseline_name}, baseline_lr={baseline_lr}"\n\n'
+            "def allowed_builtins() -> dict[str, object]:\n"
+            '    """Return a small builtins set for LLM helper execution."""\n'
+            "    return {\n"
+            '        "abs": abs,\n'
+            '        "all": all,\n'
+            '        "any": any,\n'
+            '        "dict": dict,\n'
+            '        "float": float,\n'
+            '        "int": int,\n'
+            '        "len": len,\n'
+            '        "list": list,\n'
+            '        "max": max,\n'
+            '        "min": min,\n'
+            '        "round": round,\n'
+            '        "set": set,\n'
+            '        "sorted": sorted,\n'
+            '        "str": str,\n'
+            '        "sum": sum,\n'
+            '        "tuple": tuple,\n'
+            "    }\n\n"
+            "def llm_helper_namespace() -> dict[str, object]:\n"
+            '    """Load LLM-provided helper code inside a constrained namespace."""\n'
+            '    if not LLM_HELPER_CODE:\n'
+            "        return {}\n"
+            '    namespace = {"__builtins__": allowed_builtins()}\n'
+            '    try:\n'
+            '        exec(LLM_HELPER_CODE, namespace, namespace)\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            "    return namespace\n\n"
+            "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+            '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
+            "    namespace = llm_helper_namespace()\n"
+            '    chooser = namespace.get("llm_choose_patch")\n'
+            '    if not callable(chooser):\n'
+            "        return {}\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = chooser(base_experiment, config)\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            "    return result if isinstance(result, dict) else {}\n\n"
+            "def llm_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+            '    """Apply planner-provided local logic for model-side overrides."""\n'
+            '    helper_result = llm_helper_adjustments(base_experiment)\n'
+            '    if helper_result:\n'
+            "        return helper_result\n"
+            '    if not LOGIC_EXPRESSION:\n'
+            "        return {}\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = eval(LOGIC_EXPRESSION, {"__builtins__": allowed_builtins()}, {"base_experiment": base_experiment, "config": config})\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            '    if callable(result):\n'
+            '        try:\n'
+            '            result = result(base_experiment, config)\n'
+            '        except Exception:\n'
+            "            return {}\n"
+            "    return result if isinstance(result, dict) else {}\n\n"
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the model-only patch owned by ModelAgent."""\n'
             '    baseline_model = current_model(base_experiment)\n'
@@ -176,13 +244,19 @@ def _module_patch_builder(agent_name: str) -> str:
             '    proposed_lr = float(CONFIG.get("learning_rate", baseline_lr))\n'
             '    proposed_lr *= compatibility_bias(base_experiment, target_name)\n'
             '    proposed_lr = bounded_learning_rate(target_name, baseline_name, baseline_lr, proposed_lr)\n'
-            "    return {\n"
+            "    patch = {\n"
             '        "model": {\n'
             '            "name": target_name,\n'
             '            "learning_rate": proposed_lr,\n'
             '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
             "        }\n"
             "    }\n"
+            '    adjustments = llm_adjustments(base_experiment)\n'
+            '    if isinstance(adjustments.get("model"), dict):\n'
+            '        if "model_name" in adjustments["model"] and "name" not in adjustments["model"]:\n'
+            '            adjustments["model"]["name"] = adjustments["model"].pop("model_name")\n'
+            '        patch["model"].update(adjustments["model"])\n'
+            "    return patch\n"
         )
     if agent_name == "augmentation_agent":
         return (
@@ -224,19 +298,85 @@ def _module_patch_builder(agent_name: str) -> str:
             '    baseline_name = str(baseline.get("name", "none"))\n'
             '    baseline_strength = str(baseline.get("strength", "medium"))\n'
             '    return f"baseline_augmentation={baseline_name}:{baseline_strength}"\n\n'
+            "def allowed_builtins() -> dict[str, object]:\n"
+            '    """Return a small builtins set for LLM helper execution."""\n'
+            "    return {\n"
+            '        "abs": abs,\n'
+            '        "all": all,\n'
+            '        "any": any,\n'
+            '        "dict": dict,\n'
+            '        "float": float,\n'
+            '        "int": int,\n'
+            '        "len": len,\n'
+            '        "list": list,\n'
+            '        "max": max,\n'
+            '        "min": min,\n'
+            '        "round": round,\n'
+            '        "set": set,\n'
+            '        "sorted": sorted,\n'
+            '        "str": str,\n'
+            '        "sum": sum,\n'
+            '        "tuple": tuple,\n'
+            "    }\n\n"
+            "def llm_helper_namespace() -> dict[str, object]:\n"
+            '    """Load LLM-provided helper code inside a constrained namespace."""\n'
+            '    if not LLM_HELPER_CODE:\n'
+            "        return {}\n"
+            '    namespace = {"__builtins__": allowed_builtins()}\n'
+            '    try:\n'
+            '        exec(LLM_HELPER_CODE, namespace, namespace)\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            "    return namespace\n\n"
+            "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+            '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
+            "    namespace = llm_helper_namespace()\n"
+            '    chooser = namespace.get("llm_choose_patch")\n'
+            '    if not callable(chooser):\n'
+            "        return {}\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = chooser(base_experiment, config)\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            "    return result if isinstance(result, dict) else {}\n\n"
+            "def llm_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+            '    """Apply planner-provided local logic for augmentation-side overrides."""\n'
+            '    helper_result = llm_helper_adjustments(base_experiment)\n'
+            '    if helper_result:\n'
+            "        return helper_result\n"
+            '    if not LOGIC_EXPRESSION:\n'
+            "        return {}\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = eval(LOGIC_EXPRESSION, {"__builtins__": allowed_builtins()}, {"base_experiment": base_experiment, "config": config})\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            '    if callable(result):\n'
+            '        try:\n'
+            '            result = result(base_experiment, config)\n'
+            '        except Exception:\n'
+            "            return {}\n"
+            "    return result if isinstance(result, dict) else {}\n\n"
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the augmentation-only patch owned by AugmentationAgent."""\n'
             '    baseline_aug = current_augmentation(base_experiment)\n'
             '    target_name = choose_augmentation_name(base_experiment, str(CONFIG.get("name", baseline_aug.get("name", "none"))))\n'
             '    target_strength = str(CONFIG.get("strength", baseline_aug.get("strength", "medium")))\n'
             '    target_strength = compatibility_strength(base_experiment, target_name, target_strength)\n'
-            "    return {\n"
+            "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
             '            "strength": target_strength,\n'
             '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
             "        }\n"
             "    }\n"
+            '    adjustments = llm_adjustments(base_experiment)\n'
+            '    if isinstance(adjustments.get("augmentation"), dict):\n'
+            '        if "type" in adjustments["augmentation"] and "name" not in adjustments["augmentation"]:\n'
+            '            adjustments["augmentation"]["name"] = adjustments["augmentation"].pop("type")\n'
+            '        patch["augmentation"].update(adjustments["augmentation"])\n'
+            "    return patch\n"
         )
     return (
         "def current_data(base_experiment: dict[str, object]) -> dict[str, object]:\n"
@@ -271,19 +411,83 @@ def _module_patch_builder(agent_name: str) -> str:
         '    baseline_pre = str(baseline.get("preprocessing", "raw"))\n'
         '    baseline_window = int(baseline.get("window_size", 128))\n'
         '    return f"baseline_data={baseline_pre}, baseline_window={baseline_window}"\n\n'
+        "def allowed_builtins() -> dict[str, object]:\n"
+        '    """Return a small builtins set for LLM helper execution."""\n'
+        "    return {\n"
+        '        "abs": abs,\n'
+        '        "all": all,\n'
+        '        "any": any,\n'
+        '        "dict": dict,\n'
+        '        "float": float,\n'
+        '        "int": int,\n'
+        '        "len": len,\n'
+        '        "list": list,\n'
+        '        "max": max,\n'
+        '        "min": min,\n'
+        '        "round": round,\n'
+        '        "set": set,\n'
+        '        "sorted": sorted,\n'
+        '        "str": str,\n'
+        '        "sum": sum,\n'
+        '        "tuple": tuple,\n'
+        "    }\n\n"
+        "def llm_helper_namespace() -> dict[str, object]:\n"
+        '    """Load LLM-provided helper code inside a constrained namespace."""\n'
+        '    if not LLM_HELPER_CODE:\n'
+        "        return {}\n"
+        '    namespace = {"__builtins__": allowed_builtins()}\n'
+        '    try:\n'
+        '        exec(LLM_HELPER_CODE, namespace, namespace)\n'
+        '    except Exception:\n'
+        "        return {}\n"
+        "    return namespace\n\n"
+        "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+        '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
+        "    namespace = llm_helper_namespace()\n"
+        '    chooser = namespace.get("llm_choose_patch")\n'
+        '    if not callable(chooser):\n'
+        "        return {}\n"
+        '    config = dict(CONFIG)\n'
+        '    try:\n'
+        '        result = chooser(base_experiment, config)\n'
+        '    except Exception:\n'
+        "        return {}\n"
+        "    return result if isinstance(result, dict) else {}\n\n"
+        "def llm_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
+        '    """Apply planner-provided local logic for data-side overrides."""\n'
+        '    helper_result = llm_helper_adjustments(base_experiment)\n'
+        '    if helper_result:\n'
+        "        return helper_result\n"
+        '    if not LOGIC_EXPRESSION:\n'
+        "        return {}\n"
+        '    config = dict(CONFIG)\n'
+        '    try:\n'
+        '        result = eval(LOGIC_EXPRESSION, {"__builtins__": allowed_builtins()}, {"base_experiment": base_experiment, "config": config})\n'
+        '    except Exception:\n'
+        "        return {}\n"
+        '    if callable(result):\n'
+        '        try:\n'
+        '            result = result(base_experiment, config)\n'
+        '        except Exception:\n'
+        "            return {}\n"
+        "    return result if isinstance(result, dict) else {}\n\n"
         "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Return the data-only patch owned by DataAgent."""\n'
         '    baseline_data = current_data(base_experiment)\n'
         '    target_preprocessing = choose_preprocessing(base_experiment, str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw"))))\n'
         '    requested_window = int(CONFIG.get("window_size", baseline_data.get("window_size", 128)))\n'
         '    target_window = choose_window(base_experiment, requested_window)\n'
-        "    return {\n"
+        "    patch = {\n"
         '        "data": {\n'
             '            "preprocessing": target_preprocessing,\n'
             '            "window_size": target_window,\n'
-        '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
+            '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
         "        }\n"
         "    }\n"
+        '    adjustments = llm_adjustments(base_experiment)\n'
+        '    if isinstance(adjustments.get("data"), dict):\n'
+        '        patch["data"].update(adjustments["data"])\n'
+        "    return patch\n"
     )
 
 

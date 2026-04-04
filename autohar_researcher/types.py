@@ -36,6 +36,8 @@ class ModelProposal:
     model_name: str
     learning_rate: float
     notes: str = ""
+    logic_expression: str = ""
+    helper_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,8 @@ class AugmentationProposal:
     augmentation: str
     strength: str
     notes: str = ""
+    logic_expression: str = ""
+    helper_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +54,8 @@ class DataProposal:
     preprocessing: str
     window_size: int
     notes: str = ""
+    logic_expression: str = ""
+    helper_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,8 @@ class ModelPlanHint:
     model_name: str
     learning_rate: float
     rationale: str = ""
+    logic_expression: str = ""
+    helper_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -86,6 +94,8 @@ class AugmentationPlanHint:
     augmentation: str
     strength: str
     rationale: str = ""
+    logic_expression: str = ""
+    helper_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -93,3 +103,5 @@ class DataPlanHint:
     preprocessing: str
     window_size: int
     rationale: str = ""
+    logic_expression: str = ""
+    helper_code: str = ""
