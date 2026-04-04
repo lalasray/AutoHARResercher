@@ -7,6 +7,7 @@ Your goal is to improve validation macro-F1 by changing only:
 
 - preprocessing
 - window size
+- data parameterization inside `data_module.py`
 
 You are not allowed to change the model family, learning rate, augmentation type, or augmentation strength.
 
@@ -74,6 +75,7 @@ You should think about:
 - whether temporal context is too short or too long
 - whether the current model likely benefits from simpler or richer preprocessing
 - whether a change is likely to be compatible with the accepted baseline
+- whether the concrete data parameters are helping or hurting, such as channel layout, resampling mode, gravity scaling, and magnitude feature construction
 
 ## Decision Style
 
@@ -130,6 +132,7 @@ A good proposal:
 - makes a clear representation hypothesis
 - is easy to evaluate against the current best setup
 - if helper code is used, it stays short, local, and only affects data-side decisions
+- if parameterization changes are made, they stay plausible for the selected preprocessing and window regime
 
 A bad proposal:
 

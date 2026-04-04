@@ -117,7 +117,7 @@ class DummyHARHarness:
             f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
             f"{config.augmentation}:{config.augmentation_strength}, "
             f"lr={config.learning_rate}, window={config.window_size}, "
-            f"aug_params={config.augmentation_params}"
+            f"data_params={config.data_params}, aug_params={config.augmentation_params}"
         )
         details = dict(cached["details"])
         score_breakdown = {
@@ -194,9 +194,9 @@ class DummyHARHarness:
         config: CandidateConfig,
         split: str,
     ) -> list[list[float]]:
-        processed = self._select_channels(window, config.preprocessing)
-        processed = self._resample_window(processed, config.window_size)
-        processed = self._preprocess(processed, config.preprocessing)
+        processed = self._select_channels(window, config.preprocessing, config.data_params)
+        processed = self._resample_window(processed, config.window_size, config.data_params)
+        processed = self._preprocess(processed, config.preprocessing, config.data_params)
         if split == "train":
             rng = random.Random(config.window_size + len(window))
             processed = self._augment(
@@ -208,40 +208,70 @@ class DummyHARHarness:
             )
         return processed
 
-    def _select_channels(self, window: list[list[float]], mode: str) -> list[list[float]]:
+    def _select_channels(
+        self,
+        window: list[list[float]],
+        mode: str,
+        params: dict[str, float | int | str | bool],
+    ) -> list[list[float]]:
         selected: list[list[float]] = []
         for row in window:
             total_acc = row[:3]
             body_acc = row[3:6]
             body_gyro = row[6:9]
-            if mode == "normalized+gravity_filter":
+            channel_layout = str(params.get("channel_layout", "body_acc+gyro" if mode == "normalized+gravity_filter" else "total_acc+gyro"))
+            if channel_layout == "body_acc+gyro":
                 selected.append(body_acc + body_gyro)
             else:
                 selected.append(total_acc + body_gyro)
         return selected
 
-    def _resample_window(self, window: list[list[float]], target_size: int) -> list[list[float]]:
+    def _resample_window(
+        self,
+        window: list[list[float]],
+        target_size: int,
+        params: dict[str, float | int | str | bool],
+    ) -> list[list[float]]:
         if len(window) == target_size:
             return [row[:] for row in window]
+        resample_mode = str(params.get("resample_mode", "nearest"))
         resampled = []
         for idx in range(target_size):
-            source = int(idx * (len(window) - 1) / max(target_size - 1, 1))
-            resampled.append(window[source][:])
+            position = idx * (len(window) - 1) / max(target_size - 1, 1)
+            if resample_mode == "linear":
+                left = int(math.floor(position))
+                right = min(left + 1, len(window) - 1)
+                mix = position - left
+                resampled.append(
+                    [
+                        ((1.0 - mix) * window[left][channel]) + (mix * window[right][channel])
+                        for channel in range(len(window[0]))
+                    ]
+                )
+            else:
+                source = int(position)
+                resampled.append(window[source][:])
         return resampled
 
-    def _preprocess(self, window: list[list[float]], mode: str) -> list[list[float]]:
+    def _preprocess(
+        self,
+        window: list[list[float]],
+        mode: str,
+        params: dict[str, float | int | str | bool],
+    ) -> list[list[float]]:
         processed = [row[:] for row in window]
-        if mode in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"}:
+        if bool(params.get("normalize", mode in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"})):
             processed = self._normalize(processed)
         if mode == "normalized+gravity_filter":
+            gravity_scale = float(params.get("gravity_scale", 1.0))
             accel_means = [
                 sum(row[channel] for row in processed) / len(processed)
                 for channel in range(3)
             ]
             for row in processed:
                 for channel in range(3):
-                    row[channel] -= accel_means[channel]
-        if mode == "normalized+magnitude_channels":
+                    row[channel] -= gravity_scale * accel_means[channel]
+        if bool(params.get("append_magnitude", mode == "normalized+magnitude_channels")):
             extended: list[list[float]] = []
             for row in processed:
                 accel_mag = math.sqrt(sum(value * value for value in row[:3]))
@@ -842,6 +872,7 @@ class DummyHARHarness:
                 "config": {
                     "model_name": config.model_name,
                     "preprocessing": config.preprocessing,
+                    "data_params": config.data_params,
                     "augmentation": config.augmentation,
                     "augmentation_strength": config.augmentation_strength,
                     "augmentation_params": config.augmentation_params,
@@ -865,6 +896,7 @@ class DummyHARHarness:
             "config": {
                 "model_name": config.model_name,
                 "preprocessing": config.preprocessing,
+                "data_params": config.data_params,
                 "augmentation": config.augmentation,
                 "augmentation_strength": config.augmentation_strength,
                 "augmentation_params": config.augmentation_params,

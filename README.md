@@ -39,7 +39,7 @@ Role split in this version:
 
 - `ModelAgent`: proposes only the model-side part of the next candidate
 - `AugmentationAgent`: proposes augmentation family, strength, and concrete augmentation parameterization for the next candidate
-- `DataAgent`: proposes only the preprocessing and windowing part of the next candidate
+- `DataAgent`: proposes preprocessing, windowing, and concrete data-pipeline parameterization for the next candidate
 - `Orchestrator`: plans each round, launches the 3 agents in parallel, evaluates single-agent and partial-combination candidates, and decides which branch to promote
 - `Harness`: trains and evaluates a real UCI HAR baseline from the experiment file, with optional Torch-backed training, early stopping, and richer metrics
 
@@ -124,6 +124,7 @@ The proposal policy is now adaptive:
 - the orchestrator can keep a stronger partial combination such as `model + data` when `model + augmentation + data` is worse
 - the augmentation agent searches both augmentation type and strength
 - the augmentation module now also owns concrete transform parameters such as rotation angle, jitter std, scaling span, time-warp compression, permutation segments, drift magnitude, magnitude-warp span, and mixup blend
+- the data module now also owns concrete data parameters such as channel layout, resampling mode, gravity subtraction scale, and magnitude-feature toggles
 
 ## Round Artifacts
 

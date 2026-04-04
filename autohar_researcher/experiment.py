@@ -44,6 +44,21 @@ def default_augmentation_params(name: str, strength: str) -> dict[str, float | i
     return {}
 
 
+def default_data_params(preprocessing: str, window_size: int) -> dict[str, float | int | str | bool]:
+    params: dict[str, float | int | str | bool] = {
+        "channel_layout": "total_acc+gyro",
+        "resample_mode": "nearest",
+        "normalize": preprocessing in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"},
+        "gravity_scale": 1.0,
+        "append_magnitude": preprocessing == "normalized+magnitude_channels",
+    }
+    if preprocessing == "normalized+gravity_filter":
+        params["channel_layout"] = "body_acc+gyro"
+    if window_size >= 192:
+        params["resample_mode"] = "linear"
+    return params
+
+
 def base_experiment_config() -> dict[str, object]:
     return {
         "dataset": {
@@ -57,6 +72,7 @@ def base_experiment_config() -> dict[str, object]:
         "data": {
             "preprocessing": "raw",
             "window_size": 128,
+            "params": default_data_params("raw", 128),
         },
         "augmentation": {
             "name": "none",
@@ -81,7 +97,7 @@ def module_owned_fields(agent_name: str) -> list[str]:
     return {
         "model_agent": ["model.name", "model.learning_rate"],
         "augmentation_agent": ["augmentation.name", "augmentation.strength", "augmentation.params"],
-        "data_agent": ["data.preprocessing", "data.window_size"],
+        "data_agent": ["data.preprocessing", "data.window_size", "data.params"],
     }[agent_name]
 
 
@@ -105,6 +121,7 @@ def module_config_from_experiment(
     return {
         "preprocessing": experiment["data"]["preprocessing"],
         "window_size": experiment["data"]["window_size"],
+        "params": dict(experiment["data"].get("params", {})),
         "notes": experiment["data"].get("notes", ""),
     }
 
@@ -519,12 +536,27 @@ def _module_patch_builder(agent_name: str) -> str:
         '    if augmentation in {"time_warp", "permutation"} and snapped > 192:\n'
         "        return 192\n"
         "    return snapped\n\n"
+        "def default_data_params(target_preprocessing: str, target_window: int) -> dict[str, float | int | str | bool]:\n"
+        '    """Return concrete data pipeline parameters for the chosen preprocessing/window."""\n'
+        "    params = {\n"
+        '        "channel_layout": "total_acc+gyro",\n'
+        '        "resample_mode": "nearest",\n'
+        '        "normalize": target_preprocessing in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"},\n'
+        '        "gravity_scale": 1.0,\n'
+        '        "append_magnitude": target_preprocessing == "normalized+magnitude_channels",\n'
+        "    }\n"
+        '    if target_preprocessing == "normalized+gravity_filter":\n'
+        '        params["channel_layout"] = "body_acc+gyro"\n'
+        "    if target_window >= 192:\n"
+        '        params["resample_mode"] = "linear"\n'
+        "    return params\n\n"
         "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
         '    """Describe the data-side mutation relative to baseline."""\n'
         "    baseline = current_data(base_experiment)\n"
         '    baseline_pre = str(baseline.get("preprocessing", "raw"))\n'
         '    baseline_window = int(baseline.get("window_size", 128))\n'
-        '    return f"baseline_data={baseline_pre}, baseline_window={baseline_window}"\n\n'
+        '    baseline_params = dict(baseline.get("params", {}))\n'
+        '    return f"baseline_data={baseline_pre}, baseline_window={baseline_window}, baseline_params={baseline_params}"\n\n'
         "def allowed_builtins() -> dict[str, object]:\n"
         '    """Return a small builtins set for LLM helper execution."""\n'
         "    return {\n"
@@ -618,15 +650,21 @@ def _module_patch_builder(agent_name: str) -> str:
         '    rewritten_window = llm_choose_window_override(base_experiment, requested_window)\n'
         '    if rewritten_window is not None:\n'
         '        target_window = nearest_valid_window(rewritten_window)\n'
+        '    target_params = default_data_params(target_preprocessing, target_window)\n'
         "    patch = {\n"
         '        "data": {\n'
-            '            "preprocessing": target_preprocessing,\n'
-            '            "window_size": target_window,\n'
-            '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
+        '            "preprocessing": target_preprocessing,\n'
+        '            "window_size": target_window,\n'
+        '            "params": target_params,\n'
+        '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
         "        }\n"
         "    }\n"
         '    adjustments = llm_adjustments(base_experiment)\n'
         '    if isinstance(adjustments.get("data"), dict):\n'
+        '        if isinstance(adjustments["data"].get("params"), dict):\n'
+        '            merged_params = dict(patch["data"].get("params", {}))\n'
+        '            merged_params.update(adjustments["data"]["params"])\n'
+        '            adjustments["data"]["params"] = merged_params\n'
         '        patch["data"].update(adjustments["data"])\n'
         "    return patch\n"
     )
@@ -684,6 +722,7 @@ def apply_module_python(
                 "data": {
                     "preprocessing": str(config["preprocessing"]),
                     "window_size": int(config["window_size"]),
+                    "params": dict(config.get("params", {})),
                     "notes": str(config.get("notes", "")),
                 }
             }
@@ -755,6 +794,10 @@ def apply_data_proposal(
     updated = clone_experiment(experiment)
     updated["data"]["preprocessing"] = proposal.preprocessing
     updated["data"]["window_size"] = proposal.window_size
+    updated["data"]["params"] = default_data_params(
+        proposal.preprocessing,
+        proposal.window_size,
+    )
     updated["data"]["notes"] = proposal.notes
     return updated
 
@@ -763,6 +806,7 @@ def experiment_to_candidate_config(experiment: dict[str, object], notes: str) ->
     return CandidateConfig(
         model_name=str(experiment["model"]["name"]),
         preprocessing=str(experiment["data"]["preprocessing"]),
+        data_params=dict(experiment["data"].get("params", {})),
         augmentation=str(experiment["augmentation"]["name"]),
         augmentation_strength=str(experiment["augmentation"].get("strength", "medium")),
         learning_rate=float(experiment["model"]["learning_rate"]),
@@ -776,7 +820,10 @@ def clone_experiment(experiment: dict[str, object]) -> dict[str, object]:
     return {
         "dataset": dict(experiment["dataset"]),
         "model": dict(experiment["model"]),
-        "data": dict(experiment["data"]),
+        "data": {
+            **dict(experiment["data"]),
+            "params": dict(experiment["data"].get("params", {})),
+        },
         "augmentation": {
             **dict(experiment["augmentation"]),
             "params": dict(experiment["augmentation"].get("params", {})),
