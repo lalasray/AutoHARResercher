@@ -190,6 +190,12 @@ The per-agent memory files are the easiest place to inspect each specialist agen
 - which common module files were written into each branch
 - whether the sync created a new Git commit in that branch
 
+Specialist baseline isolation:
+
+- specialist branch evaluation now starts from the frozen accepted `research/experiment.json` snapshot for that branch
+- it does not replay every module file in the workspace when building a single-agent baseline
+- only the orchestrator intentionally composes multiple specialist modules into one candidate
+
 And in the Git materialized flow, each branch now owns explicit Python module files:
 
 - `research/modules/model_module.py`
