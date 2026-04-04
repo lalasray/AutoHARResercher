@@ -90,6 +90,7 @@ def module_payload(
     sync_from_branch: str,
     logic_expression: str = "",
     helper_code: str = "",
+    function_rewrite: str = "",
 ) -> dict[str, object]:
     return {
         "round_id": round_id,
@@ -100,6 +101,7 @@ def module_payload(
         "config": module_config_from_experiment(agent_name, experiment),
         "logic_expression": logic_expression,
         "helper_code": helper_code,
+        "function_rewrite": function_rewrite,
     }
 
 
@@ -118,6 +120,7 @@ def write_module_python(path: Path, payload: dict[str, object]) -> None:
         f"CONFIG = {config_body}\n\n"
         f"LOGIC_EXPRESSION = {payload.get('logic_expression', '')!r}\n\n"
         f"LLM_HELPER_CODE = {payload.get('helper_code', '')!r}\n\n"
+        f"LLM_FUNCTION_REWRITE = {payload.get('function_rewrite', '')!r}\n\n"
         "def module_metadata() -> dict[str, object]:\n"
         '    """Return serializable metadata for this owned module."""\n'
         "    return {\n"
@@ -129,6 +132,7 @@ def write_module_python(path: Path, payload: dict[str, object]) -> None:
         '        "config": dict(CONFIG),\n'
         '        "logic_expression": LOGIC_EXPRESSION,\n'
         '        "helper_code": LLM_HELPER_CODE,\n'
+        '        "function_rewrite": LLM_FUNCTION_REWRITE,\n'
         "    }\n\n"
         f"{patch_builder}\n",
         encoding="utf-8",
@@ -328,6 +332,30 @@ def _module_patch_builder(agent_name: str) -> str:
             '    except Exception:\n'
             "        return {}\n"
             "    return namespace\n\n"
+            "def llm_function_namespace() -> dict[str, object]:\n"
+            '    """Load a bounded LLM function rewrite inside a constrained namespace."""\n'
+            '    if not LLM_FUNCTION_REWRITE:\n'
+            "        return {}\n"
+            '    namespace = {"__builtins__": allowed_builtins()}\n'
+            '    try:\n'
+            '        exec(LLM_FUNCTION_REWRITE, namespace, namespace)\n'
+            '    except Exception:\n'
+            "        return {}\n"
+            "    return namespace\n\n"
+            "def llm_compatibility_strength_override(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str | None:\n"
+            '    """Run a bounded rewrite of augmentation strength compatibility if provided."""\n'
+            "    namespace = llm_function_namespace()\n"
+            '    chooser = namespace.get("compatibility_strength_override")\n'
+            '    if not callable(chooser):\n'
+            "        return None\n"
+            '    config = dict(CONFIG)\n'
+            '    try:\n'
+            '        result = chooser(base_experiment, target_name, requested_strength, config)\n'
+            '    except Exception:\n'
+            "        return None\n"
+            '    if isinstance(result, str) and result in {"weak", "medium", "strong"}:\n'
+            "        return result\n"
+            "    return None\n\n"
             "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
             "    namespace = llm_helper_namespace()\n"
@@ -364,6 +392,9 @@ def _module_patch_builder(agent_name: str) -> str:
             '    target_name = choose_augmentation_name(base_experiment, str(CONFIG.get("name", baseline_aug.get("name", "none"))))\n'
             '    target_strength = str(CONFIG.get("strength", baseline_aug.get("strength", "medium")))\n'
             '    target_strength = compatibility_strength(base_experiment, target_name, target_strength)\n'
+            '    rewritten_strength = llm_compatibility_strength_override(base_experiment, target_name, target_strength)\n'
+            '    if rewritten_strength is not None:\n'
+            '        target_strength = rewritten_strength\n'
             "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'

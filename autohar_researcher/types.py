@@ -47,6 +47,7 @@ class AugmentationProposal:
     notes: str = ""
     logic_expression: str = ""
     helper_code: str = ""
+    function_rewrite: str = ""
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,7 @@ class AugmentationPlanHint:
     rationale: str = ""
     logic_expression: str = ""
     helper_code: str = ""
+    function_rewrite: str = ""
 
 
 @dataclass(frozen=True)

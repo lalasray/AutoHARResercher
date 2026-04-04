@@ -114,6 +114,9 @@ class GitRuntime:
                         helper_code=str(
                             baseline_module_payloads.get(sync_agent_name, {}).get("helper_code", "")
                         ),
+                        function_rewrite=str(
+                            baseline_module_payloads.get(sync_agent_name, {}).get("function_rewrite", "")
+                        ),
                     ),
                 )
                 workspace_sync_paths[sync_agent_name] = str(sync_module_abs)
@@ -148,9 +151,15 @@ class GitRuntime:
                     sync_from_branch=baseline_branch,
                     logic_expression=str(proposal.logic_expression),
                     helper_code=str(proposal.helper_code),
+                    function_rewrite=str(
+                        proposal.function_rewrite if isinstance(proposal, AugmentationProposal) else ""
+                    ),
                 )["config"],
                 "logic_expression": str(proposal.logic_expression),
                 "helper_code": str(proposal.helper_code),
+                "function_rewrite": str(
+                    proposal.function_rewrite if isinstance(proposal, AugmentationProposal) else ""
+                ),
             }
             module_abs = Path(workspace.worktree_path) / module_rel
             write_module_python(module_abs, payload)
@@ -208,6 +217,9 @@ class GitRuntime:
                     ),
                     helper_code=str(
                         source_payload.get(source_agent_name, {}).get("helper_code", "")
+                    ),
+                    function_rewrite=str(
+                        source_payload.get(source_agent_name, {}).get("function_rewrite", "")
                     ),
                 ),
             )

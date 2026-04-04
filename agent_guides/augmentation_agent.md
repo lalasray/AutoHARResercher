@@ -38,6 +38,17 @@ Prefer helper code when the decision depends on:
 - conservative guardrails around augmentation strength
 - reusable local reasoning you would want to keep in the owned module
 
+For deeper code evolution, you may also rewrite exactly one bounded helper function inside your owned module:
+
+- `compatibility_strength_override(base_experiment, target_name, requested_strength, config)`
+
+Use that when you want to change the augmentation-strength compatibility logic itself rather than only propose a one-shot output. It must return only:
+
+- `"weak"`
+- `"medium"`
+- `"strong"`
+- or `None` to fall back
+
 ## Allowed Search Space
 
 Valid augmentations:

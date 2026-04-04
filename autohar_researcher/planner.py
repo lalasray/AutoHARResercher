@@ -228,6 +228,10 @@ class OpenAIPlanner:
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
+            "`compatibility_strength_override(base_experiment, target_name, requested_strength, config)`. "
+            "Use this when you want to rewrite augmentation strength compatibility logic itself inside the owned module. "
+            "Return only a valid strength string or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             "`{\"augmentation\": {\"name\": ..., \"strength\": ...}}`. Use exact keys `name` and `strength`. "
@@ -246,8 +250,9 @@ class OpenAIPlanner:
                 "rationale": {"type": "string"},
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
+                "function_rewrite": {"type": "string"},
             },
-            "required": ["augmentation", "strength", "rationale", "logic_expression", "helper_code"],
+            "required": ["augmentation", "strength", "rationale", "logic_expression", "helper_code", "function_rewrite"],
         }
         payload = self._call_json_schema(
             name="autohar_augmentation_agent_plan",

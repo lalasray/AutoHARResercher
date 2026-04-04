@@ -154,6 +154,7 @@ class AugmentationAgent:
                 notes=f"LLM planner hint: {planner_hint.rationale}",
                 logic_expression=planner_hint.logic_expression,
                 helper_code=planner_hint.helper_code,
+                function_rewrite=planner_hint.function_rewrite,
             )
         best_config = best_result.config if best_result else None
         accepted_aug = best_config.augmentation if best_config else "none"
@@ -207,6 +208,7 @@ class AugmentationAgent:
             ),
             logic_expression="",
             helper_code="",
+            function_rewrite="",
         )
 
     def _context_key(self, config: CandidateConfig | None) -> str:
@@ -756,6 +758,7 @@ class HierarchicalOrchestrator:
                         "rationale": planner_hints["augmentation_agent"].rationale,
                         "logic_expression": planner_hints["augmentation_agent"].logic_expression,
                         "helper_code": planner_hints["augmentation_agent"].helper_code,
+                        "function_rewrite": planner_hints["augmentation_agent"].function_rewrite,
                     }
                     if "augmentation_agent" in planner_hints
                     else {}
