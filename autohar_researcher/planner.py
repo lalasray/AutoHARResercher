@@ -17,6 +17,7 @@ from autohar_researcher.types import (
     ModelPlanHint,
     ProposalJudgment,
 )
+from autohar_researcher.datasets import UCIHARDataset
 
 
 def load_local_env(path: Path | None = None) -> None:
@@ -89,6 +90,10 @@ class OpenAIPlanner:
             accepted_history=accepted_history,
         )
         orchestrator_plan = self._plan_orchestrator(context)
+        orchestrator_plan = self._apply_stagnation_overrides_to_orchestrator_plan(
+            context=context,
+            orchestrator_plan=orchestrator_plan,
+        )
         hints: dict[str, object] = {
             "model_agent": self._plan_model_agent(context, orchestrator_plan),
             "augmentation_agent": self._plan_augmentation_agent(context, orchestrator_plan),
@@ -138,7 +143,8 @@ class OpenAIPlanner:
             "- compatibility: one of {low, medium, high}\n"
             "- evaluate_now: true if this proposal is worth using in orchestrator composition decisions this round\n"
             "- rationale: short explanation\n"
-            "Be conservative: if a proposal looks repetitive, incoherent, or likely incompatible with the accepted baseline, set evaluate_now=false.\n"
+            "Use evaluate_now=false only for proposals that look incoherent, invalid, self-contradictory, or clearly unsafe for the current baseline. "
+            "Do not over-police moderately bold but plausible proposals.\n"
         )
         schema = {
             "type": "object",
@@ -155,6 +161,7 @@ class OpenAIPlanner:
             prompt=prompt,
             schema=schema,
         )
+        payload = self._relax_judgments(context=context, payload=payload)
         return {
             agent_name: ProposalJudgment(agent_name=agent_name, **dict(judgment_payload))
             for agent_name, judgment_payload in payload.items()
@@ -201,6 +208,7 @@ class OpenAIPlanner:
         return {
             "round_id": round_id,
             "best_result": best_payload,
+            "dataset_metadata": self._dataset_metadata(best_result),
             "trend_summary": trend_summary,
             "recent_trials": recent_trials,
             "accepted_history": accepted,
@@ -212,6 +220,15 @@ class OpenAIPlanner:
                 "data_agent": self._agent_memory_summary("data_agent", history, accepted_history),
             },
         }
+
+    def _dataset_metadata(self, best_result: CandidateResult | None) -> dict[str, object]:
+        dataset_name = "uci_har"
+        if best_result is not None:
+            # Future-proofing for multi-dataset support if config later carries dataset name differently.
+            dataset_name = "uci_har"
+        if dataset_name == "uci_har":
+            return UCIHARDataset().metadata()
+        return {"dataset_name": dataset_name}
 
     def _plan_orchestrator(self, context: dict[str, object]) -> dict[str, object]:
         prompt = (
@@ -887,6 +904,18 @@ class OpenAIPlanner:
         stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
         current_model = str(payload.get("model_name", ""))
         if current_model != baseline_model:
+            if stagnation_rounds >= 10:
+                params = dict(payload.get("model_params") or {})
+                hidden_dim = int(params.get("hidden_dim", 96))
+                depth = int(params.get("depth", 2))
+                params["hidden_dim"] = max(hidden_dim, int(round(hidden_dim * 1.2)))
+                params["depth"] = min(6, depth + 1)
+                params["attention_mix"] = max(0.35, min(0.9, float(params.get("attention_mix", 0.5)) + 0.08))
+                payload["model_params"] = params
+                payload["rationale"] = (
+                    f"{payload.get('rationale', '').strip()} "
+                    "[forced larger model mutation after prolonged stagnation]"
+                ).strip()
             return payload
         if stagnation_rounds < 5 and not plateau and repeat_streak < 3:
             return payload
@@ -905,6 +934,15 @@ class OpenAIPlanner:
         for candidate in candidate_order:
             if candidate != baseline_model and candidate not in recent_models[-3:]:
                 payload["model_name"] = candidate
+                if stagnation_rounds >= 10:
+                    current_params = dict(payload.get("model_params") or {})
+                    current_params["hidden_dim"] = max(int(current_params.get("hidden_dim", 96)), 128)
+                    current_params["depth"] = min(6, max(int(current_params.get("depth", 2)), 3))
+                    current_params["attention_mix"] = max(
+                        0.35,
+                        min(0.9, float(current_params.get("attention_mix", 0.5)) + 0.08),
+                    )
+                    payload["model_params"] = current_params
                 payload["rationale"] = (
                     f"{payload.get('rationale', '').strip()} "
                     f"[exploration pressure: diversify away from repeated/stagnant baseline family {baseline_model} -> {candidate}]"
@@ -926,6 +964,12 @@ class OpenAIPlanner:
         stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
         current = (str(payload.get("augmentation", "")), str(payload.get("strength", "")))
         if current != (baseline_aug, baseline_strength):
+            if stagnation_rounds >= 10:
+                payload["strength"] = "medium" if str(payload.get("strength", "")) == "weak" else str(payload.get("strength", "medium"))
+                payload["rationale"] = (
+                    f"{payload.get('rationale', '').strip()} "
+                    "[forced real augmentation-family/strength shift after prolonged stagnation]"
+                ).strip()
             return payload
         if stagnation_rounds < 5 and not plateau and repeat_streak < 3:
             return payload
@@ -945,7 +989,7 @@ class OpenAIPlanner:
                 candidate = (augmentation, strength)
                 if candidate != (baseline_aug, baseline_strength) and candidate not in recent_values[-3:]:
                     payload["augmentation"] = augmentation
-                    payload["strength"] = strength
+                    payload["strength"] = "medium" if stagnation_rounds >= 10 and strength == "weak" else strength
                     payload["rationale"] = (
                         f"{payload.get('rationale', '').strip()} "
                         f"[exploration pressure: diversify away from repeated/stagnant baseline augmentation {baseline_aug}:{baseline_strength} -> {augmentation}:{strength}]"
@@ -967,6 +1011,12 @@ class OpenAIPlanner:
         stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
         current = (str(payload.get("preprocessing", "")), int(payload.get("window_size", 128)))
         if current != (baseline_pre, baseline_window):
+            if stagnation_rounds >= 10:
+                payload["window_size"] = 192 if int(payload.get("window_size", 128)) == baseline_window else int(payload.get("window_size", 128))
+                payload["rationale"] = (
+                    f"{payload.get('rationale', '').strip()} "
+                    "[forced larger data-regime shift after prolonged stagnation]"
+                ).strip()
             return payload
         if stagnation_rounds < 5 and not plateau and repeat_streak < 3:
             return payload
@@ -988,12 +1038,58 @@ class OpenAIPlanner:
                 candidate = (preprocessing, window_size)
                 if candidate != (baseline_pre, baseline_window) and candidate not in recent_values[-3:]:
                     payload["preprocessing"] = preprocessing
-                    payload["window_size"] = window_size
+                    payload["window_size"] = 192 if stagnation_rounds >= 10 and window_size == baseline_window else window_size
                     payload["rationale"] = (
                         f"{payload.get('rationale', '').strip()} "
                         f"[exploration pressure: diversify away from repeated/stagnant baseline data setting {baseline_pre}:{baseline_window} -> {preprocessing}:{window_size}]"
                     ).strip()
                     return payload
+        return payload
+
+    def _apply_stagnation_overrides_to_orchestrator_plan(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> dict[str, object]:
+        pressure = dict(context.get("exploration_pressure", {}))
+        stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
+        if stagnation_rounds < 10:
+            return orchestrator_plan
+        updated = dict(orchestrator_plan)
+        updated["exploration_mode"] = "forced_diversify"
+        updated["priority_order"] = ["model", "augmentation", "data"]
+        updated["combination_bias"] = "pairwise"
+        updated["risk_note"] = (
+            f"{str(updated.get('risk_note', '')).strip()} "
+            "[stagnation override: after 10+ non-improving rounds, require one larger model mutation, one real augmentation-family shift, and one real data-regime shift.]"
+        ).strip()
+        updated["summary"] = (
+            f"{str(updated.get('summary', '')).strip()} "
+            "[stagnation override active: broaden specialist mutations instead of only protecting the current winner.]"
+        ).strip()
+        return updated
+
+    def _relax_judgments(
+        self,
+        context: dict[str, object],
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        pressure = dict(context.get("exploration_pressure", {}))
+        stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
+        for judgment in payload.values():
+            if not isinstance(judgment, dict):
+                continue
+            plausibility = str(judgment.get("plausibility", "medium"))
+            compatibility = str(judgment.get("compatibility", "medium"))
+            novelty = str(judgment.get("novelty", "medium"))
+            if plausibility != "low" and compatibility != "low":
+                judgment["evaluate_now"] = True
+            if stagnation_rounds >= 10 and novelty == "low" and judgment.get("mutation_size") == "small":
+                judgment["mutation_size"] = "medium"
+                judgment["rationale"] = (
+                    f"{str(judgment.get('rationale', '')).strip()} "
+                    "[judge relaxation: keep plausible proposals in play during prolonged stagnation.]"
+                ).strip()
         return payload
 
 

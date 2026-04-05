@@ -42,6 +42,7 @@ class DummyHARHarness:
         experiment: dict[str, object] | None = None,
         component_summaries: dict[str, str] | None = None,
         artifact_paths: dict[str, str] | None = None,
+        evaluation_tag: str = "",
     ) -> CandidateResult:
         experiment = experiment or self._load_experiment(Path(worktree_path))
         cache_key = (
@@ -54,6 +55,7 @@ class DummyHARHarness:
             json.dumps(config.augmentation_params, sort_keys=True),
             float(config.learning_rate),
             int(config.window_size),
+            str(evaluation_tag),
         )
         if cache_key not in self._evaluation_cache:
             dataset = self._load_dataset(experiment)

@@ -447,6 +447,12 @@ class HierarchicalOrchestrator:
             )
             self._annotate_best_so_far(round_results, best_by_agent)
             round_best = self.evaluate_round(round_results)
+            if best_result is not None:
+                self._reevaluate_promising_candidates(
+                    round_results=round_results,
+                    baseline_result=best_result,
+                )
+                round_best = self.evaluate_round(round_results)
             accepted_candidate = self._select_accepted_candidate(round_results, best_result)
             if accepted_candidate is not None:
                 accepted_candidate.accepted = True
@@ -1184,6 +1190,41 @@ class HierarchicalOrchestrator:
                 result.val_score,
             )
             result.best_so_far_score = best_by_agent[result.agent_name]
+
+    def _reevaluate_promising_candidates(
+        self,
+        round_results: list[CandidateResult],
+        baseline_result: CandidateResult,
+    ) -> None:
+        margin = 0.02
+        for result in round_results:
+            if result.agent_name == "orchestrator":
+                continue
+            gap = baseline_result.val_score - result.val_score
+            if gap < 0 or gap > margin:
+                continue
+            reevaluated = self.harness.evaluate(
+                round_id=result.round_id,
+                agent_name=result.agent_name,
+                branch_name=result.branch_name,
+                worktree_path=result.worktree_path,
+                config=result.config,
+                component_summaries=result.component_summaries,
+                artifact_paths=dict(result.artifact_paths),
+                evaluation_tag="reeval",
+            )
+            original_score = result.val_score
+            result.val_score = round((original_score + reevaluated.val_score) / 2.0, 4)
+            for key, value in reevaluated.score_breakdown.items():
+                if key in result.score_breakdown and isinstance(value, float):
+                    result.score_breakdown[key] = round((float(result.score_breakdown[key]) + value) / 2.0, 4)
+            result.details["reevaluation"] = {
+                "initial_val_score": original_score,
+                "reevaluated_val_score": reevaluated.val_score,
+                "averaged_val_score": result.val_score,
+            }
+            result.summary = f"{result.summary} | reevaluated_near_baseline=true"
+            result.artifact_paths["evaluation_report"] = self._write_result_artifact(result)
 
     def _select_accepted_candidate(
         self,

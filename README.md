@@ -33,12 +33,14 @@ Search style:
 - orchestrator-level combination search: the system compares single-agent, pairwise, and full-composition candidates before deciding what to keep
 - orchestrator composition gating: if a specialist beats its own prior standalone best, the orchestrator can test that change as a baseline overlay (`baseline+agent`), and pairwise / broader combinations are attempted only when all included specialists clear that standalone-improvement gate and pass the LLM judge's quality screen
 - stagnation handling: after several non-improving rounds, the planner increases exploration pressure and pushes each specialist toward broader domain-level alternatives
+- near-baseline reevaluation: specialist candidates that land within a small margin of the current accepted baseline get one extra evaluation pass and are averaged before promotion decisions
 - anchored but not menu-only planning: stable top-level settings still exist for safe composition, but specialist novelty is expected to show up increasingly through owned-module helper code and bounded rewrites rather than only preset selection
 
 ## Current Setup
 
 - real OpenAI planner is required
 - UCI HAR is the current dataset
+- planner context now includes explicit dataset metadata for UCI HAR, including activity labels, sensor modalities, waist-mounted smartphone placement, 50 Hz sampling, and 128-step windows
 - optional Torch/CUDA path with CPU fallback
 - early stopping is enabled
 - promotion metric is validation `macro_f1`
@@ -57,6 +59,7 @@ Specialist evaluation is isolated:
 - a specialist branch starts from the frozen accepted `research/experiment.json`
 - it does not replay every module in the workspace when building a single-agent baseline
 - only the orchestrator intentionally composes multiple modules together
+- when the accepted baseline lives on a specialist branch, baseline reconstruction now applies only that branch's owned module on top of the synced snapshot, so later rounds inherit the real accepted state instead of a stale synced `experiment.json`
 
 ## Branch Model
 

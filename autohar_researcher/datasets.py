@@ -19,6 +19,20 @@ class UCIHARDataset:
     }
     TRAIN_LIMIT_PER_LABEL = 240
     TEST_LIMIT_PER_LABEL = 120
+    SAMPLING_RATE_HZ = 50
+    WINDOW_LENGTH = 128
+    SENSOR_COUNT = 1
+    SENSOR_MODALITIES = ["accelerometer", "gyroscope"]
+    SENSOR_PLACEMENT = "smartphone at waist"
+    CHANNEL_GROUPS = {
+        "total_acc": ["x", "y", "z"],
+        "body_acc": ["x", "y", "z"],
+        "body_gyro": ["x", "y", "z"],
+    }
+    NOTES = (
+        "Single smartphone-based IMU HAR benchmark with waist-mounted device, "
+        "50 Hz sampling, and 128-step windows."
+    )
 
     def __init__(self, root_dir: Path | None = None) -> None:
         self.root_dir = root_dir or (Path.cwd() / "data" / "uci_har")
@@ -93,3 +107,17 @@ class UCIHARDataset:
 
     def _read_vector(self, path: Path, cast: type[int] | type[float]) -> list[int] | list[float]:
         return [cast(line.strip()) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "dataset_name": "uci_har",
+            "task": "human_activity_recognition",
+            "sensor_count": self.SENSOR_COUNT,
+            "sensor_modalities": list(self.SENSOR_MODALITIES),
+            "sensor_placement": self.SENSOR_PLACEMENT,
+            "sampling_rate_hz": self.SAMPLING_RATE_HZ,
+            "window_length_steps": self.WINDOW_LENGTH,
+            "channel_groups": dict(self.CHANNEL_GROUPS),
+            "activity_labels": list(self.LABELS.values()),
+            "notes": self.NOTES,
+        }
