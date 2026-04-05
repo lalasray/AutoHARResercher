@@ -30,7 +30,7 @@ Search style:
 - hill-climbing style acceptance: only better candidates replace the accepted baseline
 - multi-agent guided exploration: specialist agents still explore within their own domains instead of doing only strict greedy local moves
 - orchestrator-level combination search: the system compares single-agent, pairwise, and full-composition candidates before deciding what to keep
-- orchestrator composition gating: pairwise and broader combinations are only attempted when the included specialist agents beat their own prior standalone bests in the current round
+- orchestrator composition gating: if a specialist beats its own prior standalone best, the orchestrator can test that change as a baseline overlay (`baseline+agent`), and pairwise / broader combinations are attempted only when all included specialists clear that standalone-improvement gate
 - stagnation handling: after several non-improving rounds, the planner increases exploration pressure and pushes each specialist toward broader domain-level alternatives
 - anchored but not menu-only planning: stable top-level settings still exist for safe composition, but specialist novelty is expected to show up increasingly through owned-module helper code and bounded rewrites rather than only preset selection
 

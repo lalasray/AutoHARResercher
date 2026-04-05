@@ -762,6 +762,9 @@ class HierarchicalOrchestrator:
             history=history,
         )
         candidate_specs = [
+            ("baseline+model", {"model_agent"}),
+            ("baseline+augmentation", {"augmentation_agent"}),
+            ("baseline+data", {"data_agent"}),
             ("model+augmentation", {"model_agent", "augmentation_agent"}),
             ("model+data", {"model_agent", "data_agent"}),
             ("augmentation+data", {"augmentation_agent", "data_agent"}),
@@ -873,7 +876,7 @@ class HierarchicalOrchestrator:
             notes="Orchestrator skipped combination evaluation because no multi-agent improving set qualified.",
         )
         summary = (
-            "orchestrator skipped combination evaluation because fewer than two specialist agents "
+            "orchestrator skipped combination evaluation because no specialist agent "
             f"beat their own historical bests; eligible_agents={sorted(eligible_agents)}"
         )
         result = CandidateResult(
@@ -887,7 +890,7 @@ class HierarchicalOrchestrator:
             artifact_paths={
                 "selected_combination": "",
                 "combination_order": ",".join(round_state.combination_order),
-                "skip_reason": "no_eligible_multi_agent_combo",
+                "skip_reason": "no_eligible_baseline_overlay_or_multi_agent_combo",
                 "eligible_agents": ",".join(sorted(eligible_agents)),
                 "composed_candidate": round_state.composed_artifact,
             },
