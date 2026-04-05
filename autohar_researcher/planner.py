@@ -37,6 +37,13 @@ def load_local_env(path: Path | None = None) -> None:
 
 class OpenAIPlanner:
     name = "openai_responses_multiagent"
+    ROLE_KEYS = {
+        "orchestrator": "ORCHESTRATOR",
+        "model_agent": "MODEL_AGENT",
+        "augmentation_agent": "AUGMENTATION_AGENT",
+        "data_agent": "DATA_AGENT",
+        "judge": "JUDGE",
+    }
     MODEL_FAMILIES = [
         "deepconvlstm",
         "deepconvlstmattention",
@@ -69,11 +76,23 @@ class OpenAIPlanner:
     ]
     WINDOW_SIZES = [64, 96, 128, 192, 256]
 
-    def __init__(self, model: str | None = None) -> None:
+    def __init__(
+        self,
+        model: str | None = None,
+        *,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        planner_name: str | None = None,
+        api_mode: str = "responses",
+    ) -> None:
         if OpenAI is None:
             raise RuntimeError("openai package is not installed")
         self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "gpt-5-mini")
-        self.client = OpenAI()
+        self.base_url = base_url
+        self.api_mode = api_mode
+        self.name = planner_name or self.name
+        self.default_api_key = api_key
+        self._client_cache: dict[tuple[str, str, str, str], OpenAI] = {}
         self.guides = self._load_guides()
 
     def plan_round(
@@ -160,6 +179,7 @@ class OpenAIPlanner:
             name="autohar_proposal_judgments",
             prompt=prompt,
             schema=schema,
+            role="judge",
         )
         payload = self._relax_judgments(context=context, payload=payload)
         return {
@@ -270,6 +290,7 @@ class OpenAIPlanner:
             name="autohar_orchestrator_plan",
             prompt=prompt,
             schema=schema,
+            role="orchestrator",
         )
 
     def _plan_model_agent(
@@ -359,6 +380,7 @@ class OpenAIPlanner:
             name="autohar_model_agent_plan",
             prompt=prompt,
             schema=schema,
+            role="model_agent",
         )
         payload = self._apply_model_exploration_pressure(context, payload)
         payload = self._prefer_model_param_rewrite(
@@ -432,6 +454,7 @@ class OpenAIPlanner:
             name="autohar_augmentation_agent_plan",
             prompt=prompt,
             schema=schema,
+            role="augmentation_agent",
         )
         payload = self._apply_augmentation_exploration_pressure(context, payload)
         payload = self._prefer_augmentation_param_rewrite(
@@ -505,6 +528,7 @@ class OpenAIPlanner:
             name="autohar_data_agent_plan",
             prompt=prompt,
             schema=schema,
+            role="data_agent",
         )
         payload = self._apply_data_exploration_pressure(context, payload)
         payload = self._prefer_data_param_rewrite(
@@ -518,9 +542,30 @@ class OpenAIPlanner:
         name: str,
         prompt: str,
         schema: dict[str, object],
+        *,
+        role: str,
     ) -> dict[str, object]:
-        response = self.client.responses.create(
-            model=self.model,
+        client, model_name, api_mode = self._client_for_role(role)
+        if api_mode == "chat":
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Return only valid JSON. Do not use markdown fences. "
+                            "Follow the requested schema exactly."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.2,
+            )
+            content = response.choices[0].message.content or "{}"
+            return json.loads(content)
+        response = client.responses.create(
+            model=model_name,
             input=prompt,
             text={
                 "format": {
@@ -532,6 +577,63 @@ class OpenAIPlanner:
             },
         )
         return json.loads(response.output_text)
+
+    def _client_for_role(self, role: str) -> tuple[OpenAI, str, str]:
+        role_key = self.ROLE_KEYS.get(role, role.upper())
+        backend = os.getenv(f"AUTOHAR_{role_key}_BACKEND", os.getenv("AUTOHAR_LLM_BACKEND", "openai")).strip().lower()
+        model_name = os.getenv(f"AUTOHAR_{role_key}_MODEL", self.model)
+        if backend == "lmstudio":
+            base_url = os.getenv(
+                f"AUTOHAR_{role_key}_BASE_URL",
+                os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+            )
+            api_key = os.getenv(
+                f"AUTOHAR_{role_key}_API_KEY",
+                os.getenv("AUTOHAR_LLM_API_KEY", self.default_api_key or "lm-studio"),
+            )
+            api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat").strip().lower()
+        else:
+            base_url = os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or "")
+            api_key = os.getenv(f"AUTOHAR_{role_key}_API_KEY", self.default_api_key or os.getenv("OPENAI_API_KEY", ""))
+            api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode).strip().lower()
+
+        cache_key = (backend, base_url, api_key, api_mode)
+        client = self._client_cache.get(cache_key)
+        if client is None:
+            client_kwargs: dict[str, object] = {}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+            if api_key:
+                client_kwargs["api_key"] = api_key
+            client = OpenAI(**client_kwargs)
+            self._client_cache[cache_key] = client
+        return client, model_name, api_mode
+
+    def role_runtime_summary(self) -> dict[str, dict[str, str]]:
+        summary: dict[str, dict[str, str]] = {}
+        for role in ("orchestrator", "model_agent", "augmentation_agent", "data_agent", "judge"):
+            role_key = self.ROLE_KEYS.get(role, role.upper())
+            backend = os.getenv(
+                f"AUTOHAR_{role_key}_BACKEND",
+                os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
+            ).strip().lower()
+            if backend == "lmstudio":
+                base_url = os.getenv(
+                    f"AUTOHAR_{role_key}_BASE_URL",
+                    os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+                )
+                api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat").strip().lower()
+            else:
+                base_url = os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or "")
+                api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode).strip().lower()
+            model_name = os.getenv(f"AUTOHAR_{role_key}_MODEL", self.model)
+            summary[role] = {
+                "backend": backend,
+                "model": model_name,
+                "api_mode": api_mode,
+                "base_url": base_url,
+            }
+        return summary
 
     def _proposal_payload(self, proposal: object) -> dict[str, object]:
         if isinstance(proposal, ModelPlanHint):
@@ -1100,14 +1202,26 @@ class OpenAIPlanner:
 
 def build_planner() -> OpenAIPlanner:
     load_local_env()
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError(
-            "OPENAI_API_KEY is required for planning. "
-            "Put it in .autohar.env or export it in your shell."
-        )
+    backend = os.getenv("AUTOHAR_LLM_BACKEND", "openai").strip().lower()
     if OpenAI is None:
         raise RuntimeError(
             "The openai Python package is required for planning. "
             "Install project dependencies first."
+        )
+    if backend == "lmstudio":
+        base_url = os.getenv("AUTOHAR_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
+        api_key = os.getenv("AUTOHAR_LLM_API_KEY", "lm-studio")
+        model = os.getenv("AUTOHAR_LLM_MODEL", "local-model")
+        return OpenAIPlanner(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            planner_name="lmstudio_chat_multiagent",
+            api_mode="chat",
+        )
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError(
+            "OPENAI_API_KEY is required for the default OpenAI planner. "
+            "Put it in .autohar.env, export it in your shell, or set AUTOHAR_LLM_BACKEND=lmstudio."
         )
     return OpenAIPlanner()

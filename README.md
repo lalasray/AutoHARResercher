@@ -40,7 +40,20 @@ The current search style is best described as:
   - a pairwise combination
   - a full three-way combination
 
-Important: the current planner path still expects a valid `OPENAI_API_KEY`.
+Planner backends currently supported:
+
+- `openai` with `OPENAI_API_KEY`
+- `lmstudio` through an OpenAI-compatible local endpoint
+
+Each role can now use its own direct LLM connection if you want:
+
+- `orchestrator`
+- `model_agent`
+- `augmentation_agent`
+- `data_agent`
+- `judge`
+
+If you do nothing, they inherit the shared planner backend settings. If you want true separation, you can override each role independently.
 
 ## Agent Ownership
 
@@ -107,9 +120,46 @@ Resume behavior:
 Create a local env file:
 
 1. copy `.autohar.env.example` to `.autohar.env`
-2. add your `OPENAI_API_KEY`
+2. choose one planner backend
 
-The launcher refuses to run if `.autohar.env` is missing.
+OpenAI:
+
+```bash
+OPENAI_API_KEY=your_key_here
+AUTOHAR_LLM_MODEL=gpt-5-mini
+```
+
+LM Studio:
+
+```bash
+AUTOHAR_LLM_BACKEND=lmstudio
+AUTOHAR_LLM_BASE_URL=http://127.0.0.1:1234/v1
+AUTOHAR_LLM_API_KEY=lm-studio
+AUTOHAR_LLM_MODEL=your_lmstudio_model_id
+```
+
+Role-specific overrides are also supported:
+
+```bash
+AUTOHAR_ORCHESTRATOR_BACKEND=lmstudio
+AUTOHAR_ORCHESTRATOR_BASE_URL=http://127.0.0.1:1234/v1
+AUTOHAR_ORCHESTRATOR_API_KEY=lm-studio
+AUTOHAR_ORCHESTRATOR_MODEL=local-orchestrator-model
+
+AUTOHAR_MODEL_AGENT_BACKEND=lmstudio
+AUTOHAR_MODEL_AGENT_MODEL=local-model-agent
+
+AUTOHAR_AUGMENTATION_AGENT_BACKEND=lmstudio
+AUTOHAR_AUGMENTATION_AGENT_MODEL=local-augmentation-agent
+
+AUTOHAR_DATA_AGENT_BACKEND=lmstudio
+AUTOHAR_DATA_AGENT_MODEL=local-data-agent
+
+AUTOHAR_JUDGE_BACKEND=lmstudio
+AUTOHAR_JUDGE_MODEL=local-judge-model
+```
+
+The launcher still requires `.autohar.env` to exist, but it no longer has to contain an OpenAI key if you use `AUTOHAR_LLM_BACKEND=lmstudio`.
 
 ## Training Settings
 
@@ -168,6 +218,7 @@ Main outputs:
 - [x] Proposal judge layer
 - [x] Report refresh after each round
 - [x] Resume support
-- [ ] Offline fallback planner when no valid API key is available
+- [x] Alternate LM Studio planner backend through an OpenAI-compatible local endpoint
+- [ ] Pure offline heuristic fallback planner when no LLM server is available
 - [ ] More datasets
 - [ ] Compute-aware objectives such as latency, memory, and size
