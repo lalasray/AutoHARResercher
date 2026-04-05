@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict
 from pathlib import Path
 
@@ -382,11 +383,13 @@ class OpenAIPlanner:
             schema=schema,
             role="model_agent",
         )
+        original_payload = dict(payload)
         payload = self._apply_model_exploration_pressure(context, payload)
         payload = self._prefer_model_param_rewrite(
             round_id=int(context["round_id"]),
             payload=payload,
         )
+        payload = self._finalize_model_payload(payload=payload, original_payload=original_payload)
         return ModelPlanHint(**payload)
 
     def _plan_augmentation_agent(
@@ -456,11 +459,13 @@ class OpenAIPlanner:
             schema=schema,
             role="augmentation_agent",
         )
+        original_payload = dict(payload)
         payload = self._apply_augmentation_exploration_pressure(context, payload)
         payload = self._prefer_augmentation_param_rewrite(
             round_id=int(context["round_id"]),
             payload=payload,
         )
+        payload = self._finalize_augmentation_payload(payload=payload, original_payload=original_payload)
         return AugmentationPlanHint(**payload)
 
     def _plan_data_agent(
@@ -530,11 +535,13 @@ class OpenAIPlanner:
             schema=schema,
             role="data_agent",
         )
+        original_payload = dict(payload)
         payload = self._apply_data_exploration_pressure(context, payload)
         payload = self._prefer_data_param_rewrite(
             round_id=int(context["round_id"]),
             payload=payload,
         )
+        payload = self._finalize_data_payload(payload=payload, original_payload=original_payload)
         return DataPlanHint(**payload)
 
     def _call_json_schema(
@@ -1245,6 +1252,96 @@ class OpenAIPlanner:
                     "[judge relaxation: keep plausible proposals in play during prolonged stagnation.]"
                 ).strip()
         return payload
+
+    def _finalize_model_payload(
+        self,
+        *,
+        payload: dict[str, object],
+        original_payload: dict[str, object],
+    ) -> dict[str, object]:
+        params = dict(payload.get("model_params") or {})
+        original_model = str(original_payload.get("model_name", ""))
+        final_model = str(payload.get("model_name", ""))
+        original_lr = float(original_payload.get("learning_rate", payload.get("learning_rate", 0.0)))
+        final_lr = float(payload.get("learning_rate", original_lr))
+        tags = self._extract_rationale_tags(str(payload.get("rationale", "")))
+        change_note = ""
+        if final_model != original_model or abs(final_lr - original_lr) > 1e-12:
+            change_note = f" postprocessed from {original_model or 'unknown'}@{original_lr:.5g}."
+        payload["rationale"] = (
+            f"Final model proposal: target {final_model} at lr={final_lr:.5g}; "
+            f"hidden_dim={int(params.get('hidden_dim', 0))}, depth={int(params.get('depth', 0))}, "
+            f"temporal_pool={params.get('temporal_pool', 'unknown')}, spectral_bins={int(params.get('spectral_bins', 0))}."
+            f"{change_note}"
+            f"{self._logic_note(payload)}"
+            f"{self._append_tags(tags)}"
+        ).strip()
+        return payload
+
+    def _finalize_augmentation_payload(
+        self,
+        *,
+        payload: dict[str, object],
+        original_payload: dict[str, object],
+    ) -> dict[str, object]:
+        original_aug = str(original_payload.get("augmentation", ""))
+        original_strength = str(original_payload.get("strength", ""))
+        final_aug = str(payload.get("augmentation", ""))
+        final_strength = str(payload.get("strength", ""))
+        tags = self._extract_rationale_tags(str(payload.get("rationale", "")))
+        change_note = ""
+        if (final_aug, final_strength) != (original_aug, original_strength):
+            change_note = f" postprocessed from {original_aug or 'unknown'}:{original_strength or 'unknown'}."
+        payload["rationale"] = (
+            f"Final augmentation proposal: target {final_aug}:{final_strength}."
+            f"{change_note}"
+            f"{self._logic_note(payload)}"
+            f"{self._append_tags(tags)}"
+        ).strip()
+        return payload
+
+    def _finalize_data_payload(
+        self,
+        *,
+        payload: dict[str, object],
+        original_payload: dict[str, object],
+    ) -> dict[str, object]:
+        original_pre = str(original_payload.get("preprocessing", ""))
+        original_window = int(original_payload.get("window_size", payload.get("window_size", 128)))
+        final_pre = str(payload.get("preprocessing", ""))
+        final_window = int(payload.get("window_size", original_window))
+        tags = self._extract_rationale_tags(str(payload.get("rationale", "")))
+        change_note = ""
+        if (final_pre, final_window) != (original_pre, original_window):
+            change_note = f" postprocessed from {original_pre or 'unknown'}:{original_window}."
+        payload["rationale"] = (
+            f"Final data proposal: target preprocessing={final_pre}, window={final_window}."
+            f"{change_note}"
+            f"{self._logic_note(payload)}"
+            f"{self._append_tags(tags)}"
+        ).strip()
+        return payload
+
+    def _logic_note(self, payload: dict[str, object]) -> str:
+        notes: list[str] = []
+        if str(payload.get("function_rewrite", "")).strip():
+            notes.append("uses bounded function rewrite")
+        elif str(payload.get("helper_code", "")).strip():
+            notes.append("uses owned helper code")
+        elif str(payload.get("logic_expression", "")).strip():
+            notes.append("uses logic expression")
+        if not notes:
+            return ""
+        return " " + "; ".join(notes) + "."
+
+    def _extract_rationale_tags(self, rationale: str) -> list[str]:
+        return [match.group(0) for match in re.finditer(r"\[[^\]]+\]", rationale)]
+
+    def _append_tags(self, tags: list[str]) -> str:
+        if not tags:
+            return ""
+        unique_tags = list(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))
+        return " " + " ".join(unique_tags)
 
 
 def build_planner() -> OpenAIPlanner:

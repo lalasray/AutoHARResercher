@@ -881,6 +881,7 @@ class HierarchicalOrchestrator:
         proposal_judgments: dict[str, ProposalJudgment],
     ) -> set[str]:
         prior_best_by_agent: dict[str, float] = {}
+        recent_scores_by_agent: dict[str, list[float]] = {}
         for result in history:
             if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
                 continue
@@ -888,6 +889,7 @@ class HierarchicalOrchestrator:
                 prior_best_by_agent.get(result.agent_name, float("-inf")),
                 result.val_score,
             )
+            recent_scores_by_agent.setdefault(result.agent_name, []).append(result.val_score)
         eligible: set[str] = set()
         for result in agent_results:
             if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
@@ -898,7 +900,27 @@ class HierarchicalOrchestrator:
             if judgment.plausibility == "low" or judgment.compatibility == "low":
                 continue
             prior_best = prior_best_by_agent.get(result.agent_name, float("-inf"))
-            if result.val_score > prior_best:
+            recent_scores = recent_scores_by_agent.get(result.agent_name, [])
+            recent_best = max(recent_scores[-5:], default=float("-inf"))
+            near_personal_best = (
+                prior_best != float("-inf")
+                and result.val_score >= prior_best - 0.015
+            )
+            beats_recent_window = (
+                recent_best != float("-inf")
+                and result.val_score >= recent_best - 0.01
+            )
+            judged_promising = (
+                judgment.compatibility in {"medium", "high"}
+                and judgment.plausibility in {"medium", "high"}
+                and judgment.novelty in {"medium", "high"}
+            )
+            if (
+                result.val_score > prior_best
+                or near_personal_best
+                or beats_recent_window
+                or judged_promising
+            ):
                 eligible.add(result.agent_name)
         return eligible
 
