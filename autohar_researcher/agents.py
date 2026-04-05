@@ -792,45 +792,88 @@ class HierarchicalOrchestrator:
             history=history,
             proposal_judgments=proposal_judgments,
         )
-        candidate_specs = [
-            ("baseline+model", {"model_agent"}),
-            ("baseline+augmentation", {"augmentation_agent"}),
-            ("baseline+data", {"data_agent"}),
-            ("model+augmentation", {"model_agent", "augmentation_agent"}),
-            ("model+data", {"model_agent", "data_agent"}),
-            ("augmentation+data", {"augmentation_agent", "data_agent"}),
-            ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}),
+        relaxed_agents = self._relaxed_combination_agents(
+            agent_results=agent_results,
+            history=history,
+            proposal_judgments=proposal_judgments,
+        )
+        candidate_specs: list[tuple[str, set[str], str]] = [
+            ("baseline+model", {"model_agent"}, "current"),
+            ("baseline+augmentation", {"augmentation_agent"}, "current"),
+            ("baseline+data", {"data_agent"}, "current"),
+            ("model+augmentation", {"model_agent", "augmentation_agent"}, "current"),
+            ("model+data", {"model_agent", "data_agent"}, "current"),
+            ("augmentation+data", {"augmentation_agent", "data_agent"}, "current"),
+            ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}, "current"),
         ]
         candidate_specs = [
-            (label, included_agents)
-            for label, included_agents in candidate_specs
+            (label, included_agents, source_mode)
+            for label, included_agents, source_mode in candidate_specs
             if included_agents.issubset(eligible_agents)
         ]
-        round_state.combination_order = [label for label, _ in candidate_specs]
+        has_multi_agent = any(
+            "+" in label and not label.startswith("baseline+")
+            for label, _, _ in candidate_specs
+        )
+        if not has_multi_agent and len(relaxed_agents) >= 2:
+            fallback_specs = [
+                ("baseline+model", {"model_agent"}, "current"),
+                ("baseline+augmentation", {"augmentation_agent"}, "current"),
+                ("baseline+data", {"data_agent"}, "current"),
+                ("model+augmentation", {"model_agent", "augmentation_agent"}, "current"),
+                ("model+data", {"model_agent", "data_agent"}, "current"),
+                ("augmentation+data", {"augmentation_agent", "data_agent"}, "current"),
+                ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}, "current"),
+            ]
+            for label, included_agents, source_mode in fallback_specs:
+                if (
+                    included_agents.issubset(relaxed_agents)
+                    and (label, included_agents, source_mode) not in candidate_specs
+                ):
+                    candidate_specs.append((label, included_agents, source_mode))
+
+        historical_best = self._best_specialist_results(history)
+        historical_specs = self._historical_candidate_specs(
+            current_results=agent_results,
+            historical_best=historical_best,
+        )
+        for spec in historical_specs:
+            if spec not in candidate_specs:
+                candidate_specs.append(spec)
+
+        round_state.combination_order = [label for label, _, _ in candidate_specs]
         if not candidate_specs:
             return self._skipped_orchestrator_result(
                 round_id=round_id,
                 round_state=round_state,
                 baseline_experiment=baseline_experiment,
-                eligible_agents=eligible_agents,
+                eligible_agents=relaxed_agents or eligible_agents,
             )
         candidate_specs = self._rank_candidate_specs(
             candidate_specs=candidate_specs,
             combination_memory=dict(round_plan.get("combination_memory", {})),
             orchestrator_plan=dict(round_plan.get("orchestrator_plan", {})),
         )
-        round_state.combination_order = [label for label, _ in candidate_specs]
+        round_state.combination_order = [label for label, _, _ in candidate_specs]
         evaluated: list[CandidateResult] = []
-        for label, included_agents in candidate_specs:
-            experiment = self._compose_experiment_from_proposals(
-                proposals=proposals,
-                baseline_experiment=baseline_experiment,
-                included_agents=included_agents,
-                round_state=round_state,
-            )
+        for label, included_agents, source_mode in candidate_specs:
+            if source_mode == "historical_best":
+                experiment = self._compose_experiment_from_results(
+                    baseline_experiment=baseline_experiment,
+                    historical_best=historical_best,
+                    included_agents=included_agents,
+                )
+            else:
+                experiment = self._compose_experiment_from_proposals(
+                    proposals=proposals,
+                    baseline_experiment=baseline_experiment,
+                    included_agents=included_agents,
+                    round_state=round_state,
+                )
             if (
                 included_agents == {"model_agent", "augmentation_agent", "data_agent"}
                 and round_state.materialized_orchestrator_file
+                and source_mode == "current"
             ):
                 composed_payload = self._load_json(round_state.materialized_orchestrator_file)
                 experiment = composed_payload["experiment"]
@@ -839,6 +882,11 @@ class HierarchicalOrchestrator:
                 notes=f"Orchestrator evaluated combination: {label}.",
             )
             component_summaries = self._component_summaries(proposals, included_agents)
+            if source_mode == "historical_best":
+                component_summaries = self._historical_component_summaries(
+                    historical_best=historical_best,
+                    included_agents=included_agents,
+                )
             workspace = AgentWorkspace(
                 agent_name="orchestrator",
                 branch_name=round_state.orchestrator_branch or self.orchestrator_workspace.branch_name,
@@ -856,6 +904,7 @@ class HierarchicalOrchestrator:
                     artifact_paths={
                         **round_state.proposal_artifacts,
                         "selected_combination": label,
+                        "combination_source": source_mode,
                         "combination_order": ",".join(round_state.combination_order),
                         "composed_candidate": round_state.composed_artifact,
                         **{
@@ -924,6 +973,46 @@ class HierarchicalOrchestrator:
                 eligible.add(result.agent_name)
         return eligible
 
+    def _relaxed_combination_agents(
+        self,
+        agent_results: list[CandidateResult],
+        history: list[CandidateResult],
+        proposal_judgments: dict[str, ProposalJudgment],
+    ) -> set[str]:
+        prior_best_by_agent: dict[str, float] = {}
+        recent_scores_by_agent: dict[str, list[float]] = {}
+        for result in history:
+            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+                continue
+            prior_best_by_agent[result.agent_name] = max(
+                prior_best_by_agent.get(result.agent_name, float("-inf")),
+                result.val_score,
+            )
+            recent_scores_by_agent.setdefault(result.agent_name, []).append(result.val_score)
+        relaxed: set[str] = set()
+        for result in agent_results:
+            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+                continue
+            judgment = proposal_judgments.get(result.agent_name)
+            if judgment is None or not judgment.evaluate_now:
+                continue
+            if judgment.plausibility == "low" or judgment.compatibility == "low":
+                continue
+            prior_best = prior_best_by_agent.get(result.agent_name, float("-inf"))
+            recent_best = max(recent_scores_by_agent.get(result.agent_name, [])[-5:], default=float("-inf"))
+            near_personal_best = (
+                prior_best != float("-inf")
+                and result.val_score >= prior_best - 0.03
+            )
+            near_recent_best = (
+                recent_best != float("-inf")
+                and result.val_score >= recent_best - 0.02
+            )
+            strong_judgment = judgment.compatibility == "high" or judgment.novelty == "high"
+            if near_personal_best or near_recent_best or strong_judgment:
+                relaxed.add(result.agent_name)
+        return relaxed
+
     def _judge_proposals(
         self,
         round_id: int,
@@ -959,11 +1048,11 @@ class HierarchicalOrchestrator:
     ) -> CandidateResult:
         config = experiment_to_candidate_config(
             baseline_experiment,
-            notes="Orchestrator skipped combination evaluation because no multi-agent improving set qualified.",
+            notes="Orchestrator skipped combination evaluation because no promising composition candidate qualified.",
         )
         summary = (
-            "orchestrator skipped combination evaluation because no specialist agent "
-            f"beat their own historical bests; eligible_agents={sorted(eligible_agents)}"
+            "orchestrator skipped combination evaluation because no promising "
+            f"current or historical composition candidate qualified; eligible_agents={sorted(eligible_agents)}"
         )
         result = CandidateResult(
             round_id=round_id,
@@ -986,10 +1075,10 @@ class HierarchicalOrchestrator:
 
     def _rank_candidate_specs(
         self,
-        candidate_specs: list[tuple[str, set[str]]],
+        candidate_specs: list[tuple[str, set[str], str]],
         combination_memory: dict[str, object],
         orchestrator_plan: dict[str, object],
-    ) -> list[tuple[str, set[str]]]:
+    ) -> list[tuple[str, set[str], str]]:
         accepted_best = dict(combination_memory.get("accepted_best_by_combination", {}))
         recent_best = dict(combination_memory.get("recent_best_by_combination", {}))
         recent_avg = dict(combination_memory.get("recent_avg_by_combination", {}))
@@ -1005,13 +1094,19 @@ class HierarchicalOrchestrator:
         }
         combination_bias = str(orchestrator_plan.get("combination_bias", "")).lower()
 
-        def label_score(label: str) -> float:
+        def normalized_label(label: str) -> str:
+            normalized = label.replace("baseline+best_", "baseline+")
+            normalized = normalized.replace("best_", "")
+            return normalized
+
+        def label_score(label: str, source_mode: str) -> float:
+            score_label = normalized_label(label)
             score = 0.0
-            score += 3.0 * float(accepted_best.get(label, 0.0))
-            score += 2.0 * float(recent_best.get(label, 0.0))
-            score += 1.0 * float(recent_avg.get(label, 0.0))
-            score += 2.0 * float(compatible.get(label, 0.0))
-            score += 2.0 * float(conflicting.get(label, 0.0))
+            score += 3.0 * float(accepted_best.get(score_label, 0.0))
+            score += 2.0 * float(recent_best.get(score_label, 0.0))
+            score += 1.0 * float(recent_avg.get(score_label, 0.0))
+            score += 2.0 * float(compatible.get(score_label, 0.0))
+            score += 2.0 * float(conflicting.get(score_label, 0.0))
             is_pair = label.count("+") == 1
             is_three_way = label.count("+") == 2
             if combination_bias in {"pairwise", "stability"}:
@@ -1022,13 +1117,62 @@ class HierarchicalOrchestrator:
             elif combination_bias in {"broader", "broad", "composition"}:
                 if is_three_way:
                     score += 0.25
+            if source_mode == "historical_best":
+                score += 0.1
             return score
 
         return sorted(
             candidate_specs,
-            key=lambda item: (label_score(item[0]), -item[0].count("+")),
+            key=lambda item: (label_score(item[0], item[2]), -item[0].count("+")),
             reverse=True,
         )
+
+    def _best_specialist_results(
+        self,
+        history: list[CandidateResult],
+    ) -> dict[str, CandidateResult]:
+        best: dict[str, CandidateResult] = {}
+        for result in history:
+            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+                continue
+            current = best.get(result.agent_name)
+            if current is None or result.val_score > current.val_score:
+                best[result.agent_name] = result
+        return best
+
+    def _historical_candidate_specs(
+        self,
+        current_results: list[CandidateResult],
+        historical_best: dict[str, CandidateResult],
+    ) -> list[tuple[str, set[str], str]]:
+        current_by_agent = {
+            result.agent_name: result
+            for result in current_results
+            if result.agent_name in {"model_agent", "augmentation_agent", "data_agent"}
+        }
+        improved_agents = {
+            agent_name
+            for agent_name, best_result in historical_best.items()
+            if agent_name in current_by_agent and best_result.val_score > current_by_agent[agent_name].val_score
+        }
+        specs: list[tuple[str, set[str], str]] = []
+        single_labels = {
+            "model_agent": "baseline+best_model",
+            "augmentation_agent": "baseline+best_augmentation",
+            "data_agent": "baseline+best_data",
+        }
+        for agent_name in improved_agents:
+            specs.append((single_labels[agent_name], {agent_name}, "historical_best"))
+        pair_map = [
+            ("best_model+best_augmentation", {"model_agent", "augmentation_agent"}),
+            ("best_model+best_data", {"model_agent", "data_agent"}),
+            ("best_augmentation+best_data", {"augmentation_agent", "data_agent"}),
+            ("best_model+best_augmentation+best_data", {"model_agent", "augmentation_agent", "data_agent"}),
+        ]
+        for label, included_agents in pair_map:
+            if included_agents.issubset(improved_agents):
+                specs.append((label, included_agents, "historical_best"))
+        return specs
 
     def _evaluate_agent_results(
         self,
@@ -1366,6 +1510,48 @@ class HierarchicalOrchestrator:
             )
         return experiment
 
+    def _compose_experiment_from_results(
+        self,
+        baseline_experiment: dict[str, object],
+        historical_best: dict[str, CandidateResult],
+        included_agents: set[str],
+    ) -> dict[str, object]:
+        experiment = clone_experiment(baseline_experiment)
+        if "model_agent" in included_agents and "model_agent" in historical_best:
+            model_result = historical_best["model_agent"]
+            experiment = apply_model_proposal(
+                clone_experiment(experiment),
+                ModelProposal(
+                    model_name=model_result.config.model_name,
+                    learning_rate=model_result.config.learning_rate,
+                    model_params=dict(model_result.config.model_params),
+                    notes=f"Historical best overlay from round {model_result.round_id}.",
+                ),
+            )
+        if "augmentation_agent" in included_agents and "augmentation_agent" in historical_best:
+            augmentation_result = historical_best["augmentation_agent"]
+            experiment = apply_augmentation_proposal(
+                clone_experiment(experiment),
+                AugmentationProposal(
+                    augmentation=augmentation_result.config.augmentation,
+                    strength=augmentation_result.config.augmentation_strength,
+                    notes=f"Historical best overlay from round {augmentation_result.round_id}.",
+                ),
+            )
+            experiment["augmentation"]["params"] = dict(augmentation_result.config.augmentation_params)
+        if "data_agent" in included_agents and "data_agent" in historical_best:
+            data_result = historical_best["data_agent"]
+            experiment = apply_data_proposal(
+                clone_experiment(experiment),
+                DataProposal(
+                    preprocessing=data_result.config.preprocessing,
+                    window_size=int(data_result.config.window_size),
+                    notes=f"Historical best overlay from round {data_result.round_id}.",
+                ),
+            )
+            experiment["data"]["params"] = dict(data_result.config.data_params)
+        return experiment
+
     def _apply_agent_logic(
         self,
         agent_name: str,
@@ -1404,6 +1590,21 @@ class HierarchicalOrchestrator:
                 summaries["augmentation_agent"] = proposal.notes
             elif isinstance(proposal, DataProposal) and "data_agent" in included_agents:
                 summaries["data_agent"] = proposal.notes
+        return summaries
+
+    def _historical_component_summaries(
+        self,
+        historical_best: dict[str, CandidateResult],
+        included_agents: set[str],
+    ) -> dict[str, str]:
+        summaries: dict[str, str] = {}
+        for agent_name in included_agents:
+            result = historical_best.get(agent_name)
+            if result is None:
+                continue
+            summaries[agent_name] = (
+                f"Historical best overlay from round {result.round_id}: {result.summary}"
+            )
         return summaries
 
     def _write_run_outputs(

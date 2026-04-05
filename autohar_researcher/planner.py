@@ -465,6 +465,7 @@ class OpenAIPlanner:
             round_id=int(context["round_id"]),
             payload=payload,
         )
+        payload = self._reconcile_augmentation_logic(payload=payload, original_payload=original_payload)
         payload = self._finalize_augmentation_payload(payload=payload, original_payload=original_payload)
         return AugmentationPlanHint(**payload)
 
@@ -541,6 +542,7 @@ class OpenAIPlanner:
             round_id=int(context["round_id"]),
             payload=payload,
         )
+        payload = self._reconcile_data_logic(payload=payload, original_payload=original_payload)
         payload = self._finalize_data_payload(payload=payload, original_payload=original_payload)
         return DataPlanHint(**payload)
 
@@ -1320,6 +1322,55 @@ class OpenAIPlanner:
             f"{self._logic_note(payload)}"
             f"{self._append_tags(tags)}"
         ).strip()
+        return payload
+
+    def _reconcile_augmentation_logic(
+        self,
+        *,
+        payload: dict[str, object],
+        original_payload: dict[str, object],
+    ) -> dict[str, object]:
+        final_aug = str(payload.get("augmentation", "")).strip().lower()
+        original_aug = str(original_payload.get("augmentation", "")).strip().lower()
+        if final_aug == original_aug:
+            return payload
+        if final_aug == "none":
+            payload["logic_expression"] = ""
+            payload["helper_code"] = ""
+            payload["function_rewrite"] = ""
+            return payload
+        function_rewrite = str(payload.get("function_rewrite", ""))
+        helper_code = str(payload.get("helper_code", ""))
+        logic_expression = str(payload.get("logic_expression", ""))
+        combined = " ".join([function_rewrite.lower(), helper_code.lower(), logic_expression.lower()])
+        if original_aug and original_aug in combined and final_aug not in combined:
+            payload["logic_expression"] = ""
+            payload["helper_code"] = ""
+            payload["function_rewrite"] = ""
+        return payload
+
+    def _reconcile_data_logic(
+        self,
+        *,
+        payload: dict[str, object],
+        original_payload: dict[str, object],
+    ) -> dict[str, object]:
+        final_pre = str(payload.get("preprocessing", "")).strip().lower()
+        final_window = int(payload.get("window_size", original_payload.get("window_size", 128)))
+        original_pre = str(original_payload.get("preprocessing", "")).strip().lower()
+        original_window = int(original_payload.get("window_size", final_window))
+        if (final_pre, final_window) == (original_pre, original_window):
+            return payload
+        function_rewrite = str(payload.get("function_rewrite", ""))
+        helper_code = str(payload.get("helper_code", ""))
+        logic_expression = str(payload.get("logic_expression", ""))
+        combined = " ".join([function_rewrite.lower(), helper_code.lower(), logic_expression.lower()])
+        contradictory_pre = original_pre and original_pre in combined and final_pre not in combined
+        contradictory_window = str(original_window) in combined and str(final_window) not in combined
+        if contradictory_pre or contradictory_window:
+            payload["logic_expression"] = ""
+            payload["helper_code"] = ""
+            payload["function_rewrite"] = ""
         return payload
 
     def _logic_note(self, payload: dict[str, object]) -> str:
