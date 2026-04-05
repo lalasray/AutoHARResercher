@@ -728,6 +728,8 @@ class HierarchicalOrchestrator:
             round_state=round_state,
             baseline_branch=str(round_plan["baseline_branch"]),
             round_plan=round_plan,
+            history=history,
+            agent_results=agent_results,
         )
         return [*agent_results, result], round_state
 
@@ -741,14 +743,33 @@ class HierarchicalOrchestrator:
         round_state: RoundState,
         baseline_branch: str,
         round_plan: dict[str, object],
+        history: list[CandidateResult],
+        agent_results: list[CandidateResult],
     ) -> CandidateResult:
         baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
+        eligible_agents = self._eligible_combination_agents(
+            agent_results=agent_results,
+            history=history,
+        )
         candidate_specs = [
             ("model+augmentation", {"model_agent", "augmentation_agent"}),
             ("model+data", {"model_agent", "data_agent"}),
             ("augmentation+data", {"augmentation_agent", "data_agent"}),
             ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}),
         ]
+        candidate_specs = [
+            (label, included_agents)
+            for label, included_agents in candidate_specs
+            if included_agents.issubset(eligible_agents)
+        ]
+        round_state.combination_order = [label for label, _ in candidate_specs]
+        if not candidate_specs:
+            return self._skipped_orchestrator_result(
+                round_id=round_id,
+                round_state=round_state,
+                baseline_experiment=baseline_experiment,
+                eligible_agents=eligible_agents,
+            )
         candidate_specs = self._rank_candidate_specs(
             candidate_specs=candidate_specs,
             combination_memory=dict(round_plan.get("combination_memory", {})),
@@ -807,6 +828,62 @@ class HierarchicalOrchestrator:
         )
         best_candidate.artifact_paths["evaluation_report"] = self._write_result_artifact(best_candidate)
         return best_candidate
+
+    def _eligible_combination_agents(
+        self,
+        agent_results: list[CandidateResult],
+        history: list[CandidateResult],
+    ) -> set[str]:
+        prior_best_by_agent: dict[str, float] = {}
+        for result in history:
+            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+                continue
+            prior_best_by_agent[result.agent_name] = max(
+                prior_best_by_agent.get(result.agent_name, float("-inf")),
+                result.val_score,
+            )
+        eligible: set[str] = set()
+        for result in agent_results:
+            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+                continue
+            prior_best = prior_best_by_agent.get(result.agent_name, float("-inf"))
+            if result.val_score > prior_best:
+                eligible.add(result.agent_name)
+        return eligible
+
+    def _skipped_orchestrator_result(
+        self,
+        round_id: int,
+        round_state: RoundState,
+        baseline_experiment: dict[str, object],
+        eligible_agents: set[str],
+    ) -> CandidateResult:
+        config = experiment_to_candidate_config(
+            baseline_experiment,
+            notes="Orchestrator skipped combination evaluation because no multi-agent improving set qualified.",
+        )
+        summary = (
+            "orchestrator skipped combination evaluation because fewer than two specialist agents "
+            f"beat their own historical bests; eligible_agents={sorted(eligible_agents)}"
+        )
+        result = CandidateResult(
+            round_id=round_id,
+            agent_name="orchestrator",
+            branch_name=self.orchestrator_workspace.branch_name,
+            worktree_path=self.orchestrator_workspace.worktree_path,
+            config=config,
+            val_score=0.0,
+            summary=summary,
+            artifact_paths={
+                "selected_combination": "",
+                "combination_order": ",".join(round_state.combination_order),
+                "skip_reason": "no_eligible_multi_agent_combo",
+                "eligible_agents": ",".join(sorted(eligible_agents)),
+                "composed_candidate": round_state.composed_artifact,
+            },
+        )
+        result.artifact_paths["evaluation_report"] = self._write_result_artifact(result)
+        return result
 
     def _rank_candidate_specs(
         self,
