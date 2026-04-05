@@ -66,20 +66,22 @@ From round 2 onward, prefer `data_params_override(...)` whenever your main data 
 
 ## Allowed Search Space
 
-Valid preprocessing:
+Stable preprocessing anchors:
 
 - `raw`
 - `normalized`
 - `normalized+gravity_filter`
 - `normalized+magnitude_channels`
 
-Valid window sizes:
+Stable window-size anchors:
 
 - `64`
 - `96`
 - `128`
 - `192`
 - `256`
+
+Those anchors are not the whole point of the search. If the best move is a representation heuristic, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
 
 ## What To Optimize
 
@@ -147,6 +149,7 @@ A good proposal:
 - is compatible with the current accepted baseline
 - makes a clear representation hypothesis
 - is easy to evaluate against the current best setup
+- uses owned helper logic when the real novelty is a representation or compatibility heuristic rather than only a preset flip
 - if helper code is used, it stays short, local, and only affects data-side decisions
 - if parameterization changes are made, they stay plausible for the selected preprocessing and window regime
 

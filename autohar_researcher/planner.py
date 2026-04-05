@@ -166,7 +166,8 @@ class OpenAIPlanner:
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
             "Return a concise JSON strategy for this round.\n"
             "The accepted baseline should only be replaced if a candidate scores better.\n"
-            "Use valid focus values from {model, augmentation, data, combination, exploit, explore, stability}.\n"
+            "Use focus values from {model, augmentation, data, combination, exploit, explore, stability} as compact labels, "
+            "but rely on reasoning rather than menu-following.\n"
             "Use the combination_memory to reason explicitly about which single-agent, pairwise, or broader combinations are helping or conflicting.\n"
         )
         schema = {
@@ -213,11 +214,15 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"ModelAgent local memory:\n{json.dumps(context['agent_memories']['model_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Use valid models from {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "Common available model families include {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "Treat those families as stable anchors, not as the whole point of the search. "
+            "Use them when they fit, but put most of your expertise into model-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, use_multiscale, and attention_mix.\n"
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            "Do not behave like a dropdown picker. "
+            "If the important idea is a local model heuristic rather than a family switch, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
             f"{rewrite_preference}"
             "When the main mutation is family-dependent parameter compatibility, prefer defining "
             "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
@@ -239,6 +244,8 @@ class OpenAIPlanner:
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned model updates. "
             "Keep helper_code short, self-contained, and limited to model-side reasoning. "
             "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
+            "Prefer owned-module reasoning over menu hopping: use code when your idea is about architecture compatibility, family-dependent defaults, "
+            "or training-shape heuristics rather than just swapping one named family for another.\n"
         )
         schema = {
             "type": "object",
@@ -302,11 +309,15 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"AugmentationAgent local memory:\n{json.dumps(context['agent_memories']['augmentation_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Use valid augmentations from {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}.\n"
-            "Use valid strengths from {weak, medium, strong}.\n"
+            "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}.\n"
+            "Common strengths include {weak, medium, strong}.\n"
+            "Treat those labels as anchors for the runtime, not as the main source of expertise. "
+            "Put the interesting reasoning into augmentation-side parameter logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            "Do not behave like a menu selector. "
+            "If the important move is a context-sensitive perturbation policy, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
             f"{rewrite_preference}"
             "When the main mutation is augmentation-family or strength-dependent parameter compatibility, prefer defining "
             "`augmentation_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
@@ -328,6 +339,8 @@ class OpenAIPlanner:
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned augmentation updates. "
             "Keep helper_code short, self-contained, and limited to augmentation-side reasoning. "
             "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
+            "Prefer owned-module reasoning over family roulette: use code when your idea is about realism, robustness, parameter shaping, or compatibility "
+            "with the current model/data context.\n"
         )
         schema = {
             "type": "object",
@@ -369,11 +382,15 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"DataAgent local memory:\n{json.dumps(context['agent_memories']['data_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Use valid preprocessing from {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}.\n"
-            "Use valid window sizes from {64, 96, 128, 192, 256}.\n"
+            "Common stable preprocessing regimes include {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}.\n"
+            "Common stable window sizes include {64, 96, 128, 192, 256}.\n"
+            "Treat those settings as anchors for the runtime, not as the whole search space. "
+            "Put the interesting reasoning into data-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             "Keep the rationale short and trend-aware.\n"
             "Use `logic_expression` only for trivial direct overrides.\n"
             "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            "Do not behave like a fixed menu chooser. "
+            "If the real idea is a representation heuristic, keep the top-level setting stable and express the novelty through `helper_code` or `function_rewrite`.\n"
             f"{rewrite_preference}"
             "When the main mutation is preprocessing/window-dependent data parameter compatibility, prefer defining "
             "`data_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
@@ -395,6 +412,8 @@ class OpenAIPlanner:
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned data updates. "
             "Keep helper_code short, self-contained, and limited to data-side reasoning. "
             "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
+            "Prefer owned-module reasoning over cosmetic setting churn: use code when your idea is about representation quality, window compatibility, "
+            "or preprocessing guardrails rather than just flipping to a neighboring preset.\n"
         )
         schema = {
             "type": "object",

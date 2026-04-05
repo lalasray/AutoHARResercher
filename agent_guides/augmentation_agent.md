@@ -71,7 +71,7 @@ From round 2 onward, prefer `augmentation_params_override(...)` whenever your ma
 
 ## Allowed Search Space
 
-Valid augmentations:
+Stable augmentation-family anchors:
 
 - `none`
 - `rotation`
@@ -83,11 +83,13 @@ Valid augmentations:
 - `permutation`
 - `magnitude_warp`
 
-Valid strengths:
+Stable strength anchors:
 
 - `weak`
 - `medium`
 - `strong`
+
+Those anchors are not the whole point of the search. If the best move is a robustness heuristic, context-sensitive parameter policy, or compatibility rule, express that through owned-module code rather than behaving like a menu picker.
 
 ## What To Optimize
 
@@ -149,6 +151,7 @@ A good proposal:
 - is realistic for IMU sensing
 - respects current model/data context
 - explains why this augmentation should help robustness without overwhelming the signal
+- uses owned helper logic when the real novelty is in parameter shaping or context-sensitive robustness rules
 - if helper code is used, it stays short, local, and only affects augmentation-side decisions
 - if parameterization changes are made, they stay plausible for the chosen augmentation family
 

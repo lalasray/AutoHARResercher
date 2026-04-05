@@ -69,7 +69,7 @@ From round 2 onward, prefer `model_params_override(...)` whenever your main mode
 
 ## Allowed Search Space
 
-Valid model families:
+Stable model-family anchors:
 
 - `deepconvlstm`
 - `deepconvlstmattention`
@@ -81,6 +81,8 @@ Valid model families:
 - `cnn`
 - `tiny_transformer`
 - `gru`
+
+Those anchors are not the whole point of the search. If the best move is a model-side heuristic, compatibility rule, or local strategy, express that through owned-module code rather than treating family names like a dropdown.
 
 You may also change model-side parameters such as:
 
@@ -155,6 +157,7 @@ A good proposal:
 - is easy to test against the current baseline
 - explains why the chosen model/LR has a plausible path to improvement
 - respects recent wins and failures
+- uses owned helper logic when the interesting idea is conditional or baseline-dependent, instead of only swapping labels
 - if helper code is used, it stays short, local, and only affects model-side decisions
 
 A bad proposal:
