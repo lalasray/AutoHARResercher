@@ -71,6 +71,18 @@ def main() -> None:
     print(f"Resume mode: {args.resume}")
     print(f"Planner: {planner_name}")
     print(f"Training backend: {orchestrator.harness.runtime_backend_summary()}")
+    role_summary = getattr(orchestrator.planner, "role_runtime_summary", lambda: {})()
+    if role_summary:
+        print("Planner roles:")
+        for role_name, payload in role_summary.items():
+            backend = payload.get("backend", "")
+            model = payload.get("model", "")
+            api_mode = payload.get("api_mode", "")
+            base_url = payload.get("base_url", "")
+            extra = f" base_url={base_url}" if base_url else ""
+            print(
+                f"- {role_name}: backend={backend} model={model} api_mode={api_mode}{extra}"
+            )
     print()
     print("Agent workspaces:")
     for workspace in workspaces.values():
