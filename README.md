@@ -92,6 +92,13 @@ From the repo root:
 ./run_autohar.sh
 ```
 
+Backend-specific launchers:
+
+```bash
+./run_autohar_openai.sh --rounds 20
+./run_autohar_lmstudio.sh --rounds 20
+```
+
 Useful commands:
 
 ```bash
