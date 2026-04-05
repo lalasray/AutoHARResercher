@@ -8,6 +8,7 @@ from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
 from autohar_researcher.experiment import (
     apply_augmentation_proposal,
     apply_data_proposal,
+    apply_module_python,
     apply_model_proposal,
     base_experiment_config,
     clone_experiment,
@@ -825,6 +826,7 @@ class HierarchicalOrchestrator:
                 proposals=proposals,
                 baseline_experiment=baseline_experiment,
                 included_agents=included_agents,
+                round_state=round_state,
             )
             if (
                 included_agents == {"model_agent", "augmentation_agent", "data_agent"}
@@ -1017,16 +1019,19 @@ class HierarchicalOrchestrator:
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
                 agent_name = "model_agent"
-                experiment = apply_model_proposal(clone_experiment(baseline_experiment), proposal)
                 notes = proposal.notes
             elif isinstance(proposal, AugmentationProposal):
                 agent_name = "augmentation_agent"
-                experiment = apply_augmentation_proposal(clone_experiment(baseline_experiment), proposal)
                 notes = proposal.notes
             else:
                 agent_name = "data_agent"
-                experiment = apply_data_proposal(clone_experiment(baseline_experiment), proposal)
                 notes = proposal.notes
+            experiment = self._apply_agent_logic(
+                agent_name=agent_name,
+                baseline_experiment=baseline_experiment,
+                proposal=proposal,
+                round_state=round_state,
+            )
 
             config = experiment_to_candidate_config(experiment, notes=notes)
             workspace = self.workspaces[agent_name]
@@ -1299,6 +1304,7 @@ class HierarchicalOrchestrator:
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         baseline_experiment: dict[str, object],
         included_agents: set[str] | None = None,
+        round_state: RoundState | None = None,
     ) -> dict[str, object]:
         experiment = clone_experiment(baseline_experiment)
         included = included_agents or {
@@ -1310,18 +1316,58 @@ class HierarchicalOrchestrator:
             model_proposal = next(
                 proposal for proposal in proposals if isinstance(proposal, ModelProposal)
             )
-            experiment = apply_model_proposal(experiment, model_proposal)
+            experiment = self._apply_agent_logic(
+                agent_name="model_agent",
+                baseline_experiment=experiment,
+                proposal=model_proposal,
+                round_state=round_state,
+            )
         if "augmentation_agent" in included:
             augmentation_proposal = next(
                 proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
             )
-            experiment = apply_augmentation_proposal(experiment, augmentation_proposal)
+            experiment = self._apply_agent_logic(
+                agent_name="augmentation_agent",
+                baseline_experiment=experiment,
+                proposal=augmentation_proposal,
+                round_state=round_state,
+            )
         if "data_agent" in included:
             data_proposal = next(
                 proposal for proposal in proposals if isinstance(proposal, DataProposal)
             )
-            experiment = apply_data_proposal(experiment, data_proposal)
+            experiment = self._apply_agent_logic(
+                agent_name="data_agent",
+                baseline_experiment=experiment,
+                proposal=data_proposal,
+                round_state=round_state,
+            )
         return experiment
+
+    def _apply_agent_logic(
+        self,
+        agent_name: str,
+        baseline_experiment: dict[str, object],
+        proposal: ModelProposal | AugmentationProposal | DataProposal,
+        round_state: RoundState | None,
+    ) -> dict[str, object]:
+        module_path = ""
+        if round_state is not None:
+            module_path = round_state.materialized_agent_files.get(agent_name, "")
+        if module_path:
+            try:
+                experiment, _ = apply_module_python(
+                    clone_experiment(baseline_experiment),
+                    Path(module_path),
+                )
+                return experiment
+            except Exception:
+                pass
+        if agent_name == "model_agent":
+            return apply_model_proposal(clone_experiment(baseline_experiment), proposal)  # type: ignore[arg-type]
+        if agent_name == "augmentation_agent":
+            return apply_augmentation_proposal(clone_experiment(baseline_experiment), proposal)  # type: ignore[arg-type]
+        return apply_data_proposal(clone_experiment(baseline_experiment), proposal)  # type: ignore[arg-type]
 
     def _component_summaries(
         self,
