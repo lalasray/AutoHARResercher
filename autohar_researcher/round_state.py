@@ -10,6 +10,7 @@ class RoundState:
     sync_artifact: str = ""
     memory_artifacts: dict[str, str] = field(default_factory=dict)
     proposal_artifacts: dict[str, str] = field(default_factory=dict)
+    judgment_artifacts: dict[str, str] = field(default_factory=dict)
     composed_artifact: str = ""
     promotion_artifact: str = ""
     baseline_branch: str = ""

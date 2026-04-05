@@ -27,6 +27,7 @@ from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
     AgentWorkspace,
     AugmentationProposal,
+    AugmentationPlanHint,
     CandidateConfig,
     CandidateResult,
     DataProposal,
@@ -34,8 +35,8 @@ from autohar_researcher.types import (
     GitAction,
     ModelPlanHint,
     ModelProposal,
+    ProposalJudgment,
     RunOutputs,
-    AugmentationPlanHint,
 )
 
 
@@ -711,11 +712,20 @@ class HierarchicalOrchestrator:
                 for agent in self.agents
             ]
             proposals = [future.result() for future in futures]
+        proposal_judgments = self._judge_proposals(
+            round_id=round_id,
+            best_result=best_result,
+            history=history,
+            accepted_history=accepted_history,
+            round_plan=round_plan,
+            proposals=proposals,
+        )
 
         round_state = self._materialize_round_state(
             round_id=round_id,
             proposals=proposals,
             round_plan=round_plan,
+            proposal_judgments=proposal_judgments,
         )
         if materialize_git:
             round_state = self.git_runtime.materialize_round(
@@ -740,6 +750,7 @@ class HierarchicalOrchestrator:
             round_plan=round_plan,
             history=history,
             agent_results=agent_results,
+            proposal_judgments=proposal_judgments,
         )
         return [*agent_results, result], round_state
 
@@ -755,11 +766,13 @@ class HierarchicalOrchestrator:
         round_plan: dict[str, object],
         history: list[CandidateResult],
         agent_results: list[CandidateResult],
+        proposal_judgments: dict[str, ProposalJudgment],
     ) -> CandidateResult:
         baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
         eligible_agents = self._eligible_combination_agents(
             agent_results=agent_results,
             history=history,
+            proposal_judgments=proposal_judgments,
         )
         candidate_specs = [
             ("baseline+model", {"model_agent"}),
@@ -846,6 +859,7 @@ class HierarchicalOrchestrator:
         self,
         agent_results: list[CandidateResult],
         history: list[CandidateResult],
+        proposal_judgments: dict[str, ProposalJudgment],
     ) -> set[str]:
         prior_best_by_agent: dict[str, float] = {}
         for result in history:
@@ -859,10 +873,41 @@ class HierarchicalOrchestrator:
         for result in agent_results:
             if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
                 continue
+            judgment = proposal_judgments.get(result.agent_name)
+            if judgment is None or not judgment.evaluate_now:
+                continue
+            if judgment.plausibility == "low" or judgment.compatibility == "low":
+                continue
             prior_best = prior_best_by_agent.get(result.agent_name, float("-inf"))
             if result.val_score > prior_best:
                 eligible.add(result.agent_name)
         return eligible
+
+    def _judge_proposals(
+        self,
+        round_id: int,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+        round_plan: dict[str, object],
+        proposals: list[ModelProposal | AugmentationProposal | DataProposal],
+    ) -> dict[str, ProposalJudgment]:
+        proposal_map: dict[str, object] = {}
+        for proposal in proposals:
+            if isinstance(proposal, ModelProposal):
+                proposal_map["model_agent"] = proposal
+            elif isinstance(proposal, AugmentationProposal):
+                proposal_map["augmentation_agent"] = proposal
+            else:
+                proposal_map["data_agent"] = proposal
+        return self.planner.judge_proposals(
+            round_id=round_id,
+            best_result=best_result,
+            history=history,
+            accepted_history=accepted_history,
+            orchestrator_plan=dict(round_plan.get("orchestrator_plan", {})),
+            proposals=proposal_map,
+        )
 
     def _skipped_orchestrator_result(
         self,
@@ -990,10 +1035,13 @@ class HierarchicalOrchestrator:
         round_id: int,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         round_plan: dict[str, object],
+        proposal_judgments: dict[str, ProposalJudgment],
     ) -> RoundState:
         round_dir = ensure_round_dir(round_id)
         proposal_dir = round_dir / "agent_proposals"
+        judgment_dir = round_dir / "proposal_judgments"
         proposal_artifacts: dict[str, str] = {}
+        judgment_artifacts: dict[str, str] = {}
         planner_hints = round_plan.get("planner_hints", {})
         agent_memories = round_plan.get("agent_memories", {})
         combination_memory = round_plan.get("combination_memory", {})
@@ -1044,6 +1092,17 @@ class HierarchicalOrchestrator:
                     else {}
                 ),
             },
+            "proposal_judgments": {
+                agent_name: {
+                    "mutation_size": judgment.mutation_size,
+                    "novelty": judgment.novelty,
+                    "plausibility": judgment.plausibility,
+                    "compatibility": judgment.compatibility,
+                    "evaluate_now": judgment.evaluate_now,
+                    "rationale": judgment.rationale,
+                }
+                for agent_name, judgment in proposal_judgments.items()
+            },
         }
         planner_artifact = write_json_artifact(round_dir / "planner_decision.json", planner_payload)
         memory_dir = round_dir / "agent_memories"
@@ -1063,6 +1122,11 @@ class HierarchicalOrchestrator:
                 proposal_dir / f"{agent_name}.json",
                 proposal,
             )
+            if agent_name in proposal_judgments:
+                judgment_artifacts[agent_name] = write_json_artifact(
+                    judgment_dir / f"{agent_name}.json",
+                    proposal_judgments[agent_name],
+                )
 
         model_proposal = next(
             proposal for proposal in proposals if isinstance(proposal, ModelProposal)
@@ -1098,6 +1162,7 @@ class HierarchicalOrchestrator:
             planner_artifact=planner_artifact,
             memory_artifacts=memory_artifacts,
             proposal_artifacts=proposal_artifacts,
+            judgment_artifacts=judgment_artifacts,
             composed_artifact=composed_artifact,
             orchestrator_branch=self.orchestrator_workspace.branch_name,
             orchestrator_worktree=self.orchestrator_workspace.worktree_path,

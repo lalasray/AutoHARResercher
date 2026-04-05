@@ -29,8 +29,9 @@ Search style:
 
 - hill-climbing style acceptance: only better candidates replace the accepted baseline
 - multi-agent guided exploration: specialist agents still explore within their own domains instead of doing only strict greedy local moves
+- LLM proposal judging: after specialists propose, a separate LLM judge scores mutation size, novelty, plausibility, and compatibility before the orchestrator uses those proposals in composition decisions
 - orchestrator-level combination search: the system compares single-agent, pairwise, and full-composition candidates before deciding what to keep
-- orchestrator composition gating: if a specialist beats its own prior standalone best, the orchestrator can test that change as a baseline overlay (`baseline+agent`), and pairwise / broader combinations are attempted only when all included specialists clear that standalone-improvement gate
+- orchestrator composition gating: if a specialist beats its own prior standalone best, the orchestrator can test that change as a baseline overlay (`baseline+agent`), and pairwise / broader combinations are attempted only when all included specialists clear that standalone-improvement gate and pass the LLM judge's quality screen
 - stagnation handling: after several non-improving rounds, the planner increases exploration pressure and pushes each specialist toward broader domain-level alternatives
 - anchored but not menu-only planning: stable top-level settings still exist for safe composition, but specialist novelty is expected to show up increasingly through owned-module helper code and bounded rewrites rather than only preset selection
 
@@ -131,6 +132,7 @@ Important outputs after a run:
 - `artifacts/reports/score_history.csv`
 - `artifacts/reports/accepted_history.csv`
 - `artifacts/round_N/planner_decision.json`
+- `artifacts/round_N/proposal_judgments/*.json`
 - `artifacts/round_N/baseline_sync.json`
 - `artifacts/round_N/promotion.json`
 - `artifacts/round_N/results/*.json`
@@ -141,6 +143,7 @@ How to read them:
 - `accepted_history.csv`: accepted baseline history, should stay flat or rise
 - `promotion.json`: which candidate actually won the round
 - `planner_decision.json`: what the orchestrator and specialist LLMs decided before evaluation
+- `proposal_judgments/*.json`: how the LLM judge scored each specialist proposal before orchestrator composition
 
 One important design choice:
 

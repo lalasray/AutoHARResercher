@@ -15,6 +15,7 @@ from autohar_researcher.types import (
     CandidateResult,
     DataPlanHint,
     ModelPlanHint,
+    ProposalJudgment,
 )
 
 
@@ -102,6 +103,61 @@ class OpenAIPlanner:
             "orchestrator_plan": orchestrator_plan,
             "agent_memories": agent_memories,
             "combination_memory": context["combination_memory"],
+        }
+
+    def judge_proposals(
+        self,
+        round_id: int,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+        orchestrator_plan: dict[str, object],
+        proposals: dict[str, object],
+    ) -> dict[str, ProposalJudgment]:
+        context = self._shared_context(
+            round_id=round_id,
+            best_result=best_result,
+            history=history,
+            accepted_history=accepted_history,
+        )
+        proposal_payload = {
+            agent_name: self._proposal_payload(proposal)
+            for agent_name, proposal in proposals.items()
+        }
+        prompt = (
+            "You are an IMU HAR proposal judge.\n"
+            "You are not the final evaluator. The harness is the final truth.\n"
+            "Your role is to judge whether each specialist proposal is coherent, novel enough, and compatible enough to be worth using in orchestrator composition this round.\n\n"
+            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"Specialist proposals:\n{json.dumps(proposal_payload, indent=2)}\n\n"
+            "For each agent, return:\n"
+            "- mutation_size: one of {small, medium, large}\n"
+            "- novelty: one of {low, medium, high}\n"
+            "- plausibility: one of {low, medium, high}\n"
+            "- compatibility: one of {low, medium, high}\n"
+            "- evaluate_now: true if this proposal is worth using in orchestrator composition decisions this round\n"
+            "- rationale: short explanation\n"
+            "Be conservative: if a proposal looks repetitive, incoherent, or likely incompatible with the accepted baseline, set evaluate_now=false.\n"
+        )
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "model_agent": self._judgment_schema(),
+                "augmentation_agent": self._judgment_schema(),
+                "data_agent": self._judgment_schema(),
+            },
+            "required": ["model_agent", "augmentation_agent", "data_agent"],
+        }
+        payload = self._call_json_schema(
+            name="autohar_proposal_judgments",
+            prompt=prompt,
+            schema=schema,
+        )
+        return {
+            agent_name: ProposalJudgment(agent_name=agent_name, **dict(judgment_payload))
+            for agent_name, judgment_payload in payload.items()
         }
 
     def _shared_context(
@@ -459,6 +515,61 @@ class OpenAIPlanner:
             },
         )
         return json.loads(response.output_text)
+
+    def _proposal_payload(self, proposal: object) -> dict[str, object]:
+        if isinstance(proposal, ModelPlanHint):
+            return {
+                "model_name": proposal.model_name,
+                "learning_rate": proposal.learning_rate,
+                "model_params": dict(proposal.model_params),
+                "rationale": proposal.rationale,
+                "logic_expression": proposal.logic_expression,
+                "helper_code": proposal.helper_code,
+                "function_rewrite": proposal.function_rewrite,
+            }
+        if isinstance(proposal, AugmentationPlanHint):
+            return {
+                "augmentation": proposal.augmentation,
+                "strength": proposal.strength,
+                "rationale": proposal.rationale,
+                "logic_expression": proposal.logic_expression,
+                "helper_code": proposal.helper_code,
+                "function_rewrite": proposal.function_rewrite,
+            }
+        if isinstance(proposal, DataPlanHint):
+            return {
+                "preprocessing": proposal.preprocessing,
+                "window_size": proposal.window_size,
+                "rationale": proposal.rationale,
+                "logic_expression": proposal.logic_expression,
+                "helper_code": proposal.helper_code,
+                "function_rewrite": proposal.function_rewrite,
+            }
+        from dataclasses import asdict
+
+        return asdict(proposal) if hasattr(proposal, "__dataclass_fields__") else {"raw": str(proposal)}
+
+    def _judgment_schema(self) -> dict[str, object]:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "mutation_size": {"type": "string"},
+                "novelty": {"type": "string"},
+                "plausibility": {"type": "string"},
+                "compatibility": {"type": "string"},
+                "evaluate_now": {"type": "boolean"},
+                "rationale": {"type": "string"},
+            },
+            "required": [
+                "mutation_size",
+                "novelty",
+                "plausibility",
+                "compatibility",
+                "evaluate_now",
+                "rationale",
+            ],
+        }
 
     def _load_guides(self) -> dict[str, str]:
         guide_root = Path.cwd() / "agent_guides"
