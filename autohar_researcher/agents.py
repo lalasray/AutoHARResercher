@@ -726,6 +726,10 @@ class HierarchicalOrchestrator:
             round_plan=round_plan,
             proposals=proposals,
         )
+        # Freeze the accepted baseline before any branch/worktree materialization mutates it.
+        baseline_experiment = self._baseline_experiment_from_branch(
+            str(round_plan["baseline_branch"])
+        )
 
         round_state = self._materialize_round_state(
             round_id=round_id,
@@ -746,13 +750,13 @@ class HierarchicalOrchestrator:
             round_id=round_id,
             proposals=proposals,
             round_state=round_state,
-            baseline_branch=str(round_plan["baseline_branch"]),
+            baseline_experiment=baseline_experiment,
         )
         result = self._evaluate_orchestrator_result(
             round_id=round_id,
             proposals=proposals,
             round_state=round_state,
-            baseline_branch=str(round_plan["baseline_branch"]),
+            baseline_experiment=baseline_experiment,
             round_plan=round_plan,
             history=history,
             agent_results=agent_results,
@@ -768,13 +772,12 @@ class HierarchicalOrchestrator:
         round_id: int,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         round_state: RoundState,
-        baseline_branch: str,
+        baseline_experiment: dict[str, object],
         round_plan: dict[str, object],
         history: list[CandidateResult],
         agent_results: list[CandidateResult],
         proposal_judgments: dict[str, ProposalJudgment],
     ) -> CandidateResult:
-        baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
         eligible_agents = self._eligible_combination_agents(
             agent_results=agent_results,
             history=history,
@@ -1000,9 +1003,8 @@ class HierarchicalOrchestrator:
         round_id: int,
         proposals: list[ModelProposal | AugmentationProposal | DataProposal],
         round_state: RoundState,
-        baseline_branch: str,
+        baseline_experiment: dict[str, object],
     ) -> list[CandidateResult]:
-        baseline_experiment = self._baseline_experiment_from_branch(baseline_branch)
         results: list[CandidateResult] = []
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
