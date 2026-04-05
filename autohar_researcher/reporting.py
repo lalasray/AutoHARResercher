@@ -14,6 +14,11 @@ def write_history_csv(
     history_kind: str,
 ) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    filtered_history = (
+        [result for result in history if result.agent_name != "orchestrator"]
+        if history_kind == "trial"
+        else history
+    )
     with output_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         if history_kind == "trial":
@@ -38,7 +43,7 @@ def write_history_csv(
                     "best_so_far_score",
                 ]
             )
-        for result in history:
+        for result in filtered_history:
             writer.writerow(
                 [
                     result.round_id,
@@ -61,8 +66,13 @@ def write_history_svg(
     legend_labels: dict[str, str] | None = None,
 ) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    filtered_history = (
+        [result for result in history if result.agent_name != "orchestrator"]
+        if value_key == "val_score"
+        else history
+    )
     grouped: dict[str, list[tuple[int, float]]] = defaultdict(list)
-    for result in history:
+    for result in filtered_history:
         value = result.val_score if value_key == "val_score" else result.best_so_far_score
         grouped[result.agent_name].append((result.round_id, value))
     colors = {
@@ -78,7 +88,7 @@ def write_history_svg(
     ]
     if not agent_order:
         agent_order = sorted(grouped)
-    max_round = max((result.round_id for result in history), default=1)
+    max_round = max((result.round_id for result in filtered_history), default=1)
 
     if value_key == "val_score":
         width = 960
@@ -108,8 +118,6 @@ def write_history_svg(
         elements = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
             '<rect width="100%" height="100%" fill="#ffffff"/>',
-            f'<text x="{margin_left}" y="28" font-family="Arial, sans-serif" font-size="20" fill="#111">{title}</text>',
-            f'<text x="{margin_left}" y="48" font-family="Arial, sans-serif" font-size="12" fill="#555">Lines connect only new personal-best trial points for each agent. Non-improving trials stay as dots.</text>',
         ]
 
         for index, agent_name in enumerate(agent_order):
@@ -138,7 +146,7 @@ def write_history_svg(
             elements.append(f'<line x1="{margin_left}" y1="{bottom:.1f}" x2="{width - margin_right}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>')
 
             ordered_results = sorted(
-                (result for result in history if result.agent_name == agent_name),
+                (result for result in filtered_history if result.agent_name == agent_name),
                 key=lambda result: result.round_id,
             )
             improvement_points: list[tuple[int, float]] = []
