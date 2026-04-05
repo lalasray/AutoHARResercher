@@ -581,21 +581,49 @@ class OpenAIPlanner:
     def _client_for_role(self, role: str) -> tuple[OpenAI, str, str]:
         role_key = self.ROLE_KEYS.get(role, role.upper())
         backend = os.getenv(f"AUTOHAR_{role_key}_BACKEND", os.getenv("AUTOHAR_LLM_BACKEND", "openai")).strip().lower()
-        model_name = os.getenv(f"AUTOHAR_{role_key}_MODEL", self.model)
         if backend == "lmstudio":
+            model_name = os.getenv(
+                f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
+                os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model)),
+            )
             base_url = os.getenv(
-                f"AUTOHAR_{role_key}_BASE_URL",
+                f"AUTOHAR_LMSTUDIO_{role_key}_BASE_URL",
+                os.getenv(
+                    f"AUTOHAR_{role_key}_BASE_URL",
                 os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+                ),
             )
             api_key = os.getenv(
-                f"AUTOHAR_{role_key}_API_KEY",
-                os.getenv("AUTOHAR_LLM_API_KEY", self.default_api_key or "lm-studio"),
+                f"AUTOHAR_LMSTUDIO_{role_key}_API_KEY",
+                os.getenv(
+                    f"AUTOHAR_{role_key}_API_KEY",
+                    os.getenv("AUTOHAR_LLM_API_KEY", self.default_api_key or "lm-studio"),
+                ),
             )
-            api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat").strip().lower()
+            api_mode = os.getenv(
+                f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
+                os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
+            ).strip().lower()
         else:
-            base_url = os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or "")
-            api_key = os.getenv(f"AUTOHAR_{role_key}_API_KEY", self.default_api_key or os.getenv("OPENAI_API_KEY", ""))
-            api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode).strip().lower()
+            model_name = os.getenv(
+                f"AUTOHAR_OPENAI_{role_key}_MODEL",
+                os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_OPENAI_MODEL", self.model)),
+            )
+            base_url = os.getenv(
+                f"AUTOHAR_OPENAI_{role_key}_BASE_URL",
+                os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or ""),
+            )
+            api_key = os.getenv(
+                f"AUTOHAR_OPENAI_{role_key}_API_KEY",
+                os.getenv(
+                    f"AUTOHAR_{role_key}_API_KEY",
+                    self.default_api_key or os.getenv("OPENAI_API_KEY", ""),
+                ),
+            )
+            api_mode = os.getenv(
+                f"AUTOHAR_OPENAI_{role_key}_API_MODE",
+                os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
+            ).strip().lower()
 
         cache_key = (backend, base_url, api_key, api_mode)
         client = self._client_cache.get(cache_key)
@@ -618,15 +646,34 @@ class OpenAIPlanner:
                 os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
             ).strip().lower()
             if backend == "lmstudio":
-                base_url = os.getenv(
-                    f"AUTOHAR_{role_key}_BASE_URL",
-                    os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+                model_name = os.getenv(
+                    f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
+                    os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model)),
                 )
-                api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat").strip().lower()
+                base_url = os.getenv(
+                    f"AUTOHAR_LMSTUDIO_{role_key}_BASE_URL",
+                    os.getenv(
+                        f"AUTOHAR_{role_key}_BASE_URL",
+                        os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+                    ),
+                )
+                api_mode = os.getenv(
+                    f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
+                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
+                ).strip().lower()
             else:
-                base_url = os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or "")
-                api_mode = os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode).strip().lower()
-            model_name = os.getenv(f"AUTOHAR_{role_key}_MODEL", self.model)
+                model_name = os.getenv(
+                    f"AUTOHAR_OPENAI_{role_key}_MODEL",
+                    os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_OPENAI_MODEL", self.model)),
+                )
+                base_url = os.getenv(
+                    f"AUTOHAR_OPENAI_{role_key}_BASE_URL",
+                    os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or ""),
+                )
+                api_mode = os.getenv(
+                    f"AUTOHAR_OPENAI_{role_key}_API_MODE",
+                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
+                ).strip().lower()
             summary[role] = {
                 "backend": backend,
                 "model": model_name,
