@@ -738,6 +738,9 @@ class OpenAIPlanner:
         if len(accepted_history) >= 3:
             recent_accepts = [result.val_score for result in accepted_history[-3:]]
             plateau = max(recent_accepts) - min(recent_accepts) < 0.01
+        latest_round = max((result.round_id for result in history), default=0)
+        last_accept_round = max((result.round_id for result in accepted_history), default=0)
+        stagnation_rounds = max(0, latest_round - last_accept_round)
 
         model_values = [result.config.model_name for result in history if result.agent_name == "model_agent"]
         augmentation_values = [
