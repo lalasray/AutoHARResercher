@@ -1,6 +1,6 @@
 # AutoHARResercher
 
-Git-first multi-agent autoresearch prototype for IMU-based human activity recognition.
+Multi-agent autoresearch prototype for IMU-based human activity recognition.
 
 ## Overview
 
@@ -32,8 +32,6 @@ The current search style is best described as:
 
 - dataset: `UCI HAR`
 - promotion metric: validation `macro_f1`
-- early stopping: enabled
-- Torch/CUDA path: supported, with CPU fallback
 - planner context includes dataset metadata such as activity labels, waist-mounted smartphone setup, sensor modalities, and sampling rate
 - specialist agents own separate Python modules
 - orchestrator can keep:
@@ -145,18 +143,6 @@ Training optimizes a loss internally, but:
 
 Main outputs:
 
-- `artifacts/reports/score_history.csv`
-- `artifacts/reports/score_history.svg`
-- `artifacts/reports/accepted_history.csv`
-- `artifacts/reports/accepted_history.svg`
-- `artifacts/round_N/planner_decision.json`
-- `artifacts/round_N/proposal_judgments/*.json`
-- `artifacts/round_N/baseline_sync.json`
-- `artifacts/round_N/promotion.json`
-- `artifacts/round_N/results/*.json`
-
-How to read them:
-
 - `score_history.*`: specialist trial history, can rise or fall
 - `accepted_history.*`: accepted baseline history, should stay flat or improve
 - `promotion.json`: who won the round, whether it was promoted, and why
@@ -164,24 +150,10 @@ How to read them:
 - `proposal_judgments/*.json`: judge view of novelty, plausibility, compatibility, and whether to use the proposal in composition gating
 - `baseline_sync.json`: what baseline was propagated into each workspace
 
-## Current Health
-
-Recent code-level sanity checks:
-
-- `python3 -m compileall autohar_researcher` passes
-- baseline evaluation isolation was fixed
-- combination-memory labeling was fixed
-- reevaluation now includes orchestrator candidates
-- interrupted partial rounds are skipped during resume/report reconstruction
-
-Still true:
-
-- a fresh live end-to-end run needs a valid OpenAI key
-- old artifacts on disk may reflect older buggy runs unless you rerun from clean state
 
 ## Checklist
 
-- [x] Git-first multi-agent scaffold
+- [x] multi-agent scaffold
 - [x] Persistent specialist branches and orchestrator branch
 - [x] UCI HAR evaluation pipeline
 - [x] Validation `macro_f1` promotion metric
