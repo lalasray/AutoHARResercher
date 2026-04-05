@@ -468,6 +468,9 @@ class OpenAIPlanner:
         if len(accepted_history) >= 3:
             recent_accepts = [result.val_score for result in accepted_history[-3:]]
             plateau = max(recent_accepts) - min(recent_accepts) < 0.01
+        latest_round = max((result.round_id for result in history), default=0)
+        last_accept_round = max((result.round_id for result in accepted_history), default=0)
+        stagnation_rounds = max(0, latest_round - last_accept_round)
         return {
             "recent_best_by_agent": best_by_agent,
             "recent_avg_by_agent": avg_by_agent,
@@ -731,6 +734,7 @@ class OpenAIPlanner:
         baseline_config = None if best_result is None else asdict(best_result.config)
         return {
             "plateau": plateau,
+            "stagnation_rounds": stagnation_rounds,
             "baseline_config": baseline_config,
             "model_repeat_streak": repeated_count(model_values),
             "augmentation_repeat_streak": repeated_count(augmentation_values),
@@ -747,22 +751,30 @@ class OpenAIPlanner:
         baseline_model = str(baseline.get("model_name", ""))
         repeat_streak = int(pressure.get("model_repeat_streak", 0))
         plateau = bool(pressure.get("plateau", False))
+        stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
         current_model = str(payload.get("model_name", ""))
         if current_model != baseline_model:
             return payload
-        if not plateau and repeat_streak < 3:
+        if stagnation_rounds < 5 and not plateau and repeat_streak < 3:
             return payload
         recent_models = [
             str(item["config"]["model_name"])
             for item in context["agent_memories"]["model_agent"].get("recent_trials", [])
             if isinstance(item, dict)
         ]
-        for candidate in self.MODEL_FAMILIES:
+        candidate_order = self.MODEL_FAMILIES
+        if stagnation_rounds >= 5:
+            candidate_order = [
+                candidate
+                for candidate in self.MODEL_FAMILIES
+                if candidate not in {baseline_model, "deepconvlstm", "deepconvlstmattention"}
+            ] + self.MODEL_FAMILIES
+        for candidate in candidate_order:
             if candidate != baseline_model and candidate not in recent_models[-3:]:
                 payload["model_name"] = candidate
                 payload["rationale"] = (
                     f"{payload.get('rationale', '').strip()} "
-                    f"[exploration pressure: diversify away from repeated baseline family {baseline_model} -> {candidate}]"
+                    f"[exploration pressure: diversify away from repeated/stagnant baseline family {baseline_model} -> {candidate}]"
                 ).strip()
                 break
         return payload
@@ -778,10 +790,11 @@ class OpenAIPlanner:
         baseline_strength = str(baseline.get("augmentation_strength", "medium"))
         repeat_streak = int(pressure.get("augmentation_repeat_streak", 0))
         plateau = bool(pressure.get("plateau", False))
+        stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
         current = (str(payload.get("augmentation", "")), str(payload.get("strength", "")))
         if current != (baseline_aug, baseline_strength):
             return payload
-        if not plateau and repeat_streak < 3:
+        if stagnation_rounds < 5 and not plateau and repeat_streak < 3:
             return payload
         recent_values = [
             (
@@ -791,7 +804,10 @@ class OpenAIPlanner:
             for item in context["agent_memories"]["augmentation_agent"].get("recent_trials", [])
             if isinstance(item, dict)
         ]
-        for augmentation in self.AUGMENTATIONS:
+        augmentation_order = self.AUGMENTATIONS
+        if stagnation_rounds >= 5:
+            augmentation_order = [aug for aug in self.AUGMENTATIONS if aug not in {baseline_aug, "none"}] + self.AUGMENTATIONS
+        for augmentation in augmentation_order:
             for strength in self.AUGMENTATION_STRENGTHS:
                 candidate = (augmentation, strength)
                 if candidate != (baseline_aug, baseline_strength) and candidate not in recent_values[-3:]:
@@ -799,7 +815,7 @@ class OpenAIPlanner:
                     payload["strength"] = strength
                     payload["rationale"] = (
                         f"{payload.get('rationale', '').strip()} "
-                        f"[exploration pressure: diversify away from repeated baseline augmentation {baseline_aug}:{baseline_strength} -> {augmentation}:{strength}]"
+                        f"[exploration pressure: diversify away from repeated/stagnant baseline augmentation {baseline_aug}:{baseline_strength} -> {augmentation}:{strength}]"
                     ).strip()
                     return payload
         return payload
@@ -815,10 +831,11 @@ class OpenAIPlanner:
         baseline_window = int(baseline.get("window_size", 128)) if baseline else 128
         repeat_streak = int(pressure.get("data_repeat_streak", 0))
         plateau = bool(pressure.get("plateau", False))
+        stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
         current = (str(payload.get("preprocessing", "")), int(payload.get("window_size", 128)))
         if current != (baseline_pre, baseline_window):
             return payload
-        if not plateau and repeat_streak < 3:
+        if stagnation_rounds < 5 and not plateau and repeat_streak < 3:
             return payload
         recent_values = [
             (
@@ -828,15 +845,20 @@ class OpenAIPlanner:
             for item in context["agent_memories"]["data_agent"].get("recent_trials", [])
             if isinstance(item, dict)
         ]
-        for preprocessing in self.PREPROCESSING_MODES:
-            for window_size in self.WINDOW_SIZES:
+        preprocessing_order = self.PREPROCESSING_MODES
+        window_order = self.WINDOW_SIZES
+        if stagnation_rounds >= 5:
+            preprocessing_order = [mode for mode in self.PREPROCESSING_MODES if mode != baseline_pre] + self.PREPROCESSING_MODES
+            window_order = [size for size in self.WINDOW_SIZES if size != baseline_window] + self.WINDOW_SIZES
+        for preprocessing in preprocessing_order:
+            for window_size in window_order:
                 candidate = (preprocessing, window_size)
                 if candidate != (baseline_pre, baseline_window) and candidate not in recent_values[-3:]:
                     payload["preprocessing"] = preprocessing
                     payload["window_size"] = window_size
                     payload["rationale"] = (
                         f"{payload.get('rationale', '').strip()} "
-                        f"[exploration pressure: diversify away from repeated baseline data setting {baseline_pre}:{baseline_window} -> {preprocessing}:{window_size}]"
+                        f"[exploration pressure: diversify away from repeated/stagnant baseline data setting {baseline_pre}:{baseline_window} -> {preprocessing}:{window_size}]"
                     ).strip()
                     return payload
         return payload

@@ -31,6 +31,7 @@ Search style:
 - multi-agent guided exploration: specialist agents still explore within their own domains instead of doing only strict greedy local moves
 - orchestrator-level combination search: the system compares single-agent, pairwise, and full-composition candidates before deciding what to keep
 - orchestrator composition gating: pairwise and broader combinations are only attempted when the included specialist agents beat their own prior standalone bests in the current round
+- stagnation handling: after several non-improving rounds, the planner increases exploration pressure and pushes each specialist toward broader domain-level alternatives
 
 ## Current Setup
 
