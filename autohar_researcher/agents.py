@@ -415,6 +415,7 @@ class HierarchicalOrchestrator:
             start_round = 1
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
+        run_outputs = self._write_run_outputs(history, accepted_history)
 
         if materialize_git:
             self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
@@ -460,6 +461,7 @@ class HierarchicalOrchestrator:
                 accepted_candidate=accepted_candidate,
                 current_best=best_result,
             )
+            run_outputs = self._write_run_outputs(history, accepted_history)
             round_states.append(round_state)
             if best_result is None:
                 best_result = round_best
@@ -469,7 +471,6 @@ class HierarchicalOrchestrator:
                 "No best result is available. Run at least one round, or use --resume only when completed round artifacts exist."
             )
         actions.extend(self.finalize_actions(best_result=best_result))
-        run_outputs = self._write_run_outputs(history, accepted_history)
         return {
             "best_result": best_result,
             "history": history,
@@ -507,6 +508,15 @@ class HierarchicalOrchestrator:
             for result_path in sorted(results_dir.glob("*.json")):
                 payload = json.loads(result_path.read_text(encoding="utf-8"))
                 config_payload = dict(payload["config"])
+                score_breakdown_payload = {
+                    key: float(value) for key, value in payload.get("score_breakdown", {}).items()
+                }
+                val_score = float(
+                    score_breakdown_payload.get(
+                        "macro_f1",
+                        payload.get("val_score", 0.0),
+                    )
+                )
                 result = CandidateResult(
                     round_id=round_id,
                     agent_name=str(payload["agent_name"]),
@@ -524,9 +534,9 @@ class HierarchicalOrchestrator:
                         augmentation_params=dict(config_payload.get("augmentation_params", {})),
                         notes=str(config_payload.get("notes", "")),
                     ),
-                    val_score=float(payload["score_breakdown"]["macro_f1"]),
+                    val_score=val_score,
                     summary=str(payload.get("summary", "")),
-                    score_breakdown={key: float(value) for key, value in payload.get("score_breakdown", {}).items()},
+                    score_breakdown=score_breakdown_payload,
                     details=dict(payload.get("details", {})),
                 )
                 best_by_agent[result.agent_name] = max(

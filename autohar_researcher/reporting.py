@@ -65,6 +65,105 @@ def write_history_svg(
     for result in history:
         value = result.val_score if value_key == "val_score" else result.best_so_far_score
         grouped[result.agent_name].append((result.round_id, value))
+    colors = {
+        "model_agent": "#0b7285",
+        "augmentation_agent": "#e67700",
+        "data_agent": "#2b8a3e",
+        "orchestrator": "#c2255c",
+    }
+    agent_order = [
+        agent_name
+        for agent_name in ("model_agent", "augmentation_agent", "data_agent", "orchestrator")
+        if agent_name in grouped
+    ]
+    if not agent_order:
+        agent_order = sorted(grouped)
+    max_round = max((result.round_id for result in history), default=1)
+
+    if value_key == "val_score":
+        width = 960
+        panel_height = 170
+        height = 80 + panel_height * max(1, len(agent_order))
+        margin_left = 70
+        margin_right = 40
+        margin_top = 50
+        margin_bottom = 40
+        plot_width = width - margin_left - margin_right
+        panel_width = plot_width
+        colors = colors
+
+        def x_coord(round_id: int) -> float:
+            if max_round <= 1:
+                return margin_left + panel_width / 2.0
+            return margin_left + ((round_id - 1) / (max_round - 1)) * panel_width
+
+        def panel_top(index: int) -> float:
+            return margin_top + index * panel_height
+
+        def y_coord(score: float, index: int) -> float:
+            top = panel_top(index)
+            inner_height = panel_height - 55
+            return top + (1.0 - score) * inner_height
+
+        elements = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+            '<rect width="100%" height="100%" fill="#ffffff"/>',
+            f'<text x="{margin_left}" y="28" font-family="Arial, sans-serif" font-size="20" fill="#111">{title}</text>',
+            f'<text x="{margin_left}" y="48" font-family="Arial, sans-serif" font-size="12" fill="#555">Lines connect only new personal-best trial points for each agent. Non-improving trials stay as dots.</text>',
+        ]
+
+        for index, agent_name in enumerate(agent_order):
+            top = panel_top(index)
+            bottom = top + panel_height - 55
+            color = colors.get(agent_name, "#555")
+            label = legend_labels.get(agent_name, agent_name) if legend_labels else agent_name
+            inner_ticks = 5
+            elements.append(f'<text x="{margin_left}" y="{top - 8:.1f}" font-family="Arial, sans-serif" font-size="13" fill="#111">{label}</text>')
+
+            for tick in range(0, inner_ticks + 1):
+                score = tick / inner_ticks
+                y = y_coord(score, index)
+                elements.append(f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#e5e5e5" stroke-width="1"/>')
+                elements.append(f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="11" fill="#444">{score:.1f}</text>')
+
+            for tick in range(1, max_round + 1):
+                if max_round > 12 and tick not in {1, max_round} and tick % 5 != 0:
+                    continue
+                x = x_coord(tick)
+                elements.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{bottom:.1f}" stroke="#f0f0f0" stroke-width="1"/>')
+                if index == len(agent_order) - 1:
+                    elements.append(f'<text x="{x:.1f}" y="{height - 14}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>')
+
+            elements.append(f'<line x1="{margin_left}" y1="{top:.1f}" x2="{margin_left}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>')
+            elements.append(f'<line x1="{margin_left}" y1="{bottom:.1f}" x2="{width - margin_right}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>')
+
+            ordered_results = sorted(
+                (result for result in history if result.agent_name == agent_name),
+                key=lambda result: result.round_id,
+            )
+            improvement_points: list[tuple[int, float]] = []
+            best_seen = float("-inf")
+            for result in ordered_results:
+                if result.val_score > best_seen:
+                    improvement_points.append((result.round_id, result.val_score))
+                    best_seen = result.val_score
+
+            if len(improvement_points) >= 2:
+                polyline = " ".join(
+                    f"{x_coord(round_id):.1f},{y_coord(score, index):.1f}"
+                    for round_id, score in improvement_points
+                )
+                elements.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>')
+
+            for result in ordered_results:
+                x = x_coord(result.round_id)
+                y = y_coord(result.val_score, index)
+                elements.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="{color}"/>')
+
+        elements.append(f'<text x="{width / 2:.1f}" y="{height - 2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>')
+        elements.append("</svg>")
+        output_path.write_text("\n".join(elements) + "\n", encoding="utf-8")
+        return str(output_path)
 
     width = 960
     height = 520
@@ -74,13 +173,6 @@ def write_history_svg(
     margin_bottom = 60
     plot_width = width - margin_left - margin_right
     plot_height = height - margin_top - margin_bottom
-    max_round = max((result.round_id for result in history), default=1)
-    colors = {
-        "model_agent": "#0b7285",
-        "augmentation_agent": "#e67700",
-        "data_agent": "#2b8a3e",
-        "orchestrator": "#c2255c",
-    }
 
     def x_coord(round_id: int) -> float:
         if max_round <= 1:
