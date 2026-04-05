@@ -301,10 +301,18 @@ class GitRuntime:
             elif branch_directory == "model":
                 branch_directory = "model_agent"
             branch_worktree = self.repo_root / ".worktrees" / branch_directory
+            owned_agents: list[str] | None = None
+            if baseline_branch == "agent-model-main":
+                owned_agents = ["model_agent"]
+            elif baseline_branch == "agent-augmentation-main":
+                owned_agents = ["augmentation_agent"]
+            elif baseline_branch == "agent-data-main":
+                owned_agents = ["data_agent"]
             return compose_experiment_from_workspace(
                 branch_worktree,
                 fallback_experiment=base_experiment_config(),
-                apply_modules=False,
+                apply_modules=owned_agents is not None,
+                module_agents=owned_agents,
             )
 
     def _load_baseline_module_payloads(

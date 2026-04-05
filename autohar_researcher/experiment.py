@@ -880,6 +880,7 @@ def compose_experiment_from_workspace(
     fallback_experiment: dict[str, object] | None = None,
     *,
     apply_modules: bool = True,
+    module_agents: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     experiment_path = worktree_path / "research" / "experiment.json"
     if experiment_path.exists():
@@ -896,7 +897,8 @@ def compose_experiment_from_workspace(
     if not apply_modules:
         return experiment
 
-    for agent_name in MODULE_FILENAMES:
+    agent_names = list(module_agents) if module_agents is not None else list(MODULE_FILENAMES)
+    for agent_name in agent_names:
         module_path = worktree_path / module_relative_path(agent_name)
         if not module_path.exists():
             continue
