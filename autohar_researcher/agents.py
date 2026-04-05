@@ -1716,6 +1716,7 @@ class HierarchicalOrchestrator:
         accepted_candidate: CandidateResult | None,
     ) -> dict[str, object]:
         selected_combination = result.artifact_paths.get("selected_combination", "")
+        combination_source = result.artifact_paths.get("combination_source", "")
         is_round_winner = (
             result.agent_name == round_best.agent_name
             and result.branch_name == round_best.branch_name
@@ -1757,12 +1758,23 @@ class HierarchicalOrchestrator:
             ),
             "val_score": round(result.val_score, 4),
             "selected_combination": selected_combination,
+            "combination_source": combination_source,
+            "used_historical_best_overlay": combination_source == "historical_best",
             "is_round_winner": is_round_winner,
             "beats_previous_baseline": beats_previous_baseline,
             "accepted_as_new_baseline": accepted_as_new_baseline,
             "decision": decision,
             "summary": result.summary,
             "proposal_summary": result.config.notes,
+            "combination_audit": (
+                ""
+                if result.agent_name != "orchestrator"
+                else (
+                    "orchestrator used historical best specialist overlays"
+                    if combination_source == "historical_best"
+                    else "orchestrator used current round specialist proposals"
+                )
+            ),
             "component_summaries": dict(result.component_summaries),
         }
 

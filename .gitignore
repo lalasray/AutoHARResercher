@@ -5,3 +5,4 @@ data/
 .autohar.env
 /.venv
 /autoharresearcher.egg-info
+/artifacts_online
