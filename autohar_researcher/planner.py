@@ -556,23 +556,52 @@ class OpenAIPlanner:
     ) -> dict[str, object]:
         client, model_name, api_mode = self._client_for_role(role)
         if api_mode == "chat":
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Return only valid JSON. Do not use markdown fences. "
-                            "Follow the requested schema exactly."
-                        ),
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Return only valid JSON. Do not use markdown fences. "
+                        "Follow the requested schema exactly."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ]
+            last_error: Exception | None = None
+            for attempt in range(3):
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": name,
+                            "schema": schema,
+                        },
                     },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.2,
-            )
-            content = response.choices[0].message.content or "{}"
-            return json.loads(content)
+                    temperature=0.0,
+                )
+                content = response.choices[0].message.content or "{}"
+                try:
+                    return self._parse_json_response(content)
+                except json.JSONDecodeError as exc:
+                    last_error = exc
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": content,
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "That response was invalid JSON. Return the same answer again as strict valid JSON only."
+                            ),
+                        }
+                    )
+            if last_error is not None:
+                raise last_error
+            return {}
         response = client.responses.create(
             model=model_name,
             input=prompt,
@@ -586,6 +615,17 @@ class OpenAIPlanner:
             },
         )
         return json.loads(response.output_text)
+
+    def _parse_json_response(self, content: str) -> dict[str, object]:
+        content = content.strip()
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                return json.loads(content[start : end + 1])
+            raise
 
     def _client_for_role(self, role: str) -> tuple[OpenAI, str, str]:
         role_key = self.ROLE_KEYS.get(role, role.upper())
