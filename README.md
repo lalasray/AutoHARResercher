@@ -89,7 +89,7 @@ Mental model:
 From the repo root:
 
 ```bash
-./run_autohar.sh
+./run_autohar_lmstudio.sh
 ```
 
 Backend-specific launchers:
@@ -102,12 +102,12 @@ Backend-specific launchers:
 Useful commands:
 
 ```bash
-./run_autohar.sh --rounds 20
-./run_autohar.sh --rounds 50
-./run_autohar.sh --rounds 10 --resume
-AUTOHAR_ROUNDS=50 ./run_autohar.sh
-AUTOHAR_MATERIALIZE_GIT=0 ./run_autohar.sh
-AUTOHAR_AUTO_PUSH_NON_MAIN=1 ./run_autohar.sh
+./run_autohar_lmstudio.sh --rounds 20
+./run_autohar_lmstudio.sh --rounds 50
+./run_autohar_lmstudio.sh --rounds 10 --resume
+AUTOHAR_ROUNDS=50 ./run_autohar_lmstudio.sh
+AUTOHAR_MATERIALIZE_GIT=0 ./run_autohar_lmstudio.sh
+AUTOHAR_AUTO_PUSH_NON_MAIN=1 ./run_autohar_lmstudio.sh
 ```
 
 Direct Python entrypoint:
@@ -187,7 +187,8 @@ Training optimizes a loss internally, but:
 
 ## Main Files
 
-- [run_autohar.sh](/home/lala/Documents/GitHub/AutoHARResercher/run_autohar.sh)
+- [run_autohar_openai.sh](/home/lala/Documents/GitHub/AutoHARResercher/run_autohar_openai.sh)
+- [run_autohar_lmstudio.sh](/home/lala/Documents/GitHub/AutoHARResercher/run_autohar_lmstudio.sh)
 - [main.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/main.py)
 - [agents.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/agents.py)
 - [planner.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/planner.py)
