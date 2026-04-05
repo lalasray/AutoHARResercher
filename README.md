@@ -2,64 +2,60 @@
 
 Git-first multi-agent autoresearch prototype for IMU-based human activity recognition.
 
-## What It Does
+## Overview
 
-The system runs a repeated search loop with:
+This project runs a repeated search loop over HAR experiments using:
 
+- `ModelAgent`
+- `AugmentationAgent`
+- `DataAgent`
 - an `Orchestrator`
-- three specialist agents:
-  - `ModelAgent`
-  - `AugmentationAgent`
-  - `DataAgent`
-- a HAR evaluation harness
-- Git branches/worktrees for materialized runs
+- a real HAR evaluation harness
+- Git branches and worktrees for materialized runs
 
 Each round:
 
-1. the orchestrator plans the round with OpenAI
-2. each specialist agent proposes a scoped change
-3. the harness evaluates:
-   - each single agent
-   - pairwise orchestrator combinations
-   - the full three-way orchestrator combination
-4. the best candidate is promoted only if it beats the current accepted baseline
-5. all branches sync from that accepted baseline before the next round
+1. plans a round strategy
+2. gets one scoped proposal from each specialist
+3. evaluates specialist candidates and orchestrator combinations
+4. promotes a new baseline only if it beats the current accepted baseline
+5. syncs the next round from that accepted baseline
 
-Search style:
+The current search style is best described as:
 
-- hill-climbing style acceptance: only better candidates replace the accepted baseline
-- multi-agent guided exploration: specialist agents still explore within their own domains instead of doing only strict greedy local moves
-- LLM proposal judging: after specialists propose, a separate LLM judge scores mutation size, novelty, plausibility, and compatibility before the orchestrator uses those proposals in composition decisions
-- orchestrator-level combination search: the system compares single-agent, pairwise, and full-composition candidates before deciding what to keep
-- orchestrator composition gating: if a specialist beats its own prior standalone best, the orchestrator can test that change as a baseline overlay (`baseline+agent`), and pairwise / broader combinations are attempted only when all included specialists clear that standalone-improvement gate and pass the LLM judge's quality screen
-- stagnation handling: after several non-improving rounds, the planner increases exploration pressure and pushes each specialist toward broader domain-level alternatives
-- near-baseline reevaluation: specialist candidates that land within a small margin of the current accepted baseline get one extra evaluation pass and are averaged before promotion decisions
-- anchored but not menu-only planning: stable top-level settings still exist for safe composition, but specialist novelty is expected to show up increasingly through owned-module helper code and bounded rewrites rather than only preset selection
+- hill-climbing style acceptance
+- multi-agent guided exploration
+- orchestrator combination search
+- bounded code evolution inside agent-owned modules
 
-## Current Setup
+## Current State
 
-- real OpenAI planner is required
-- UCI HAR is the current dataset
-- planner context now includes explicit dataset metadata for UCI HAR, including activity labels, sensor modalities, waist-mounted smartphone placement, 50 Hz sampling, and 128-step windows
-- optional Torch/CUDA path with CPU fallback
-- early stopping is enabled
-- promotion metric is validation `macro_f1`
+- dataset: `UCI HAR`
+- promotion metric: validation `macro_f1`
+- early stopping: enabled
+- Torch/CUDA path: supported, with CPU fallback
+- planner context includes dataset metadata such as activity labels, waist-mounted smartphone setup, sensor modalities, and sampling rate
 - specialist agents own separate Python modules
-- orchestrator can promote a single agent, a pair, or a full combination
+- orchestrator can keep:
+  - a single specialist
+  - a baseline overlay like `baseline+augmentation`
+  - a pairwise combination
+  - a full three-way combination
+
+Important: the current planner path still expects a valid `OPENAI_API_KEY`.
 
 ## Agent Ownership
 
 - `ModelAgent` owns `research/modules/model_module.py`
 - `AugmentationAgent` owns `research/modules/augmentation_module.py`
 - `DataAgent` owns `research/modules/data_module.py`
-- `orchestrator-main` composes those modules into the shared experiment state
+- `orchestrator-main` composes those owned modules into the shared candidate
 
-Specialist evaluation is isolated:
+Specialist evaluation is intended to stay isolated:
 
-- a specialist branch starts from the frozen accepted `research/experiment.json`
-- it does not replay every module in the workspace when building a single-agent baseline
-- only the orchestrator intentionally composes multiple modules together
-- when the accepted baseline lives on a specialist branch, baseline reconstruction now applies only that branch's owned module on top of the synced snapshot, so later rounds inherit the real accepted state instead of a stale synced `experiment.json`
+- specialists start from a frozen accepted baseline snapshot
+- then apply only their own domain mutation
+- only orchestrator composition intentionally combines multiple domains
 
 ## Branch Model
 
@@ -73,10 +69,9 @@ Persistent branches:
 
 Mental model:
 
-- specialists improve one axis only
-- the orchestrator decides which candidate actually wins the round
-- the accepted winner becomes the baseline for all branches in the next round
-- when a search axis starts repeating the same accepted pattern too much, the planner now applies explicit exploration pressure inside that agent's own domain
+- specialists search one axis each
+- orchestrator decides what actually wins the round
+- the accepted winner becomes the baseline for the next round
 
 ## Running
 
@@ -86,20 +81,15 @@ From the repo root:
 ./run_autohar.sh
 ```
 
-Current launcher defaults:
-
-- `20` rounds
-- Git materialization enabled
-- auto-push disabled
-
-Useful variants:
+Useful commands:
 
 ```bash
-AUTOHAR_ROUNDS=50 ./run_autohar.sh
-AUTOHAR_ROUNDS=10 AUTOHAR_MATERIALIZE_GIT=0 ./run_autohar.sh
-AUTOHAR_ROUNDS=10 AUTOHAR_AUTO_PUSH_NON_MAIN=1 ./run_autohar.sh
-./run_autohar.sh --rounds 20 --materialize-git --auto-push-non-main
+./run_autohar.sh --rounds 20
+./run_autohar.sh --rounds 50
 ./run_autohar.sh --rounds 10 --resume
+AUTOHAR_ROUNDS=50 ./run_autohar.sh
+AUTOHAR_MATERIALIZE_GIT=0 ./run_autohar.sh
+AUTOHAR_AUTO_PUSH_NON_MAIN=1 ./run_autohar.sh
 ```
 
 Direct Python entrypoint:
@@ -109,31 +99,56 @@ python3 -m autohar_researcher.main --rounds 20 --materialize-git
 python3 -m autohar_researcher.main --rounds 10 --materialize-git --resume
 ```
 
-## Planner Config
+Resume behavior:
 
-Create a local key file:
+- `--resume` continues from the next round already present in `artifacts/`
+- `--rounds` means additional rounds, not total rounds
+
+## Planner Setup
+
+Create a local env file:
 
 1. copy `.autohar.env.example` to `.autohar.env`
-2. put your real `OPENAI_API_KEY` there
+2. add your `OPENAI_API_KEY`
 
 The launcher refuses to run if `.autohar.env` is missing.
+
+## Training Settings
+
+Default training settings live in [experiment.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/experiment.py).
+
+Inside `base_experiment_config()` you can change:
+
+- `epochs`
+- `min_epochs`
+- `early_stopping_patience`
+- `device`
+- `metric`
+
+Training optimizes a loss internally, but:
+
+- early stopping uses validation performance
+- promotion uses validation `macro_f1`
 
 ## Main Files
 
 - [run_autohar.sh](/home/lala/Documents/GitHub/AutoHARResercher/run_autohar.sh)
-- [autohar_researcher/main.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/main.py)
-- [autohar_researcher/agents.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/agents.py)
-- [autohar_researcher/planner.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/planner.py)
-- [autohar_researcher/harness.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/harness.py)
-- [autohar_researcher/experiment.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/experiment.py)
-- [autohar_researcher/git_runtime.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/git_runtime.py)
+- [main.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/main.py)
+- [agents.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/agents.py)
+- [planner.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/planner.py)
+- [harness.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/harness.py)
+- [experiment.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/experiment.py)
+- [git_runtime.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/git_runtime.py)
+- [datasets.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/datasets.py)
 
 ## Artifacts
 
-Important outputs after a run:
+Main outputs:
 
 - `artifacts/reports/score_history.csv`
+- `artifacts/reports/score_history.svg`
 - `artifacts/reports/accepted_history.csv`
+- `artifacts/reports/accepted_history.svg`
 - `artifacts/round_N/planner_decision.json`
 - `artifacts/round_N/proposal_judgments/*.json`
 - `artifacts/round_N/baseline_sync.json`
@@ -142,73 +157,45 @@ Important outputs after a run:
 
 How to read them:
 
-- `score_history.csv`: trial candidate scores, can go up or down
-- `accepted_history.csv`: accepted baseline history, should stay flat or rise
-- `promotion.json`: which candidate actually won the round
-- `planner_decision.json`: what the orchestrator and specialist LLMs decided before evaluation
-- `proposal_judgments/*.json`: how the LLM judge scored each specialist proposal before orchestrator composition
+- `score_history.*`: specialist trial history, can rise or fall
+- `accepted_history.*`: accepted baseline history, should stay flat or improve
+- `promotion.json`: who won the round, whether it was promoted, and why
+- `planner_decision.json`: planner strategy, specialist hints, and combination memory
+- `proposal_judgments/*.json`: judge view of novelty, plausibility, compatibility, and whether to use the proposal in composition gating
+- `baseline_sync.json`: what baseline was propagated into each workspace
 
-One important design choice:
+## Current Health
 
-- model families, augmentations, preprocessing modes, and window sizes are treated as stable runtime anchors
-- they are not meant to turn the specialists into dropdown pickers
-- richer agent expertise should increasingly appear inside owned-module `helper_code` and bounded rewrite hooks
-
-## Training Settings
-
-Default training settings live in:
-
-- [autohar_researcher/experiment.py](/home/lala/Documents/GitHub/AutoHARResercher/autohar_researcher/experiment.py)
-
-Inside `base_experiment_config()`:
-
-- `epochs`
-- `min_epochs`
-- `early_stopping_patience`
-- `device`
-- `metric`
-
-The search objective is validation `macro_f1`. Training still uses a loss internally, but promotion and early stopping are based on validation performance.
-
-## Status
-
-Quick health check from this pass:
+Recent code-level sanity checks:
 
 - `python3 -m compileall autohar_researcher` passes
-- no obvious placeholder stubs in the core package
-- launcher script is valid shell
+- baseline evaluation isolation was fixed
+- combination-memory labeling was fixed
+- reevaluation now includes orchestrator candidates
+- interrupted partial rounds are skipped during resume/report reconstruction
 
-What I did not fully validate in this pass:
+Still true:
 
-- a full long multi-round live run
-- full metric/report consistency across old artifact history already on disk
-
-## Next Good Steps
-
-- improve report clarity between trial vs accepted curves
-- regenerate fresh reports after the latest isolation fix
-- add more datasets later if you want broader HAR evaluation
+- a fresh live end-to-end run needs a valid OpenAI key
+- old artifacts on disk may reflect older buggy runs unless you rerun from clean state
 
 ## Checklist
 
 - [x] Git-first multi-agent scaffold
-- [x] Persistent agent branches and orchestrator branch
-- [x] Real OpenAI planner
-- [x] Separate agent guide files
-- [x] Per-agent memory artifacts
-- [x] Promotion artifacts and baseline-sync artifacts
-- [x] Single-agent, pairwise, and three-way orchestrator evaluation
-- [x] Accept-only-if-better baseline promotion
-- [x] Specialist baseline isolation from full module replay
-- [x] UCI HAR dataset path
-- [x] Validation `macro_f1` as the promotion metric
+- [x] Persistent specialist branches and orchestrator branch
+- [x] UCI HAR evaluation pipeline
+- [x] Validation `macro_f1` promotion metric
 - [x] Early stopping
 - [x] Optional Torch/CUDA path
-- [x] Checkpoint and experiment artifact writing
 - [x] Agent-owned executable module files
-- [x] Bounded rewrite hooks for model / augmentation / data modules
-- [x] Combination-memory-aware orchestrator ordering
-- [x] Freshly regenerate reports after the latest isolation fix
-- [x] Make reporting clearer between trial curves and accepted baseline curves
-- [ ] Add more datasets
-- [ ] Add richer compute-aware objectives like latency / memory / size
+- [x] Bounded rewrite hooks for model, augmentation, and data
+- [x] Planner artifacts, promotion artifacts, and baseline-sync artifacts
+- [x] Per-agent memory artifacts
+- [x] Combination-aware orchestrator ordering
+- [x] Specialist baseline isolation
+- [x] Proposal judge layer
+- [x] Report refresh after each round
+- [x] Resume support
+- [ ] Offline fallback planner when no valid API key is available
+- [ ] More datasets
+- [ ] Compute-aware objectives such as latency, memory, and size

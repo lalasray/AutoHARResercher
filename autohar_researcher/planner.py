@@ -705,12 +705,17 @@ class OpenAIPlanner:
             if scores
         }
         synergy_sorted = sorted(synergy_records, key=lambda item: item["synergy"], reverse=True)
+        compatible_patterns = [item for item in synergy_sorted if float(item["synergy"]) > 0][:3]
+        conflicting_patterns = [
+            item for item in sorted(synergy_records, key=lambda item: item["synergy"])
+            if float(item["synergy"]) < 0
+        ][:3]
         return {
             "recent_best_by_combination": recent_best,
             "recent_avg_by_combination": recent_avg,
             "accepted_best_by_combination": accepted_best,
-            "compatible_patterns": synergy_sorted[:3],
-            "conflicting_patterns": list(reversed(synergy_sorted[-3:])) if synergy_sorted else [],
+            "compatible_patterns": compatible_patterns,
+            "conflicting_patterns": conflicting_patterns,
         }
 
     def _rewrite_preference_note(self, round_id: int) -> str:

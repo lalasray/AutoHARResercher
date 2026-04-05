@@ -445,14 +445,13 @@ class HierarchicalOrchestrator:
                 materialize_git=materialize_git,
                 auto_push_non_main=auto_push_non_main,
             )
-            self._annotate_best_so_far(round_results, best_by_agent)
-            round_best = self.evaluate_round(round_results)
             if best_result is not None:
                 self._reevaluate_promising_candidates(
                     round_results=round_results,
                     baseline_result=best_result,
                 )
-                round_best = self.evaluate_round(round_results)
+            self._annotate_best_so_far(round_results, best_by_agent)
+            round_best = self.evaluate_round(round_results)
             accepted_candidate = self._select_accepted_candidate(round_results, best_result)
             if accepted_candidate is not None:
                 accepted_candidate.accepted = True
@@ -503,12 +502,21 @@ class HierarchicalOrchestrator:
         )
         accepted_best = float("-inf")
         best_by_agent: dict[str, float] = {}
+        expected_results = {
+            "model_agent.json",
+            "augmentation_agent.json",
+            "data_agent.json",
+            "orchestrator.json",
+        }
 
         for round_dir in round_dirs:
             round_id = int(round_dir.name.split("_")[-1])
             promotion_path = round_dir / "promotion.json"
             results_dir = round_dir / "results"
             if not promotion_path.exists() or not results_dir.exists():
+                continue
+            result_filenames = {path.name for path in results_dir.glob("*.json")}
+            if not expected_results.issubset(result_filenames):
                 continue
 
             round_results: list[CandidateResult] = []
@@ -1200,8 +1208,6 @@ class HierarchicalOrchestrator:
     ) -> None:
         margin = 0.02
         for result in round_results:
-            if result.agent_name == "orchestrator":
-                continue
             gap = baseline_result.val_score - result.val_score
             if gap < 0 or gap > margin:
                 continue
@@ -1211,6 +1217,7 @@ class HierarchicalOrchestrator:
                 branch_name=result.branch_name,
                 worktree_path=result.worktree_path,
                 config=result.config,
+                experiment=None,
                 component_summaries=result.component_summaries,
                 artifact_paths=dict(result.artifact_paths),
                 evaluation_tag="reeval",
