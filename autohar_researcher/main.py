@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 
 from autohar_researcher.agents import HierarchicalOrchestrator
+from autohar_researcher.config import load_autoresearch_config, load_time_budget_config
 from autohar_researcher.harness import DummyHARHarness
+from autohar_researcher.time_budget import create_timed_harness
 
 
 def format_result_line(
@@ -21,8 +23,12 @@ def format_result_line(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Minimal multi-agent HAR auto-research demo.")
-    parser.add_argument("--rounds", type=int, default=3, help="How many orchestrator rounds to run.")
+    parser = argparse.ArgumentParser(
+        description="Minimal multi-agent HAR auto-research demo."
+    )
+    parser.add_argument(
+        "--rounds", type=int, default=3, help="How many orchestrator rounds to run."
+    )
     parser.add_argument(
         "--show-git-plan",
         action="store_true",
@@ -43,33 +49,99 @@ def main() -> None:
         action="store_true",
         help="Resume from the latest completed round on disk and continue with additional rounds.",
     )
+    parser.add_argument(
+        "--never-stop",
+        action="store_true",
+        help="Run indefinitely until manually stopped. Ignores --rounds.",
+    )
+    parser.add_argument(
+        "--max-rounds-without-improvement",
+        type=int,
+        default=10,
+        help="Stop never-stop mode after this many rounds without improvement.",
+    )
+    parser.add_argument(
+        "--results-path",
+        type=str,
+        default=None,
+        help="Path for results.tsv tracking file (autoresearch mode).",
+    )
+    parser.add_argument(
+        "--time-budget",
+        type=float,
+        default=None,
+        help="Time budget per experiment in seconds (like karpathy/autoresearch).",
+    )
     args = parser.parse_args()
 
-    orchestrator = HierarchicalOrchestrator(harness=DummyHARHarness())
-    results = orchestrator.run(
-        rounds=args.rounds,
-        materialize_git=args.materialize_git,
-        auto_push_non_main=args.auto_push_non_main,
-        resume=args.resume,
+    autoresearch_config = load_autoresearch_config()
+    if args.never_stop:
+        import os
+
+        os.environ["AUTOHAR_NEVER_STOP"] = "true"
+        autoresearch_config = load_autoresearch_config()
+
+    time_budget_config = load_time_budget_config()
+    if args.time_budget is not None:
+        from autohar_researcher.config import TimeBudgetConfig
+
+        time_budget_config = TimeBudgetConfig(
+            enabled=True,
+            budget_seconds=args.time_budget,
+            startup_overhead_seconds=time_budget_config.startup_overhead_seconds,
+        )
+
+    base_harness = DummyHARHarness()
+    harness = create_timed_harness(base_harness, time_budget_config)
+
+    orchestrator = HierarchicalOrchestrator(
+        harness=harness,
+        autoresearch_config=autoresearch_config,
+        time_budget_config=time_budget_config,
     )
+
+    if args.never_stop or autoresearch_config.never_stop:
+        print("[AutoHAR] Running in never-stop (autoresearch) mode", flush=True)
+        results = orchestrator.run_never_stop(
+            materialize_git=args.materialize_git,
+            auto_push_non_main=args.auto_push_non_main,
+            resume=args.resume,
+            max_rounds_without_improvement=args.max_rounds_without_improvement,
+            results_path=args.results_path,
+        )
+    else:
+        results = orchestrator.run(
+            rounds=args.rounds,
+            materialize_git=args.materialize_git,
+            auto_push_non_main=args.auto_push_non_main,
+            resume=args.resume,
+        )
 
     history = results["history"]
     best_result = results["best_result"]
     workspaces = results["workspaces"]
     git_actions = results["git_actions"]
     round_states = results["round_states"]
-    run_outputs = results["run_outputs"]
+    run_outputs = results.get("run_outputs")
     planner_name = results["planner_name"]
     ranked = sorted(history, key=lambda item: item.val_score, reverse=True)
 
     print("AutoHARResearcher git-first demo")
     print("=" * 32)
-    print(f"Rounds: {args.rounds}")
+    print(f"Rounds: {args.rounds if not args.never_stop else 'never-stop'}")
     print(f"Candidates evaluated: {len(history)}")
     print(f"Materialize git: {args.materialize_git}")
     print(f"Auto-push non-main: {args.auto_push_non_main}")
     print(f"Resume mode: {args.resume}")
     print(f"Planner: {planner_name}")
+    if args.never_stop or autoresearch_config.never_stop:
+        experiment_count = results.get("experiment_count", 0)
+        print(f"Experiments completed: {experiment_count}")
+        results_tracker = results.get("results_tracker")
+        if results_tracker:
+            print(f"Results tracker: {results_tracker.path}")
+    if time_budget_config.enabled:
+        print(f"Time budget: {time_budget_config.budget_seconds}s per experiment")
     print(f"Training backend: {orchestrator.harness.runtime_backend_summary()}")
     role_summary = getattr(orchestrator.planner, "role_runtime_summary", lambda: {})()
     if role_summary:

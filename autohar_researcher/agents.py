@@ -7,10 +7,14 @@ from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
 from autohar_researcher.config import (
+    AutoresearchConfig,
     JudgeThresholds,
+    load_autoresearch_config,
     load_judge_thresholds,
+    load_time_budget_config,
     RepairConfig,
     load_repair_config,
+    TimeBudgetConfig,
 )
 from autohar_researcher.experiment import (
     apply_augmentation_proposal,
@@ -24,6 +28,13 @@ from autohar_researcher.experiment import (
     experiment_to_candidate_config,
 )
 from autohar_researcher.file_patcher import apply_file_patches, collect_all_file_patches
+from autohar_researcher.results_tracker import (
+    ExperimentResult,
+    ResultsTracker,
+    create_results_tracker,
+    get_git_commit,
+    get_git_branch,
+)
 from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
 from autohar_researcher.planner import build_planner
@@ -426,6 +437,8 @@ class HierarchicalOrchestrator:
         harness: DummyHARHarness,
         judge_thresholds: JudgeThresholds | None = None,
         repair_config: RepairConfig | None = None,
+        autoresearch_config: AutoresearchConfig | None = None,
+        time_budget_config: TimeBudgetConfig | None = None,
     ) -> None:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
@@ -439,6 +452,8 @@ class HierarchicalOrchestrator:
         )
         self.judge_thresholds = judge_thresholds or load_judge_thresholds()
         self.repair_config = repair_config or load_repair_config()
+        self.autoresearch_config = autoresearch_config or load_autoresearch_config()
+        self.time_budget_config = time_budget_config or load_time_budget_config()
         self.repair_loop = CrashRepairLoop(
             planner=self.planner,
             config=self.repair_config,
@@ -547,6 +562,195 @@ class HierarchicalOrchestrator:
             "round_states": round_states,
             "run_outputs": run_outputs,
             "planner_name": getattr(self.planner, "name", "unknown"),
+        }
+
+    def run_never_stop(
+        self,
+        materialize_git: bool = False,
+        auto_push_non_main: bool = False,
+        resume: bool = False,
+        max_rounds_without_improvement: int = 10,
+        results_path: Path | None = None,
+    ) -> dict[str, object]:
+        if not self.autoresearch_config.never_stop:
+            raise RuntimeError(
+                "run_never_stop requires AUTOHAR_NEVER_STOP=true or autoresearch_config.never_stop=True"
+            )
+
+        results_tracker = create_results_tracker(results_path)
+        if resume:
+            results_tracker.load_from_file()
+
+        history, accepted_history = self._load_round_history()
+        if accepted_history:
+            best_result = self._clone_result(accepted_history[-1])
+        elif history:
+            best_result = self._clone_result(
+                max(history, key=lambda item: item.val_score)
+            )
+        else:
+            best_result = None
+
+        best_by_agent = self._best_by_agent_from_history(history)
+        start_round = max((result.round_id for result in history), default=0) + 1
+        actions: list[GitAction] = self.bootstrap_actions()
+        round_states: list[RoundState] = []
+
+        if materialize_git:
+            self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
+            self.git_runtime.bootstrap_orchestrator_workspace(
+                orchestrator_branch=self.orchestrator_workspace.branch_name,
+                orchestrator_worktree=self.orchestrator_workspace.worktree_path,
+            )
+
+        rounds_without_improvement = 0
+        experiment_count = 0
+        run_outputs = None
+
+        print(
+            f"[AutoHAR] Starting never-stop mode (simplification_threshold={self.autoresearch_config.simplification_threshold})",
+            flush=True,
+        )
+
+        while True:
+            round_id = start_round
+            print(
+                f"[AutoHAR] round {round_id} (experiments: {experiment_count}, rounds without improvement: {rounds_without_improvement})",
+                flush=True,
+            )
+
+            previous_best = (
+                None if best_result is None else self._clone_result(best_result)
+            )
+            round_plan = self.plan_round(
+                round_id=round_id,
+                best_result=best_result,
+                history=history,
+                accepted_history=accepted_history,
+            )
+            actions.extend(
+                self.plan_git_actions(round_id=round_id, round_plan=round_plan)
+            )
+
+            try:
+                round_results, round_state = self.execute_round(
+                    round_id=round_id,
+                    round_plan=round_plan,
+                    best_result=best_result,
+                    history=history,
+                    accepted_history=accepted_history,
+                    materialize_git=materialize_git,
+                    auto_push_non_main=auto_push_non_main,
+                )
+            except Exception as e:
+                print(f"[AutoHAR] Round {round_id} crashed: {e}", flush=True)
+                if not self.autoresearch_config.auto_restart_on_crash:
+                    raise
+                print("[AutoHAR] Restarting from previous best...", flush=True)
+                rounds_without_improvement += 1
+                if rounds_without_improvement > max_rounds_without_improvement:
+                    print(
+                        "[AutoHAR] Too many rounds without improvement. Stopping.",
+                        flush=True,
+                    )
+                    break
+                start_round += 1
+                continue
+
+            if best_result is not None:
+                self._reevaluate_promising_candidates(
+                    round_results=round_results,
+                    baseline_result=best_result,
+                )
+
+            self._annotate_best_so_far(round_results, best_by_agent)
+            round_best = self.evaluate_round(round_results)
+            accepted_candidate = self._select_accepted_candidate(
+                round_results, best_result
+            )
+
+            commit = get_git_commit()
+            branch = get_git_branch()
+            status = "discard"
+            description = ""
+
+            if accepted_candidate is not None:
+                accepted_candidate.accepted = True
+                best_result = accepted_candidate
+                accepted_history.append(self._clone_result(accepted_candidate))
+                status = "keep"
+                description = accepted_candidate.summary
+                rounds_without_improvement = 0
+                experiment_count += 1
+            else:
+                rounds_without_improvement += 1
+                if round_best.val_score > (
+                    previous_best.val_score if previous_best else float("-inf")
+                ):
+                    status = "keep"
+                    description = round_best.summary
+                    experiment_count += 1
+                    rounds_without_improvement = 0
+                    best_result = round_best
+                    accepted_history.append(self._clone_result(round_best))
+                elif (
+                    previous_best
+                    and round_best.val_score
+                    >= previous_best.val_score
+                    - self.autoresearch_config.simplification_threshold
+                ):
+                    status = "keep"
+                    description = f"simplification: {round_best.summary}"
+                    experiment_count += 1
+                    rounds_without_improvement = 0
+
+            experiment_result = ExperimentResult(
+                commit=commit,
+                val_score=round_best.val_score,
+                memory_gb=0.0,
+                status=status,
+                description=description[:200] if description else "",
+                domain=round_best.agent_name,
+            )
+            results_tracker.add(experiment_result)
+
+            history.extend(round_results)
+            round_state.promotion_artifact = self._write_promotion_artifact(
+                round_id=round_id,
+                round_results=round_results,
+                round_best=round_best,
+                previous_best=previous_best,
+                accepted_candidate=accepted_candidate,
+                current_best=best_result,
+            )
+            run_outputs = self._write_run_outputs(history, accepted_history)
+            round_states.append(round_state)
+
+            if rounds_without_improvement > max_rounds_without_improvement:
+                print(
+                    f"[AutoHAR] Stopping: {rounds_without_improvement} rounds without improvement",
+                    flush=True,
+                )
+                break
+
+            start_round += 1
+
+        if best_result is None and history:
+            best_result = self._clone_result(
+                max(history, key=lambda item: item.val_score)
+            )
+
+        return {
+            "best_result": best_result,
+            "history": history,
+            "accepted_history": accepted_history,
+            "workspaces": self.workspaces,
+            "git_actions": actions,
+            "round_states": round_states,
+            "run_outputs": run_outputs,
+            "planner_name": getattr(self.planner, "name", "unknown"),
+            "results_tracker": results_tracker,
+            "experiment_count": experiment_count,
         }
 
     def _load_round_history(

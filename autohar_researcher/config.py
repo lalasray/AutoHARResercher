@@ -137,3 +137,61 @@ def load_repair_config() -> RepairConfig:
         == "true",
         max_patch_retries=int(os.getenv("AUTOHAR_REPAIR_MAX_PATCH_RETRIES", "3")),
     )
+
+
+@dataclass(frozen=True)
+class TimeBudgetConfig:
+    enabled: bool
+    budget_seconds: float
+    startup_overhead_seconds: float
+
+
+DEFAULT_TIME_BUDGET_CONFIG = TimeBudgetConfig(
+    enabled=False,
+    budget_seconds=300.0,
+    startup_overhead_seconds=10.0,
+)
+
+
+def load_time_budget_config() -> TimeBudgetConfig:
+    enabled = os.getenv("AUTOHAR_TIME_BUDGET_ENABLED", "false").lower() == "true"
+    if not enabled:
+        return DEFAULT_TIME_BUDGET_CONFIG
+    return TimeBudgetConfig(
+        enabled=True,
+        budget_seconds=float(os.getenv("AUTOHAR_TIME_BUDGET_SECONDS", "300")),
+        startup_overhead_seconds=float(
+            os.getenv("AUTOHAR_TIME_BUDGET_STARTUP_OVERHEAD", "10")
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class AutoresearchConfig:
+    never_stop: bool
+    simplification_threshold: float
+    experiment_branch_prefix: str
+    auto_restart_on_crash: bool
+
+
+DEFAULT_AUTORESEARCH_CONFIG = AutoresearchConfig(
+    never_stop=False,
+    simplification_threshold=0.001,
+    experiment_branch_prefix="autoresearch",
+    auto_restart_on_crash=True,
+)
+
+
+def load_autoresearch_config() -> AutoresearchConfig:
+    never_stop = os.getenv("AUTOHAR_NEVER_STOP", "false").lower() == "true"
+    return AutoresearchConfig(
+        never_stop=never_stop,
+        simplification_threshold=float(
+            os.getenv("AUTOHAR_SIMPLIFICATION_THRESHOLD", "0.001")
+        ),
+        experiment_branch_prefix=os.getenv(
+            "AUTOHAR_EXPERIMENT_BRANCH_PREFIX", "autoresearch"
+        ),
+        auto_restart_on_crash=os.getenv("AUTOHAR_AUTO_RESTART_ON_CRASH", "true").lower()
+        == "true",
+    )
