@@ -24,7 +24,6 @@ from autohar_researcher.datasets import UCIHARDataset
 
 if TYPE_CHECKING:
     from autohar_researcher.heuristic_planner import HeuristicPlanner
-    from autohar_researcher.opencode_planner import OpenCodePlanner
 
 
 def load_local_env(path: Path | None = None) -> None:
@@ -1707,20 +1706,12 @@ class OpenAIPlanner:
         return " " + " ".join(unique_tags)
 
 
-def build_planner() -> OpenAIPlanner | HeuristicPlanner | OpenCodePlanner:
+def build_planner() -> OpenAIPlanner | HeuristicPlanner:
     load_local_env()
     backend = os.getenv("AUTOHAR_LLM_BACKEND", "openai").strip().lower()
     allow_fallback = (
         os.getenv("AUTOHAR_ALLOW_LLM_FALLBACK", "true").strip().lower() == "true"
     )
-
-    if backend == "opencode":
-        from autohar_researcher.opencode_planner import OpenCodePlanner
-        from autohar_researcher.git_agent_bridge import GitAgentBridge
-
-        bridge = GitAgentBridge(repo_root=Path.cwd())
-        print("[AutoHAR] Using OpenCode Git-based planner (no API key required)")
-        return OpenCodePlanner(bridge=bridge)
 
     if backend == "lmstudio":
         base_url = os.getenv("AUTOHAR_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
@@ -1742,13 +1733,12 @@ def build_planner() -> OpenAIPlanner | HeuristicPlanner | OpenCodePlanner:
                 "[AutoHAR] Warning: No OpenAI API key found. Using heuristic fallback planner."
             )
             print(
-                "[AutoHAR] Options: Set OPENAI_API_KEY, use AUTOHAR_LLM_BACKEND=lmstudio, or AUTOHAR_LLM_BACKEND=opencode"
+                "[AutoHAR] Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=lmstudio"
             )
             return HeuristicPlanner()
         raise RuntimeError(
             "OPENAI_API_KEY is required for the default OpenAI planner. "
-            "Options: Set OPENAI_API_KEY, use AUTOHAR_LLM_BACKEND=lmstudio (local LLM), "
-            "or AUTOHAR_LLM_BACKEND=opencode (Git-based with OpenCode CLI)."
+            "Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=lmstudio (local LLM)."
         )
 
     if OpenAI is None:

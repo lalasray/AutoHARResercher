@@ -25,23 +25,12 @@ The search style:
 - multi-agent guided exploration
 - orchestrator combination search
 - bounded code evolution inside agent-owned modules
+- crash-repair loop with automatic recovery and heuristic fallback
+- free-form file patching for arbitrary file modifications
 
 ## Quick Start
 
-### Option 1: OpenCode (Recommended - No API Key Required)
-
-```bash
-# Install dependencies
-pip install -e ".[dev]"
-
-# In terminal 1: Watch for tasks and process with OpenCode
-./run_opencode_agent.sh --watch
-
-# In terminal 2: Run AutoHAR
-./run_autohar_opencode.sh --rounds 10
-```
-
-### Option 2: LM Studio (Local LLM)
+### Option 1: LM Studio (Local LLM - No API Key)
 
 ```bash
 # 1. Install and start LM Studio (https://lmstudio.ai)
@@ -52,7 +41,7 @@ pip install -e ".[dev]"
 ./run_autohar_lmstudio.sh --rounds 10
 ```
 
-### Option 3: OpenAI (Requires API Key)
+### Option 2: OpenAI (Requires API Key)
 
 ```bash
 pip install -e ".[dev]"
@@ -60,7 +49,7 @@ echo 'OPENAI_API_KEY=your_key_here' > .autohar.env
 ./run_autohar_openai.sh --rounds 10
 ```
 
-### Option 4: Heuristic Fallback (No LLM at all)
+### Option 3: Heuristic Fallback (No LLM at all)
 
 ```bash
 pip install -e ".[dev]"
@@ -73,7 +62,6 @@ Choose one by setting `AUTOHAR_LLM_BACKEND` in `.autohar.env`:
 
 | Backend | API Key | Setup Required |
 |---------|---------|----------------|
-| `opencode` | None | Install OpenCode |
 | `lmstudio` | None | Install LM Studio |
 | `openai` | Yes | Get API key |
 | `heuristic` | None | None |
@@ -83,7 +71,6 @@ Choose one by setting `AUTOHAR_LLM_BACKEND` in `.autohar.env`:
 ### With Scripts
 
 ```bash
-./run_autohar_opencode.sh --rounds 20     # OpenCode Git-based
 ./run_autohar_lmstudio.sh --rounds 20     # LM Studio
 ./run_autohar_openai.sh --rounds 20       # OpenAI
 ```
@@ -111,70 +98,12 @@ python -m autohar_researcher.main --rounds 20 --materialize-git
 python -m autohar_researcher.main --rounds 10 --materialize-git --resume
 ```
 
-## OpenCode Git-Based Workflow
-
-AutoHAR can use OpenCode as the agent layer with no API key required. Tasks are written to Git, OpenCode processes them, and results are read back from Git.
-
-### Setup
-
-1. **Install OpenCode**: https://opencode.ai
-
-2. **Initialize OpenCode for this repo**:
-   ```bash
-   cd /path/to/AutoHARResearcher
-   opencode init
-   ```
-
-3. **Configure OpenCode** (optional, for local LLM):
-   ```bash
-   # In ~/.config/opencode/opencode.json
-   {
-     "provider": {
-       "local": {
-         "npm": "@ai-sdk/openai-compatible",
-         "options": {"baseURL": "http://localhost:1234/v1"}
-       }
-     },
-     "model": "local/your-model"
-   }
-   ```
-
-### Running
-
-```bash
-# Terminal 1: Watch and process tasks
-./run_opencode_agent.sh --watch
-
-# Terminal 2: Run AutoHAR
-./run_autohar_opencode.sh --rounds 10
-```
-
-### How It Works
-
-```
-AutoHAR                    Git                    OpenCode
-   |                        |                       |
-   |-- write task ---------|                       |
-   |-- git commit ---------                        |
-   |                        |<-- poll for tasks    |
-   |                        |<-- opencode analyze  |
-   |                        |<-- git commit result |
-   |-- git pull ------------                        |
-   |-- read result --------|                       |
-```
-
 ## Environment Configuration
 
 Create `.autohar.env` from the example:
 
 ```bash
 cp .autohar.env.example .autohar.env
-```
-
-### OpenCode Configuration
-
-```bash
-AUTOHAR_LLM_BACKEND=opencode
 ```
 
 ### LM Studio Configuration
@@ -220,6 +149,12 @@ AUTOHAR_SANDBOX_MODE=thread  # or "subprocess"
 
 # Allow heuristic fallback when LLM is unavailable
 AUTOHAR_ALLOW_LLM_FALLBACK=true
+
+# Crash-repair loop settings
+AUTOHAR_REPAIR_MAX_RETRIES=3
+AUTOHAR_REPAIR_BACKOFF_BASE=2.0
+AUTOHAR_REPAIR_FALLBACK_HEURISTIC=true
+AUTOHAR_REPAIR_MAX_PATCH_RETRIES=2
 ```
 
 ## Agent Ownership
@@ -253,6 +188,8 @@ Main outputs in `artifacts/round_N/`:
 - `planner_decision.json`: planner strategy and hints
 - `proposal_judgments/*.json`: judge evaluations
 - `baseline_sync.json`: baseline propagated to each workspace
+- `repair_attempts/*.json`: crash-repair loop attempts and strategies
+- `applied_patches/*.json`: file patches applied in each round
 
 ## Testing
 
@@ -269,7 +206,6 @@ pytest tests/ -v --cov=autohar_researcher
 | `agents.py` | Multi-agent orchestration |
 | `planner.py` | LLM-based planning |
 | `heuristic_planner.py` | Fallback planner |
-| `opencode_planner.py` | OpenCode Git-based planning |
 | `git_agent_bridge.py` | Git communication layer |
 | `harness.py` | HAR evaluation |
 | `experiment.py` | Experiment configuration |
@@ -278,6 +214,8 @@ pytest tests/ -v --cov=autohar_researcher
 | `sandbox.py` | Safe code execution |
 | `config.py` | Configuration management |
 | `reporting.py` | SVG/CSV output |
+| `repair_loop.py` | Crash-repair loop with retry logic |
+| `file_patcher.py` | Free-form file patching |
 
 ## Checklist
 
@@ -292,10 +230,11 @@ pytest tests/ -v --cov=autohar_researcher
 - [x] Proposal judge layer
 - [x] Resume support
 - [x] LM Studio backend
-- [x] OpenCode Git-based backend
 - [x] Heuristic fallback planner
 - [x] Configurable thresholds
 - [x] Sandboxed code execution
 - [x] Test suite
+- [x] Crash-repair loop
+- [x] Free-form file patching
 - [ ] More datasets
 - [ ] Compute-aware objectives
