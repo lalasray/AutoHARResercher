@@ -18,6 +18,7 @@ from autohar_researcher.experiment import (
     module_relative_path,
     write_module_python,
 )
+from autohar_researcher.file_patcher import apply_file_patches, collect_all_file_patches
 from autohar_researcher.round_state import RoundState
 from autohar_researcher.types import (
     AgentWorkspace,
@@ -74,13 +75,19 @@ class GitRuntime:
         for proposal in proposals:
             if isinstance(proposal, ModelProposal):
                 agent_name = "model_agent"
-                experiment = apply_model_proposal(clone_experiment(baseline_experiment), proposal)
+                experiment = apply_model_proposal(
+                    clone_experiment(baseline_experiment), proposal
+                )
             elif isinstance(proposal, AugmentationProposal):
                 agent_name = "augmentation_agent"
-                experiment = apply_augmentation_proposal(clone_experiment(baseline_experiment), proposal)
+                experiment = apply_augmentation_proposal(
+                    clone_experiment(baseline_experiment), proposal
+                )
             else:
                 agent_name = "data_agent"
-                experiment = apply_data_proposal(clone_experiment(baseline_experiment), proposal)
+                experiment = apply_data_proposal(
+                    clone_experiment(baseline_experiment), proposal
+                )
 
             workspace = workspaces[agent_name]
             experiment_rel = Path("research") / "experiment.json"
@@ -99,7 +106,9 @@ class GitRuntime:
                 "experiment": str(experiment_abs),
             }
             for sync_agent_name in workspaces:
-                sync_module_abs = Path(workspace.worktree_path) / module_relative_path(sync_agent_name)
+                sync_module_abs = Path(workspace.worktree_path) / module_relative_path(
+                    sync_agent_name
+                )
                 write_module_python(
                     sync_module_abs,
                     module_payload(
@@ -109,20 +118,29 @@ class GitRuntime:
                         branch_name=workspace.branch_name,
                         sync_from_branch=baseline_branch,
                         logic_expression=str(
-                            baseline_module_payloads.get(sync_agent_name, {}).get("logic_expression", "")
+                            baseline_module_payloads.get(sync_agent_name, {}).get(
+                                "logic_expression", ""
+                            )
                         ),
                         helper_code=str(
-                            baseline_module_payloads.get(sync_agent_name, {}).get("helper_code", "")
+                            baseline_module_payloads.get(sync_agent_name, {}).get(
+                                "helper_code", ""
+                            )
                         ),
                         function_rewrite=str(
-                            baseline_module_payloads.get(sync_agent_name, {}).get("function_rewrite", "")
+                            baseline_module_payloads.get(sync_agent_name, {}).get(
+                                "function_rewrite", ""
+                            )
                         ),
                     ),
                 )
                 workspace_sync_paths[sync_agent_name] = str(sync_module_abs)
             sync_committed = self.commit_paths_if_changed(
                 worktree=Path(workspace.worktree_path),
-                rel_paths=[experiment_rel, *[module_relative_path(name) for name in workspaces]],
+                rel_paths=[
+                    experiment_rel,
+                    *[module_relative_path(name) for name in workspaces],
+                ],
                 message=f"round {round_id}: sync from {baseline_branch}",
             )
             sync_report["synced_workspaces"][agent_name] = {
@@ -134,7 +152,9 @@ class GitRuntime:
             if sync_committed:
                 round_state.synced_branches.append(workspace.branch_name)
                 if auto_push_non_main:
-                    self.push_branch(workspace.branch_name, cwd=Path(workspace.worktree_path))
+                    self.push_branch(
+                        workspace.branch_name, cwd=Path(workspace.worktree_path)
+                    )
                     round_state.pushed_branches.append(workspace.branch_name)
 
             payload = {
@@ -167,7 +187,9 @@ class GitRuntime:
             round_state.materialized_agent_files[agent_name] = str(module_abs)
             agent_experiments[agent_name] = experiment
             if auto_push_non_main and committed:
-                self.push_branch(workspace.branch_name, cwd=Path(workspace.worktree_path))
+                self.push_branch(
+                    workspace.branch_name, cwd=Path(workspace.worktree_path)
+                )
                 round_state.pushed_branches.append(workspace.branch_name)
 
         orchestrator_branch = round_state.orchestrator_branch
@@ -176,13 +198,18 @@ class GitRuntime:
         self.ensure_worktree(str(orchestrator_worktree), orchestrator_branch)
 
         source_payload = {}
-        for agent_name, materialized_path in round_state.materialized_agent_files.items():
+        for (
+            agent_name,
+            materialized_path,
+        ) in round_state.materialized_agent_files.items():
             source_payload[agent_name] = load_module_python(Path(materialized_path))
 
         composed_experiment = clone_experiment(baseline_experiment)
         composed_experiment["model"] = dict(agent_experiments["model_agent"]["model"])
         composed_experiment["data"] = dict(agent_experiments["data_agent"]["data"])
-        composed_experiment["augmentation"] = dict(agent_experiments["augmentation_agent"]["augmentation"])
+        composed_experiment["augmentation"] = dict(
+            agent_experiments["augmentation_agent"]["augmentation"]
+        )
 
         orchestrator_rel = Path("research") / "experiment.json"
         orchestrator_module_rels = [module_relative_path(name) for name in workspaces]
@@ -209,13 +236,17 @@ class GitRuntime:
                     branch_name=orchestrator_branch,
                     sync_from_branch=baseline_branch,
                     logic_expression=str(
-                        source_payload.get(source_agent_name, {}).get("logic_expression", "")
+                        source_payload.get(source_agent_name, {}).get(
+                            "logic_expression", ""
+                        )
                     ),
                     helper_code=str(
                         source_payload.get(source_agent_name, {}).get("helper_code", "")
                     ),
                     function_rewrite=str(
-                        source_payload.get(source_agent_name, {}).get("function_rewrite", "")
+                        source_payload.get(source_agent_name, {}).get(
+                            "function_rewrite", ""
+                        )
                     ),
                 ),
             )
@@ -233,6 +264,36 @@ class GitRuntime:
         sync_artifact = round_dir / "baseline_sync.json"
         self.write_json(sync_artifact, sync_report)
         round_state.sync_artifact = str(sync_artifact)
+
+        all_patches = collect_all_file_patches(proposals)
+        if all_patches:
+            for workspace in workspaces.values():
+                worktree = Path(workspace.worktree_path)
+                agent_patches = [
+                    p
+                    for p in all_patches
+                    if p.file_path.startswith(f"research/modules/")
+                    or p.file_path.startswith("research/")
+                ]
+                if agent_patches:
+                    results = apply_file_patches(agent_patches, worktree)
+                    for r in results:
+                        round_state.applied_patches.append(
+                            {
+                                "file": r.file_path,
+                                "mode": r.mode,
+                                "success": str(r.success),
+                                "error": r.error or "",
+                            }
+                        )
+                    patch_paths = [Path(r.file_path) for r in results if r.success]
+                    if patch_paths:
+                        self.commit_paths_if_changed(
+                            worktree=worktree,
+                            rel_paths=patch_paths,
+                            message=f"round {round_id}: apply file patches",
+                        )
+
         return round_state
 
     def ensure_branch(self, branch_name: str, start_point: str) -> None:
@@ -248,9 +309,13 @@ class GitRuntime:
         self.run_git(["worktree", "add", worktree_path, branch_name])
 
     def commit_if_changed(self, worktree: Path, rel_path: Path, message: str) -> bool:
-        return self.commit_paths_if_changed(worktree=worktree, rel_paths=[rel_path], message=message)
+        return self.commit_paths_if_changed(
+            worktree=worktree, rel_paths=[rel_path], message=message
+        )
 
-    def commit_paths_if_changed(self, worktree: Path, rel_paths: list[Path], message: str) -> bool:
+    def commit_paths_if_changed(
+        self, worktree: Path, rel_paths: list[Path], message: str
+    ) -> bool:
         status = self.run_git(
             ["status", "--short", "--", *[str(rel_path) for rel_path in rel_paths]],
             cwd=worktree,
@@ -268,7 +333,10 @@ class GitRuntime:
 
     def write_json(self, path: Path, payload: object) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(self._to_serializable(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(
+            json.dumps(self._to_serializable(payload), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     def _to_serializable(self, payload: object) -> object:
         if is_dataclass(payload):
@@ -293,7 +361,9 @@ class GitRuntime:
                 apply_modules=False,
             )
         else:
-            branch_directory = baseline_branch.replace("agent-", "").replace("-main", "")
+            branch_directory = baseline_branch.replace("agent-", "").replace(
+                "-main", ""
+            )
             if branch_directory == "augmentation":
                 branch_directory = "augmentation_agent"
             elif branch_directory == "data":
@@ -326,7 +396,9 @@ class GitRuntime:
         if baseline_branch == "orchestrator-main":
             baseline_worktree = orchestrator_worktree
         else:
-            branch_directory = baseline_branch.replace("agent-", "").replace("-main", "")
+            branch_directory = baseline_branch.replace("agent-", "").replace(
+                "-main", ""
+            )
             if branch_directory == "augmentation":
                 branch_directory = "augmentation_agent"
             elif branch_directory == "data":

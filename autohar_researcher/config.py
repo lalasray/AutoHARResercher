@@ -109,3 +109,31 @@ def load_sandbox_config() -> SandboxConfig:
         memory_mb=int(os.getenv("AUTOHAR_SANDBOX_MEMORY_MB", "128")),
         mode=os.getenv("AUTOHAR_SANDBOX_MODE", "thread"),
     )
+
+
+@dataclass(frozen=True)
+class RepairConfig:
+    max_retries: int
+    backoff_base: float
+    fallback_to_heuristic: bool
+    max_patch_retries: int
+
+
+DEFAULT_REPAIR_CONFIG = RepairConfig(
+    max_retries=3,
+    backoff_base=2.0,
+    fallback_to_heuristic=True,
+    max_patch_retries=3,
+)
+
+
+def load_repair_config() -> RepairConfig:
+    return RepairConfig(
+        max_retries=int(os.getenv("AUTOHAR_REPAIR_MAX_RETRIES", "3")),
+        backoff_base=float(os.getenv("AUTOHAR_REPAIR_BACKOFF_BASE", "2.0")),
+        fallback_to_heuristic=os.getenv(
+            "AUTOHAR_REPAIR_FALLBACK_HEURISTIC", "true"
+        ).lower()
+        == "true",
+        max_patch_retries=int(os.getenv("AUTOHAR_REPAIR_MAX_PATCH_RETRIES", "3")),
+    )

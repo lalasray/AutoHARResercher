@@ -21,3 +21,5 @@ class RoundState:
     orchestrator_worktree: str = ""
     combination_order: list[str] = field(default_factory=list)
     pushed_branches: list[str] = field(default_factory=list)
+    applied_patches: list[dict[str, str]] = field(default_factory=list)
+    repair_artifact: str = ""

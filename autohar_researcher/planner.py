@@ -16,6 +16,7 @@ from autohar_researcher.types import (
     AugmentationPlanHint,
     CandidateResult,
     DataPlanHint,
+    FilePatch,
     ModelPlanHint,
     ProposalJudgment,
 )
@@ -395,6 +396,20 @@ class OpenAIPlanner:
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
+                "file_patches": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "content": {"type": "string"},
+                            "patch_mode": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["file_path", "content"],
+                    },
+                },
             },
             "required": [
                 "model_name",
@@ -421,6 +436,9 @@ class OpenAIPlanner:
         payload = self._finalize_model_payload(
             payload=payload, original_payload=original_payload
         )
+        payload["file_patches"] = [
+            FilePatch(**fp) for fp in payload.get("file_patches", [])
+        ]
         return ModelPlanHint(**payload)
 
     def _plan_augmentation_agent(
@@ -481,6 +499,20 @@ class OpenAIPlanner:
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
+                "file_patches": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "content": {"type": "string"},
+                            "patch_mode": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["file_path", "content"],
+                    },
+                },
             },
             "required": [
                 "augmentation",
@@ -509,6 +541,9 @@ class OpenAIPlanner:
         payload = self._finalize_augmentation_payload(
             payload=payload, original_payload=original_payload
         )
+        payload["file_patches"] = [
+            FilePatch(**fp) for fp in payload.get("file_patches", [])
+        ]
         return AugmentationPlanHint(**payload)
 
     def _plan_data_agent(
@@ -569,6 +604,20 @@ class OpenAIPlanner:
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
+                "file_patches": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "file_path": {"type": "string"},
+                            "content": {"type": "string"},
+                            "patch_mode": {"type": "string"},
+                            "rationale": {"type": "string"},
+                        },
+                        "required": ["file_path", "content"],
+                    },
+                },
             },
             "required": [
                 "preprocessing",
@@ -597,6 +646,9 @@ class OpenAIPlanner:
         payload = self._finalize_data_payload(
             payload=payload, original_payload=original_payload
         )
+        payload["file_patches"] = [
+            FilePatch(**fp) for fp in payload.get("file_patches", [])
+        ]
         return DataPlanHint(**payload)
 
     def _call_json_schema(

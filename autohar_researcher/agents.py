@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
-from autohar_researcher.config import JudgeThresholds, load_judge_thresholds
+from autohar_researcher.config import (
+    JudgeThresholds,
+    load_judge_thresholds,
+    RepairConfig,
+    load_repair_config,
+)
 from autohar_researcher.experiment import (
     apply_augmentation_proposal,
     apply_data_proposal,
@@ -17,9 +23,11 @@ from autohar_researcher.experiment import (
     default_model_params,
     experiment_to_candidate_config,
 )
+from autohar_researcher.file_patcher import apply_file_patches, collect_all_file_patches
 from autohar_researcher.git_runtime import GitRuntime
 from autohar_researcher.harness import DummyHARHarness
 from autohar_researcher.planner import build_planner
+from autohar_researcher.repair_loop import CrashRepairLoop
 from autohar_researcher.reporting import (
     write_history_csv,
     write_history_svg,
@@ -417,6 +425,7 @@ class HierarchicalOrchestrator:
         self,
         harness: DummyHARHarness,
         judge_thresholds: JudgeThresholds | None = None,
+        repair_config: RepairConfig | None = None,
     ) -> None:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
@@ -429,6 +438,11 @@ class HierarchicalOrchestrator:
             worktree_path=str(Path.cwd() / ".worktrees" / "orchestrator_main"),
         )
         self.judge_thresholds = judge_thresholds or load_judge_thresholds()
+        self.repair_config = repair_config or load_repair_config()
+        self.repair_loop = CrashRepairLoop(
+            planner=self.planner,
+            config=self.repair_config,
+        )
 
     def run(
         self,
@@ -774,65 +788,75 @@ class HierarchicalOrchestrator:
     ) -> tuple[list[CandidateResult], RoundState]:
         best_score = round_plan["best_score"]
         planner_hints = dict(round_plan.get("planner_hints", {}))
-        with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
-            futures = [
-                pool.submit(
-                    agent.propose,
-                    round_id,
-                    best_score,
-                    best_result,
-                    list(history),
-                    list(accepted_history),
-                    planner_hints.get(agent.name),
+
+        def _run_round():
+            with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
+                futures = [
+                    pool.submit(
+                        agent.propose,
+                        round_id,
+                        best_score,
+                        best_result,
+                        list(history),
+                        list(accepted_history),
+                        planner_hints.get(agent.name),
+                    )
+                    for agent in self.agents
+                ]
+                proposals = [future.result() for future in futures]
+
+            proposal_judgments = self._judge_proposals(
+                round_id=round_id,
+                best_result=best_result,
+                history=history,
+                accepted_history=accepted_history,
+                round_plan=round_plan,
+                proposals=proposals,
+            )
+            baseline_experiment = self._baseline_experiment_from_branch(
+                str(round_plan["baseline_branch"])
+            )
+
+            round_state = self._materialize_round_state(
+                round_id=round_id,
+                proposals=proposals,
+                round_plan=round_plan,
+                proposal_judgments=proposal_judgments,
+            )
+            if materialize_git:
+                round_state = self.git_runtime.materialize_round(
+                    round_id=round_id,
+                    baseline_branch=str(round_plan["baseline_branch"]),
+                    proposals=proposals,
+                    workspaces=self.workspaces,
+                    round_state=round_state,
+                    auto_push_non_main=auto_push_non_main,
                 )
-                for agent in self.agents
-            ]
-            proposals = [future.result() for future in futures]
-        proposal_judgments = self._judge_proposals(
+            agent_results = self._evaluate_agent_results(
+                round_id=round_id,
+                proposals=proposals,
+                round_state=round_state,
+                baseline_experiment=baseline_experiment,
+            )
+            result = self._evaluate_orchestrator_result(
+                round_id=round_id,
+                proposals=proposals,
+                round_state=round_state,
+                baseline_experiment=baseline_experiment,
+                round_plan=round_plan,
+                history=history,
+                agent_results=agent_results,
+                proposal_judgments=proposal_judgments,
+            )
+            return [*agent_results, result], round_state
+
+        return self.repair_loop.execute_with_repair(
             round_id=round_id,
+            execute_fn=_run_round,
             best_result=best_result,
             history=history,
-            accepted_history=accepted_history,
             round_plan=round_plan,
-            proposals=proposals,
         )
-        # Freeze the accepted baseline before any branch/worktree materialization mutates it.
-        baseline_experiment = self._baseline_experiment_from_branch(
-            str(round_plan["baseline_branch"])
-        )
-
-        round_state = self._materialize_round_state(
-            round_id=round_id,
-            proposals=proposals,
-            round_plan=round_plan,
-            proposal_judgments=proposal_judgments,
-        )
-        if materialize_git:
-            round_state = self.git_runtime.materialize_round(
-                round_id=round_id,
-                baseline_branch=str(round_plan["baseline_branch"]),
-                proposals=proposals,
-                workspaces=self.workspaces,
-                round_state=round_state,
-                auto_push_non_main=auto_push_non_main,
-            )
-        agent_results = self._evaluate_agent_results(
-            round_id=round_id,
-            proposals=proposals,
-            round_state=round_state,
-            baseline_experiment=baseline_experiment,
-        )
-        result = self._evaluate_orchestrator_result(
-            round_id=round_id,
-            proposals=proposals,
-            round_state=round_state,
-            baseline_experiment=baseline_experiment,
-            round_plan=round_plan,
-            history=history,
-            agent_results=agent_results,
-            proposal_judgments=proposal_judgments,
-        )
-        return [*agent_results, result], round_state
 
     def evaluate_round(self, round_results: list[CandidateResult]) -> CandidateResult:
         return max(round_results, key=lambda result: result.val_score)

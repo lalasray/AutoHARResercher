@@ -35,6 +35,25 @@ class CandidateResult:
 
 
 @dataclass(frozen=True)
+class ProposalJudgment:
+    agent_name: str
+    mutation_size: str
+    novelty: str
+    plausibility: str
+    compatibility: str
+    evaluate_now: bool
+    rationale: str = ""
+
+
+@dataclass(frozen=True)
+class FilePatch:
+    file_path: str
+    content: str
+    patch_mode: str = "full_rewrite"
+    rationale: str = ""
+
+
+@dataclass(frozen=True)
 class ModelProposal:
     model_name: str
     learning_rate: float
@@ -43,6 +62,7 @@ class ModelProposal:
     logic_expression: str = ""
     helper_code: str = ""
     function_rewrite: str = ""
+    file_patches: list[FilePatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -53,6 +73,7 @@ class AugmentationProposal:
     logic_expression: str = ""
     helper_code: str = ""
     function_rewrite: str = ""
+    file_patches: list[FilePatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -63,6 +84,7 @@ class DataProposal:
     logic_expression: str = ""
     helper_code: str = ""
     function_rewrite: str = ""
+    file_patches: list[FilePatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -96,6 +118,7 @@ class ModelPlanHint:
     logic_expression: str = ""
     helper_code: str = ""
     function_rewrite: str = ""
+    file_patches: list[FilePatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -106,6 +129,7 @@ class AugmentationPlanHint:
     logic_expression: str = ""
     helper_code: str = ""
     function_rewrite: str = ""
+    file_patches: list[FilePatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -116,6 +140,7 @@ class DataPlanHint:
     logic_expression: str = ""
     helper_code: str = ""
     function_rewrite: str = ""
+    file_patches: list[FilePatch] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
