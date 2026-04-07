@@ -18,17 +18,14 @@ fi
 ROUNDS="${AUTOHAR_ROUNDS:-20}"
 MATERIALIZE_GIT="${AUTOHAR_MATERIALIZE_GIT:-1}"
 AUTO_PUSH_NON_MAIN="${AUTOHAR_AUTO_PUSH_NON_MAIN:-0}"
-
-HAS_ROUNDS_ARG=0
-for arg in "$@"; do
-  if [[ "$arg" == "--rounds" ]]; then
-    HAS_ROUNDS_ARG=1
-    break
-  fi
-done
+NEVER_STOP="${AUTOHAR_NEVER_STOP:-false}"
+TIME_BUDGET="${AUTOHAR_TIME_BUDGET_SECONDS:-}"
 
 ARGS=()
-if [[ "$HAS_ROUNDS_ARG" == "0" ]]; then
+
+if [[ "$NEVER_STOP" == "true" ]]; then
+  ARGS+=(--never-stop)
+elif [[ "$HAS_ROUNDS_ARG:=0" == "0" ]]; then
   ARGS+=(--rounds "$ROUNDS")
 fi
 
@@ -40,17 +37,17 @@ if [[ "$AUTO_PUSH_NON_MAIN" == "1" ]]; then
   ARGS+=(--auto-push-non-main)
 fi
 
+if [[ -n "$TIME_BUDGET" ]]; then
+  ARGS+=(--time-budget "$TIME_BUDGET")
+fi
+
 ARGS+=("$@")
 
 echo "Running AutoHARResearcher from $ROOT_DIR"
-if [[ "$HAS_ROUNDS_ARG" == "1" ]]; then
-  echo "Rounds: from CLI"
-else
-  echo "Rounds: $ROUNDS"
-fi
 echo "Backend: openai"
+echo "Never-stop: $NEVER_STOP"
+echo "Time budget: ${TIME_BUDGET:-none}"
 echo "Materialize git: $MATERIALIZE_GIT"
-echo "Auto-push non-main: $AUTO_PUSH_NON_MAIN"
-echo "Command: python3 -m autohar_researcher.main ${ARGS[*]}"
+echo "Command: python -m autohar_researcher.main ${ARGS[*]}"
 
-python3 -m autohar_researcher.main "${ARGS[@]}"
+python -m autohar_researcher.main "${ARGS[@]}"
