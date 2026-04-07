@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
+if [[ -f ".autohar.env" ]]; then
+  set -a
+  source ".autohar.env"
+  set +a
+fi
+
 echo "Running AutoHARResearcher in autoresearch loop mode"
 echo "From: $ROOT_DIR"
 echo ""

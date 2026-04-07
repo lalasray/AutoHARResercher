@@ -406,7 +406,7 @@ class OpenAIPlanner:
                             "patch_mode": {"type": "string"},
                             "rationale": {"type": "string"},
                         },
-                        "required": ["file_path", "content"],
+                        "required": ["file_path", "content", "patch_mode", "rationale"],
                     },
                 },
             },
@@ -418,6 +418,7 @@ class OpenAIPlanner:
                 "logic_expression",
                 "helper_code",
                 "function_rewrite",
+                "file_patches",
             ],
         }
         payload = self._call_json_schema(
@@ -509,7 +510,7 @@ class OpenAIPlanner:
                             "patch_mode": {"type": "string"},
                             "rationale": {"type": "string"},
                         },
-                        "required": ["file_path", "content"],
+                        "required": ["file_path", "content", "patch_mode", "rationale"],
                     },
                 },
             },
@@ -520,6 +521,7 @@ class OpenAIPlanner:
                 "logic_expression",
                 "helper_code",
                 "function_rewrite",
+                "file_patches",
             ],
         }
         payload = self._call_json_schema(
@@ -614,7 +616,7 @@ class OpenAIPlanner:
                             "patch_mode": {"type": "string"},
                             "rationale": {"type": "string"},
                         },
-                        "required": ["file_path", "content"],
+                        "required": ["file_path", "content", "patch_mode", "rationale"],
                     },
                 },
             },
@@ -625,6 +627,7 @@ class OpenAIPlanner:
                 "logic_expression",
                 "helper_code",
                 "function_rewrite",
+                "file_patches",
             ],
         }
         payload = self._call_json_schema(
@@ -683,6 +686,7 @@ class OpenAIPlanner:
                         },
                     },
                     temperature=0.0,
+                    max_tokens=8192,
                 )
                 content = response.choices[0].message.content or "{}"
                 try:
@@ -703,9 +707,7 @@ class OpenAIPlanner:
                             ),
                         }
                     )
-            if last_error is not None:
-                raise last_error
-            return {}
+            return self._fallback_json_payload(name=name)
         response = client.responses.create(
             model=model_name,
             input=prompt,
@@ -730,6 +732,80 @@ class OpenAIPlanner:
             if start != -1 and end != -1 and end > start:
                 return json.loads(content[start : end + 1])
             raise
+
+    def _fallback_json_payload(self, name: str) -> dict[str, object]:
+        if name == "autohar_orchestrator_plan":
+            return {
+                "summary": "Fallback local planner strategy: run conservative specialist mutations and let validation decide.",
+                "priority_order": ["model", "data", "augmentation"],
+                "exploration_mode": "fallback_explore",
+                "combination_bias": "pairwise",
+                "risk_note": "Used because the local LLM returned malformed JSON after retries.",
+            }
+        if name == "autohar_model_agent_plan":
+            return {
+                "model_name": "deepconvlstm",
+                "learning_rate": 0.0003,
+                "model_params": {
+                    "hidden_dim": 80,
+                    "depth": 2,
+                    "temporal_pool": "avg",
+                    "spectral_bins": 6,
+                    "use_interactions": True,
+                    "use_multiscale": True,
+                    "attention_mix": 0.55,
+                },
+                "rationale": "Fallback model proposal after malformed local LLM JSON.",
+                "logic_expression": "",
+                "helper_code": "",
+                "function_rewrite": "",
+            }
+        if name == "autohar_augmentation_agent_plan":
+            return {
+                "augmentation": "rotation",
+                "strength": "weak",
+                "rationale": "Fallback augmentation proposal after malformed local LLM JSON.",
+                "logic_expression": "",
+                "helper_code": "",
+                "function_rewrite": "",
+            }
+        if name == "autohar_data_agent_plan":
+            return {
+                "preprocessing": "raw",
+                "window_size": 128,
+                "rationale": "Fallback data proposal after malformed local LLM JSON.",
+                "logic_expression": "",
+                "helper_code": "",
+                "function_rewrite": "",
+            }
+        if name == "autohar_proposal_judgments":
+            return {
+                "model_agent": {
+                    "mutation_size": "medium",
+                    "novelty": "medium",
+                    "plausibility": "medium",
+                    "compatibility": "medium",
+                    "evaluate_now": True,
+                    "rationale": "Fallback judge approval after malformed local LLM JSON.",
+                },
+                "augmentation_agent": {
+                    "mutation_size": "medium",
+                    "novelty": "medium",
+                    "plausibility": "medium",
+                    "compatibility": "medium",
+                    "evaluate_now": True,
+                    "rationale": "Fallback judge approval after malformed local LLM JSON.",
+                },
+                "data_agent": {
+                    "mutation_size": "medium",
+                    "novelty": "medium",
+                    "plausibility": "medium",
+                    "compatibility": "medium",
+                    "evaluate_now": True,
+                    "rationale": "Fallback judge approval after malformed local LLM JSON.",
+                },
+            }
+        return {}
 
     def _client_for_role(self, role: str) -> tuple[OpenAI, str, str]:
         role_key = self.ROLE_KEYS.get(role, role.upper())

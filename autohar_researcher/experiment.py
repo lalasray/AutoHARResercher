@@ -549,7 +549,7 @@ def _module_patch_builder(agent_name: str) -> str:
             "    if not LOGIC_EXPRESSION:\n"
             "        return {}\n"
             "    config = dict(CONFIG)\n"
-            "    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n"
+            '    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n'
             "    if result is None:\n"
             "        return {}\n"
             "    return result if isinstance(result, dict) else {}\n\n"
@@ -691,7 +691,7 @@ def _module_patch_builder(agent_name: str) -> str:
         "    if not LOGIC_EXPRESSION:\n"
         "        return {}\n"
         "    config = dict(CONFIG)\n"
-        "    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n"
+        '    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n'
         "    if result is None:\n"
         "        return {}\n"
         "    return result if isinstance(result, dict) else {}\n\n"

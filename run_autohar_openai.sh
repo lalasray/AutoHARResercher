@@ -10,6 +10,10 @@ if [[ ! -f ".autohar.env" ]]; then
   exit 1
 fi
 
+set -a
+source ".autohar.env"
+set +a
+
 export AUTOHAR_LLM_BACKEND="openai"
 if [[ -n "${AUTOHAR_OPENAI_MODEL:-}" ]]; then
   export AUTOHAR_LLM_MODEL="${AUTOHAR_OPENAI_MODEL}"
@@ -22,10 +26,17 @@ NEVER_STOP="${AUTOHAR_NEVER_STOP:-false}"
 TIME_BUDGET="${AUTOHAR_TIME_BUDGET_SECONDS:-}"
 
 ARGS=()
+HAS_ROUNDS_ARG=0
+for arg in "$@"; do
+  if [[ "$arg" == "--rounds" ]]; then
+    HAS_ROUNDS_ARG=1
+    break
+  fi
+done
 
 if [[ "$NEVER_STOP" == "true" ]]; then
   ARGS+=(--never-stop)
-elif [[ "$HAS_ROUNDS_ARG:=0" == "0" ]]; then
+elif [[ "$HAS_ROUNDS_ARG" == "0" ]]; then
   ARGS+=(--rounds "$ROUNDS")
 fi
 

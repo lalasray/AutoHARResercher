@@ -6,3 +6,4 @@ data/
 /.venv
 /autoharresearcher.egg-info
 /artifacts_online
+/tests/__pycache__
