@@ -47,9 +47,18 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
             }
         )
     elif name == "tinierhar":
-        params.update({"hidden_dim": 32, "depth": 1, "temporal_pool": "avg", "use_multiscale": False})
+        params.update(
+            {
+                "hidden_dim": 32,
+                "depth": 1,
+                "temporal_pool": "avg",
+                "use_multiscale": False,
+            }
+        )
     elif name == "tinyhar":
-        params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "avg", "spectral_bins": 4})
+        params.update(
+            {"hidden_dim": 40, "depth": 1, "temporal_pool": "avg", "spectral_bins": 4}
+        )
     elif name == "spectra":
         params.update(
             {
@@ -91,11 +100,14 @@ def default_augmentation_params(name: str, strength: str) -> dict[str, float | i
     return {}
 
 
-def default_data_params(preprocessing: str, window_size: int) -> dict[str, float | int | str | bool]:
+def default_data_params(
+    preprocessing: str, window_size: int
+) -> dict[str, float | int | str | bool]:
     params: dict[str, float | int | str | bool] = {
         "channel_layout": "total_acc+gyro",
         "resample_mode": "nearest",
-        "normalize": preprocessing in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"},
+        "normalize": preprocessing
+        in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"},
         "gravity_scale": 1.0,
         "append_magnitude": preprocessing == "normalized+magnitude_channels",
     }
@@ -144,7 +156,11 @@ def module_relative_path(agent_name: str) -> Path:
 def module_owned_fields(agent_name: str) -> list[str]:
     return {
         "model_agent": ["model.name", "model.learning_rate", "model.params"],
-        "augmentation_agent": ["augmentation.name", "augmentation.strength", "augmentation.params"],
+        "augmentation_agent": [
+            "augmentation.name",
+            "augmentation.strength",
+            "augmentation.params",
+        ],
         "data_agent": ["data.preprocessing", "data.window_size", "data.params"],
     }[agent_name]
 
@@ -199,17 +215,31 @@ def module_payload(
     }
 
 
+SANDBOX_IMPORT = """from autohar_researcher.sandbox import (
+    sandboxed_namespace,
+    safe_eval,
+    run_sandboxed,
+    ALLOWED_BUILTINS,
+    SANDBOX_TIMEOUT_SECONDS,
+)
+"""
+
+
 def write_module_python(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     config_body = pprint.pformat(payload["config"], sort_dicts=True, width=88)
-    owned_fields_body = pprint.pformat(payload["owned_fields"], sort_dicts=True, width=88)
+    owned_fields_body = pprint.pformat(
+        payload["owned_fields"], sort_dicts=True, width=88
+    )
     patch_builder = _module_patch_builder(payload["agent_name"])
     path.write_text(
         '"""Agent-owned executable module for AutoHARResearcher."""\n\n'
-        f'AGENT_NAME = {payload["agent_name"]!r}\n'
-        f'BRANCH_NAME = {payload["branch_name"]!r}\n'
+        + SANDBOX_IMPORT
+        + "\n"
+        f"AGENT_NAME = {payload['agent_name']!r}\n"
+        f"BRANCH_NAME = {payload['branch_name']!r}\n"
         f"ROUND_ID = {int(payload['round_id'])}\n"
-        f'SYNC_FROM_BRANCH = {payload["sync_from_branch"]!r}\n'
+        f"SYNC_FROM_BRANCH = {payload['sync_from_branch']!r}\n"
         f"OWNED_FIELDS = {owned_fields_body}\n"
         f"CONFIG = {config_body}\n\n"
         f"LOGIC_EXPRESSION = {payload.get('logic_expression', '')!r}\n\n"
@@ -249,12 +279,12 @@ def _module_patch_builder(agent_name: str) -> str:
             "        return requested_name\n"
             "    if baseline_name in valid:\n"
             "        return baseline_name\n"
-            '    return valid[0]\n\n'
+            "    return valid[0]\n\n"
             "def compatibility_bias(base_experiment: dict[str, object], target_name: str) -> float:\n"
             '    """Return a small LR bias based on the surrounding baseline context."""\n'
             '    augmentation = str(base_experiment.get("augmentation", {}).get("name", "none"))\n'
             '    preprocessing = str(base_experiment.get("data", {}).get("preprocessing", "raw"))\n'
-            '    bias = 1.0\n'
+            "    bias = 1.0\n"
             '    if augmentation != "none" and target_name in {"deepconvlstm", "deepconvlstmattention", "hart", "tiny_transformer"}:\n'
             "        bias *= 0.9\n"
             '    if preprocessing != "raw" and target_name in {"tiny_transformer", "hart"}:\n'
@@ -304,129 +334,93 @@ def _module_patch_builder(agent_name: str) -> str:
             '    baseline_lr = float(baseline.get("learning_rate", 3e-4))\n'
             '    baseline_params = dict(baseline.get("params", {}))\n'
             '    return f"baseline_model={baseline_name}, baseline_lr={baseline_lr}, baseline_params={baseline_params}"\n\n'
-            "def allowed_builtins() -> dict[str, object]:\n"
-            '    """Return a small builtins set for LLM helper execution."""\n'
-            "    return {\n"
-            '        "abs": abs,\n'
-            '        "all": all,\n'
-            '        "any": any,\n'
-            '        "dict": dict,\n'
-            '        "float": float,\n'
-            '        "int": int,\n'
-            '        "len": len,\n'
-            '        "list": list,\n'
-            '        "max": max,\n'
-            '        "min": min,\n'
-            '        "round": round,\n'
-            '        "set": set,\n'
-            '        "sorted": sorted,\n'
-            '        "str": str,\n'
-            '        "sum": sum,\n'
-            '        "tuple": tuple,\n'
-            "    }\n\n"
             "def llm_helper_namespace() -> dict[str, object]:\n"
-            '    """Load LLM-provided helper code inside a constrained namespace."""\n'
-            '    if not LLM_HELPER_CODE:\n'
+            '    """Load LLM-provided helper code inside a sandboxed namespace."""\n'
+            "    if not LLM_HELPER_CODE:\n"
             "        return {}\n"
-            '    namespace = {"__builtins__": allowed_builtins()}\n'
-            '    try:\n'
-            '        exec(LLM_HELPER_CODE, namespace, namespace)\n'
-            '    except Exception:\n'
-            "        return {}\n"
-            "    return namespace\n\n"
+            "    return sandboxed_namespace(LLM_HELPER_CODE) or {}\n\n"
             "def llm_function_namespace() -> dict[str, object]:\n"
-            '    """Load a bounded LLM function rewrite inside a constrained namespace."""\n'
-            '    if not LLM_FUNCTION_REWRITE:\n'
+            '    """Load a bounded LLM function rewrite inside a sandboxed namespace."""\n'
+            "    if not LLM_FUNCTION_REWRITE:\n"
             "        return {}\n"
-            '    namespace = {"__builtins__": allowed_builtins()}\n'
-            '    try:\n'
-            '        exec(LLM_FUNCTION_REWRITE, namespace, namespace)\n'
-            '    except Exception:\n'
-            "        return {}\n"
-            "    return namespace\n\n"
+            "    return sandboxed_namespace(LLM_FUNCTION_REWRITE) or {}\n\n"
             "def llm_bounded_learning_rate_override(base_experiment: dict[str, object], target_name: str, baseline_name: str, baseline_lr: float, proposed_lr: float) -> float | None:\n"
             '    """Run a bounded rewrite of LR bounding if provided."""\n'
             "    namespace = llm_function_namespace()\n"
             '    chooser = namespace.get("bounded_learning_rate_override")\n'
-            '    if not callable(chooser):\n'
+            "    if not callable(chooser):\n"
             "        return None\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = chooser(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    try:\n"
+            "        result = chooser(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)\n"
+            "    except Exception:\n"
             "        return None\n"
-            '    if isinstance(result, (int, float)):\n'
-            '        return float(result)\n'
+            "    if isinstance(result, (int, float)):\n"
+            "        return float(result)\n"
             "    return None\n\n"
             "def llm_model_params_override(base_experiment: dict[str, object], target_name: str, proposed_params: dict[str, object]) -> dict[str, object] | None:\n"
             '    """Run a bounded rewrite of model-parameter compatibility if provided."""\n'
             "    namespace = llm_function_namespace()\n"
             '    chooser = namespace.get("model_params_override")\n'
-            '    if not callable(chooser):\n'
+            "    if not callable(chooser):\n"
             "        return None\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = chooser(base_experiment, target_name, dict(proposed_params), config)\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    try:\n"
+            "        result = chooser(base_experiment, target_name, dict(proposed_params), config)\n"
+            "    except Exception:\n"
             "        return None\n"
-            '    return result if isinstance(result, dict) else None\n\n'
+            "    return result if isinstance(result, dict) else None\n\n"
             "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
             "    namespace = llm_helper_namespace()\n"
             '    chooser = namespace.get("llm_choose_patch")\n'
-            '    if not callable(chooser):\n'
+            "    if not callable(chooser):\n"
             "        return {}\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = chooser(base_experiment, config)\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    try:\n"
+            "        result = chooser(base_experiment, config)\n"
+            "    except Exception:\n"
             "        return {}\n"
             "    return result if isinstance(result, dict) else {}\n\n"
             "def llm_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Apply planner-provided local logic for model-side overrides."""\n'
-            '    helper_result = llm_helper_adjustments(base_experiment)\n'
-            '    if helper_result:\n'
+            "    helper_result = llm_helper_adjustments(base_experiment)\n"
+            "    if helper_result:\n"
             "        return helper_result\n"
-            '    if not LOGIC_EXPRESSION:\n'
+            "    if not LOGIC_EXPRESSION:\n"
             "        return {}\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = eval(LOGIC_EXPRESSION, {"__builtins__": allowed_builtins()}, {"base_experiment": base_experiment, "config": config})\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            '    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n'
+            "    if result is None:\n"
             "        return {}\n"
-            '    if callable(result):\n'
-            '        try:\n'
-            '            result = result(base_experiment, config)\n'
-            '        except Exception:\n'
-            "            return {}\n"
             "    return result if isinstance(result, dict) else {}\n\n"
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the model-only patch owned by ModelAgent."""\n'
-            '    baseline_model = current_model(base_experiment)\n'
+            "    baseline_model = current_model(base_experiment)\n"
             '    baseline_name = str(baseline_model.get("name", "deepconvlstm"))\n'
             '    baseline_lr = float(baseline_model.get("learning_rate", 3e-4))\n'
             '    target_name = choose_target_name(str(CONFIG.get("name", baseline_name)), baseline_name)\n'
             '    proposed_lr = float(CONFIG.get("learning_rate", baseline_lr))\n'
-            '    proposed_lr *= compatibility_bias(base_experiment, target_name)\n'
-            '    proposed_lr = bounded_learning_rate(target_name, baseline_name, baseline_lr, proposed_lr)\n'
-            '    rewritten_lr = llm_bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr)\n'
-            '    if rewritten_lr is not None:\n'
-            '        proposed_lr = max(1e-4, min(5e-3, rewritten_lr))\n'
-            '    target_params = default_model_params(target_name)\n'
+            "    proposed_lr *= compatibility_bias(base_experiment, target_name)\n"
+            "    proposed_lr = bounded_learning_rate(target_name, baseline_name, baseline_lr, proposed_lr)\n"
+            "    rewritten_lr = llm_bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr)\n"
+            "    if rewritten_lr is not None:\n"
+            "        proposed_lr = max(1e-4, min(5e-3, rewritten_lr))\n"
+            "    target_params = default_model_params(target_name)\n"
             '    if isinstance(CONFIG.get("params"), dict):\n'
             '        target_params.update(CONFIG["params"])\n'
-            '    rewritten_params = llm_model_params_override(base_experiment, target_name, target_params)\n'
-            '    if isinstance(rewritten_params, dict):\n'
-            '        target_params.update(rewritten_params)\n'
+            "    rewritten_params = llm_model_params_override(base_experiment, target_name, target_params)\n"
+            "    if isinstance(rewritten_params, dict):\n"
+            "        target_params.update(rewritten_params)\n"
             "    patch = {\n"
             '        "model": {\n'
             '            "name": target_name,\n'
             '            "learning_rate": proposed_lr,\n'
             '            "params": target_params,\n'
-            '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
+            "            \"notes\": f\"{CONFIG.get('notes', '')} | {strategy_summary(base_experiment)}\",\n"
             "        }\n"
             "    }\n"
-            '    adjustments = llm_adjustments(base_experiment)\n'
+            "    adjustments = llm_adjustments(base_experiment)\n"
             '    if isinstance(adjustments.get("model"), dict):\n'
             '        if "model_name" in adjustments["model"] and "name" not in adjustments["model"]:\n'
             '            adjustments["model"]["name"] = adjustments["model"].pop("model_name")\n'
@@ -460,7 +454,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    strength = requested_strength if requested_strength in valid_strengths else "medium"\n'
             '    if target_name == "none":\n'
             '        return "medium"\n'
-            '    return strength\n\n'
+            "    return strength\n\n"
             "def default_augmentation_params(target_name: str, target_strength: str) -> dict[str, float | int]:\n"
             '    """Return concrete augmentation parameters for the chosen family and strength."""\n'
             '    strength_key = target_strength if target_strength in {"weak", "medium", "strong"} else "medium"\n'
@@ -481,10 +475,10 @@ def _module_patch_builder(agent_name: str) -> str:
             '        return {"warp_span": round(0.15 * strength_scale, 5)}\n'
             '    if target_name == "mixup":\n'
             '        return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}\n'
-            '    return {}\n\n'
+            "    return {}\n\n"
             "def compatibility_strength(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str:\n"
             '    """Downshift aggressive augmentation when the baseline context is fragile."""\n'
-            '    strength = normalize_strength(target_name, requested_strength)\n'
+            "    strength = normalize_strength(target_name, requested_strength)\n"
             '    model_name = str(base_experiment.get("model", {}).get("name", "deepconvlstm"))\n'
             '    preprocessing = str(base_experiment.get("data", {}).get("preprocessing", "raw"))\n'
             '    if target_name in {"time_warp", "permutation", "magnitude_warp"} and strength == "strong":\n'
@@ -499,56 +493,26 @@ def _module_patch_builder(agent_name: str) -> str:
             '    baseline_strength = str(baseline.get("strength", "medium"))\n'
             '    baseline_params = dict(baseline.get("params", {}))\n'
             '    return f"baseline_augmentation={baseline_name}:{baseline_strength}, baseline_params={baseline_params}"\n\n'
-            "def allowed_builtins() -> dict[str, object]:\n"
-            '    """Return a small builtins set for LLM helper execution."""\n'
-            "    return {\n"
-            '        "abs": abs,\n'
-            '        "all": all,\n'
-            '        "any": any,\n'
-            '        "dict": dict,\n'
-            '        "float": float,\n'
-            '        "int": int,\n'
-            '        "len": len,\n'
-            '        "list": list,\n'
-            '        "max": max,\n'
-            '        "min": min,\n'
-            '        "round": round,\n'
-            '        "set": set,\n'
-            '        "sorted": sorted,\n'
-            '        "str": str,\n'
-            '        "sum": sum,\n'
-            '        "tuple": tuple,\n'
-            "    }\n\n"
             "def llm_helper_namespace() -> dict[str, object]:\n"
-            '    """Load LLM-provided helper code inside a constrained namespace."""\n'
-            '    if not LLM_HELPER_CODE:\n'
+            '    """Load LLM-provided helper code inside a sandboxed namespace."""\n'
+            "    if not LLM_HELPER_CODE:\n"
             "        return {}\n"
-            '    namespace = {"__builtins__": allowed_builtins()}\n'
-            '    try:\n'
-            '        exec(LLM_HELPER_CODE, namespace, namespace)\n'
-            '    except Exception:\n'
-            "        return {}\n"
-            "    return namespace\n\n"
+            "    return sandboxed_namespace(LLM_HELPER_CODE) or {}\n\n"
             "def llm_function_namespace() -> dict[str, object]:\n"
-            '    """Load a bounded LLM function rewrite inside a constrained namespace."""\n'
-            '    if not LLM_FUNCTION_REWRITE:\n'
+            '    """Load a bounded LLM function rewrite inside a sandboxed namespace."""\n'
+            "    if not LLM_FUNCTION_REWRITE:\n"
             "        return {}\n"
-            '    namespace = {"__builtins__": allowed_builtins()}\n'
-            '    try:\n'
-            '        exec(LLM_FUNCTION_REWRITE, namespace, namespace)\n'
-            '    except Exception:\n'
-            "        return {}\n"
-            "    return namespace\n\n"
+            "    return sandboxed_namespace(LLM_FUNCTION_REWRITE) or {}\n\n"
             "def llm_compatibility_strength_override(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str | None:\n"
             '    """Run a bounded rewrite of augmentation strength compatibility if provided."""\n'
             "    namespace = llm_function_namespace()\n"
             '    chooser = namespace.get("compatibility_strength_override")\n'
-            '    if not callable(chooser):\n'
+            "    if not callable(chooser):\n"
             "        return None\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = chooser(base_experiment, target_name, requested_strength, config)\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    try:\n"
+            "        result = chooser(base_experiment, target_name, requested_strength, config)\n"
+            "    except Exception:\n"
             "        return None\n"
             '    if isinstance(result, str) and result in {"weak", "medium", "strong"}:\n'
             "        return result\n"
@@ -557,68 +521,62 @@ def _module_patch_builder(agent_name: str) -> str:
             '    """Run a bounded rewrite of augmentation-parameter compatibility if provided."""\n'
             "    namespace = llm_function_namespace()\n"
             '    chooser = namespace.get("augmentation_params_override")\n'
-            '    if not callable(chooser):\n'
+            "    if not callable(chooser):\n"
             "        return None\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = chooser(base_experiment, target_name, target_strength, dict(proposed_params), config)\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    try:\n"
+            "        result = chooser(base_experiment, target_name, target_strength, dict(proposed_params), config)\n"
+            "    except Exception:\n"
             "        return None\n"
-            '    return result if isinstance(result, dict) else None\n\n'
+            "    return result if isinstance(result, dict) else None\n\n"
             "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
             "    namespace = llm_helper_namespace()\n"
             '    chooser = namespace.get("llm_choose_patch")\n'
-            '    if not callable(chooser):\n'
+            "    if not callable(chooser):\n"
             "        return {}\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = chooser(base_experiment, config)\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    try:\n"
+            "        result = chooser(base_experiment, config)\n"
+            "    except Exception:\n"
             "        return {}\n"
             "    return result if isinstance(result, dict) else {}\n\n"
             "def llm_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Apply planner-provided local logic for augmentation-side overrides."""\n'
-            '    helper_result = llm_helper_adjustments(base_experiment)\n'
-            '    if helper_result:\n'
+            "    helper_result = llm_helper_adjustments(base_experiment)\n"
+            "    if helper_result:\n"
             "        return helper_result\n"
-            '    if not LOGIC_EXPRESSION:\n'
+            "    if not LOGIC_EXPRESSION:\n"
             "        return {}\n"
-            '    config = dict(CONFIG)\n'
-            '    try:\n'
-            '        result = eval(LOGIC_EXPRESSION, {"__builtins__": allowed_builtins()}, {"base_experiment": base_experiment, "config": config})\n'
-            '    except Exception:\n'
+            "    config = dict(CONFIG)\n"
+            "    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n"
+            "    if result is None:\n"
             "        return {}\n"
-            '    if callable(result):\n'
-            '        try:\n'
-            '            result = result(base_experiment, config)\n'
-            '        except Exception:\n'
-            "            return {}\n"
             "    return result if isinstance(result, dict) else {}\n\n"
             "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the augmentation-only patch owned by AugmentationAgent."""\n'
-            '    baseline_aug = current_augmentation(base_experiment)\n'
+            "    baseline_aug = current_augmentation(base_experiment)\n"
             '    target_name = choose_augmentation_name(base_experiment, str(CONFIG.get("name", baseline_aug.get("name", "none"))))\n'
             '    target_strength = str(CONFIG.get("strength", baseline_aug.get("strength", "medium")))\n'
-            '    target_strength = compatibility_strength(base_experiment, target_name, target_strength)\n'
-            '    rewritten_strength = llm_compatibility_strength_override(base_experiment, target_name, target_strength)\n'
-            '    if rewritten_strength is not None:\n'
-            '        target_strength = rewritten_strength\n'
-            '    target_params = default_augmentation_params(target_name, target_strength)\n'
+            "    target_strength = compatibility_strength(base_experiment, target_name, target_strength)\n"
+            "    rewritten_strength = llm_compatibility_strength_override(base_experiment, target_name, target_strength)\n"
+            "    if rewritten_strength is not None:\n"
+            "        target_strength = rewritten_strength\n"
+            "    target_params = default_augmentation_params(target_name, target_strength)\n"
             '    if isinstance(CONFIG.get("params"), dict):\n'
             '        target_params.update(CONFIG["params"])\n'
-            '    rewritten_params = llm_augmentation_params_override(base_experiment, target_name, target_strength, target_params)\n'
-            '    if isinstance(rewritten_params, dict):\n'
-            '        target_params.update(rewritten_params)\n'
+            "    rewritten_params = llm_augmentation_params_override(base_experiment, target_name, target_strength, target_params)\n"
+            "    if isinstance(rewritten_params, dict):\n"
+            "        target_params.update(rewritten_params)\n"
             "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
             '            "strength": target_strength,\n'
             '            "params": target_params,\n'
-            '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
+            "            \"notes\": f\"{CONFIG.get('notes', '')} | {strategy_summary(base_experiment)}\",\n"
             "        }\n"
             "    }\n"
-            '    adjustments = llm_adjustments(base_experiment)\n'
+            "    adjustments = llm_adjustments(base_experiment)\n"
             '    if isinstance(adjustments.get("augmentation"), dict):\n'
             '        if "type" in adjustments["augmentation"] and "name" not in adjustments["augmentation"]:\n'
             '            adjustments["augmentation"]["name"] = adjustments["augmentation"].pop("type")\n'
@@ -677,126 +635,90 @@ def _module_patch_builder(agent_name: str) -> str:
         '    baseline_window = int(baseline.get("window_size", 128))\n'
         '    baseline_params = dict(baseline.get("params", {}))\n'
         '    return f"baseline_data={baseline_pre}, baseline_window={baseline_window}, baseline_params={baseline_params}"\n\n'
-        "def allowed_builtins() -> dict[str, object]:\n"
-        '    """Return a small builtins set for LLM helper execution."""\n'
-        "    return {\n"
-        '        "abs": abs,\n'
-        '        "all": all,\n'
-        '        "any": any,\n'
-        '        "dict": dict,\n'
-        '        "float": float,\n'
-        '        "int": int,\n'
-        '        "len": len,\n'
-        '        "list": list,\n'
-        '        "max": max,\n'
-        '        "min": min,\n'
-        '        "round": round,\n'
-        '        "set": set,\n'
-        '        "sorted": sorted,\n'
-        '        "str": str,\n'
-        '        "sum": sum,\n'
-        '        "tuple": tuple,\n'
-        "    }\n\n"
         "def llm_helper_namespace() -> dict[str, object]:\n"
-        '    """Load LLM-provided helper code inside a constrained namespace."""\n'
-        '    if not LLM_HELPER_CODE:\n'
+        '    """Load LLM-provided helper code inside a sandboxed namespace."""\n'
+        "    if not LLM_HELPER_CODE:\n"
         "        return {}\n"
-        '    namespace = {"__builtins__": allowed_builtins()}\n'
-        '    try:\n'
-        '        exec(LLM_HELPER_CODE, namespace, namespace)\n'
-        '    except Exception:\n'
-        "        return {}\n"
-        "    return namespace\n\n"
+        "    return sandboxed_namespace(LLM_HELPER_CODE) or {}\n\n"
         "def llm_function_namespace() -> dict[str, object]:\n"
-        '    """Load a bounded LLM function rewrite inside a constrained namespace."""\n'
-        '    if not LLM_FUNCTION_REWRITE:\n'
+        '    """Load a bounded LLM function rewrite inside a sandboxed namespace."""\n'
+        "    if not LLM_FUNCTION_REWRITE:\n"
         "        return {}\n"
-        '    namespace = {"__builtins__": allowed_builtins()}\n'
-        '    try:\n'
-        '        exec(LLM_FUNCTION_REWRITE, namespace, namespace)\n'
-        '    except Exception:\n'
-        "        return {}\n"
-        "    return namespace\n\n"
+        "    return sandboxed_namespace(LLM_FUNCTION_REWRITE) or {}\n\n"
         "def llm_choose_window_override(base_experiment: dict[str, object], requested_window: int) -> int | None:\n"
         '    """Run a bounded rewrite of data window selection if provided."""\n'
         "    namespace = llm_function_namespace()\n"
         '    chooser = namespace.get("choose_window_override")\n'
-        '    if not callable(chooser):\n'
+        "    if not callable(chooser):\n"
         "        return None\n"
-        '    config = dict(CONFIG)\n'
-        '    try:\n'
-        '        result = chooser(base_experiment, requested_window, config)\n'
-        '    except Exception:\n'
+        "    config = dict(CONFIG)\n"
+        "    try:\n"
+        "        result = chooser(base_experiment, requested_window, config)\n"
+        "    except Exception:\n"
         "        return None\n"
-        '    if isinstance(result, int):\n'
+        "    if isinstance(result, int):\n"
         "        return result\n"
         "    return None\n\n"
         "def llm_data_params_override(base_experiment: dict[str, object], target_preprocessing: str, target_window: int, proposed_params: dict[str, object]) -> dict[str, object] | None:\n"
         '    """Run a bounded rewrite of data-parameter compatibility if provided."""\n'
         "    namespace = llm_function_namespace()\n"
         '    chooser = namespace.get("data_params_override")\n'
-        '    if not callable(chooser):\n'
+        "    if not callable(chooser):\n"
         "        return None\n"
-        '    config = dict(CONFIG)\n'
-        '    try:\n'
-        '        result = chooser(base_experiment, target_preprocessing, target_window, dict(proposed_params), config)\n'
-        '    except Exception:\n'
+        "    config = dict(CONFIG)\n"
+        "    try:\n"
+        "        result = chooser(base_experiment, target_preprocessing, target_window, dict(proposed_params), config)\n"
+        "    except Exception:\n"
         "        return None\n"
-        '    return result if isinstance(result, dict) else None\n\n'
+        "    return result if isinstance(result, dict) else None\n\n"
         "def llm_helper_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Run LLM-owned helper code if it defines llm_choose_patch."""\n'
         "    namespace = llm_helper_namespace()\n"
         '    chooser = namespace.get("llm_choose_patch")\n'
-        '    if not callable(chooser):\n'
+        "    if not callable(chooser):\n"
         "        return {}\n"
-        '    config = dict(CONFIG)\n'
-        '    try:\n'
-        '        result = chooser(base_experiment, config)\n'
-        '    except Exception:\n'
+        "    config = dict(CONFIG)\n"
+        "    try:\n"
+        "        result = chooser(base_experiment, config)\n"
+        "    except Exception:\n"
         "        return {}\n"
         "    return result if isinstance(result, dict) else {}\n\n"
         "def llm_adjustments(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Apply planner-provided local logic for data-side overrides."""\n'
-        '    helper_result = llm_helper_adjustments(base_experiment)\n'
-        '    if helper_result:\n'
+        "    helper_result = llm_helper_adjustments(base_experiment)\n"
+        "    if helper_result:\n"
         "        return helper_result\n"
-        '    if not LOGIC_EXPRESSION:\n'
+        "    if not LOGIC_EXPRESSION:\n"
         "        return {}\n"
-        '    config = dict(CONFIG)\n'
-        '    try:\n'
-        '        result = eval(LOGIC_EXPRESSION, {"__builtins__": allowed_builtins()}, {"base_experiment": base_experiment, "config": config})\n'
-        '    except Exception:\n'
+        "    config = dict(CONFIG)\n"
+        "    result = safe_eval(LOGIC_EXPRESSION, {"base_experiment": base_experiment, "config": config})\n"
+        "    if result is None:\n"
         "        return {}\n"
-        '    if callable(result):\n'
-        '        try:\n'
-        '            result = result(base_experiment, config)\n'
-        '        except Exception:\n'
-        "            return {}\n"
         "    return result if isinstance(result, dict) else {}\n\n"
         "def build_patch(base_experiment: dict[str, object]) -> dict[str, object]:\n"
         '    """Return the data-only patch owned by DataAgent."""\n'
-        '    baseline_data = current_data(base_experiment)\n'
+        "    baseline_data = current_data(base_experiment)\n"
         '    target_preprocessing = choose_preprocessing(base_experiment, str(CONFIG.get("preprocessing", baseline_data.get("preprocessing", "raw"))))\n'
         '    requested_window = int(CONFIG.get("window_size", baseline_data.get("window_size", 128)))\n'
-        '    target_window = choose_window(base_experiment, requested_window)\n'
-        '    rewritten_window = llm_choose_window_override(base_experiment, requested_window)\n'
-        '    if rewritten_window is not None:\n'
-        '        target_window = nearest_valid_window(rewritten_window)\n'
-        '    target_params = default_data_params(target_preprocessing, target_window)\n'
+        "    target_window = choose_window(base_experiment, requested_window)\n"
+        "    rewritten_window = llm_choose_window_override(base_experiment, requested_window)\n"
+        "    if rewritten_window is not None:\n"
+        "        target_window = nearest_valid_window(rewritten_window)\n"
+        "    target_params = default_data_params(target_preprocessing, target_window)\n"
         '    if isinstance(CONFIG.get("params"), dict):\n'
         '        target_params.update(CONFIG["params"])\n'
-        '    rewritten_params = llm_data_params_override(base_experiment, target_preprocessing, target_window, target_params)\n'
-        '    if isinstance(rewritten_params, dict):\n'
-        '        target_params.update(rewritten_params)\n'
+        "    rewritten_params = llm_data_params_override(base_experiment, target_preprocessing, target_window, target_params)\n"
+        "    if isinstance(rewritten_params, dict):\n"
+        "        target_params.update(rewritten_params)\n"
         "    patch = {\n"
         '        "data": {\n'
         '            "preprocessing": target_preprocessing,\n'
         '            "window_size": target_window,\n'
         '            "params": target_params,\n'
-        '            "notes": f\"{CONFIG.get(\'notes\', \'\')} | {strategy_summary(base_experiment)}\",\n'
+        "            \"notes\": f\"{CONFIG.get('notes', '')} | {strategy_summary(base_experiment)}\",\n"
         "        }\n"
         "    }\n"
-        '    adjustments = llm_adjustments(base_experiment)\n'
+        "    adjustments = llm_adjustments(base_experiment)\n"
         '    if isinstance(adjustments.get("data"), dict):\n'
         '        if isinstance(adjustments["data"].get("params"), dict):\n'
         '            merged_params = dict(patch["data"].get("params", {}))\n'
@@ -897,7 +819,9 @@ def compose_experiment_from_workspace(
     if not apply_modules:
         return experiment
 
-    agent_names = list(module_agents) if module_agents is not None else list(MODULE_FILENAMES)
+    agent_names = (
+        list(module_agents) if module_agents is not None else list(MODULE_FILENAMES)
+    )
     for agent_name in agent_names:
         module_path = worktree_path / module_relative_path(agent_name)
         if not module_path.exists():
@@ -913,7 +837,11 @@ def apply_model_proposal(
     updated = clone_experiment(experiment)
     updated["model"]["name"] = proposal.model_name
     updated["model"]["learning_rate"] = proposal.learning_rate
-    updated["model"]["params"] = dict(proposal.model_params) if proposal.model_params else default_model_params(proposal.model_name)
+    updated["model"]["params"] = (
+        dict(proposal.model_params)
+        if proposal.model_params
+        else default_model_params(proposal.model_name)
+    )
     updated["model"]["notes"] = proposal.notes
     return updated
 
@@ -948,7 +876,9 @@ def apply_data_proposal(
     return updated
 
 
-def experiment_to_candidate_config(experiment: dict[str, object], notes: str) -> CandidateConfig:
+def experiment_to_candidate_config(
+    experiment: dict[str, object], notes: str
+) -> CandidateConfig:
     return CandidateConfig(
         model_name=str(experiment["model"]["name"]),
         model_params=dict(experiment["model"].get("params", {})),

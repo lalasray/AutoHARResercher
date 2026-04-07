@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
+from autohar_researcher.config import JudgeThresholds, load_judge_thresholds
 from autohar_researcher.experiment import (
     apply_augmentation_proposal,
     apply_data_proposal,
@@ -110,7 +111,11 @@ class ModelAgent:
             tried=tried,
             round_id=round_id,
         )
-        note_prefix = "Mutate around accepted best model." if accepted_history else "Seed the first strong architecture."
+        note_prefix = (
+            "Mutate around accepted best model."
+            if accepted_history
+            else "Seed the first strong architecture."
+        )
         return ModelProposal(
             model_name=model_name,
             learning_rate=learning_rate,
@@ -169,7 +174,9 @@ class AugmentationAgent:
             )
         best_config = best_result.config if best_result else None
         accepted_aug = best_config.augmentation if best_config else "none"
-        accepted_strength = best_config.augmentation_strength if best_config else "medium"
+        accepted_strength = (
+            best_config.augmentation_strength if best_config else "medium"
+        )
         context_key = self._context_key(best_config)
         tried = {
             (result.config.augmentation, result.config.augmentation_strength)
@@ -185,20 +192,34 @@ class AugmentationAgent:
         context_ranked = sorted(
             candidates,
             key=lambda candidate: (
-                self._contextual_score(history, accepted_history, candidate[0], candidate[1], context_key),
-                self._global_score(history, accepted_history, candidate[0], candidate[1]),
+                self._contextual_score(
+                    history, accepted_history, candidate[0], candidate[1], context_key
+                ),
+                self._global_score(
+                    history, accepted_history, candidate[0], candidate[1]
+                ),
             ),
             reverse=True,
         )
         global_ranked = sorted(
             candidates,
-            key=lambda candidate: self._global_score(history, accepted_history, candidate[0], candidate[1]),
+            key=lambda candidate: self._global_score(
+                history, accepted_history, candidate[0], candidate[1]
+            ),
             reverse=True,
         )
         ranked = [(accepted_aug, accepted_strength)]
         if accepted_aug == "none":
-            ranked.extend(candidate for candidate in context_ranked if candidate[0] != "none")
-            ranked.extend([("none", strength) for strength in self.STRENGTHS if ("none", strength) != (accepted_aug, accepted_strength)])
+            ranked.extend(
+                candidate for candidate in context_ranked if candidate[0] != "none"
+            )
+            ranked.extend(
+                [
+                    ("none", strength)
+                    for strength in self.STRENGTHS
+                    if ("none", strength) != (accepted_aug, accepted_strength)
+                ]
+            )
         else:
             ranked.extend(context_ranked)
         ranked.extend(global_ranked)
@@ -336,10 +357,19 @@ class DataAgent:
             ),
             reverse=True,
         )
-        candidate_order.extend((preprocessing, window_size) for _, preprocessing, window_size in scored_options)
+        candidate_order.extend(
+            (preprocessing, window_size)
+            for _, preprocessing, window_size in scored_options
+        )
         candidate_order = _dedupe_preserve_order(candidate_order)
-        preprocessing, window_size = self._pick_candidate(candidate_order, tried, round_id)
-        note_prefix = "Mutate around accepted preprocessing/window choices." if accepted_history else "Probe initial preprocessing and window choices."
+        preprocessing, window_size = self._pick_candidate(
+            candidate_order, tried, round_id
+        )
+        note_prefix = (
+            "Mutate around accepted preprocessing/window choices."
+            if accepted_history
+            else "Probe initial preprocessing and window choices."
+        )
         return DataProposal(
             preprocessing=preprocessing,
             window_size=window_size,
@@ -350,7 +380,10 @@ class DataAgent:
         )
 
     def _rank_windows(self, base_window: int) -> list[int]:
-        return sorted(self.WINDOW_CANDIDATES, key=lambda candidate: (abs(candidate - base_window), candidate))
+        return sorted(
+            self.WINDOW_CANDIDATES,
+            key=lambda candidate: (abs(candidate - base_window), candidate),
+        )
 
     def _best_score_for_option(
         self,
@@ -380,7 +413,11 @@ class DataAgent:
 
 
 class HierarchicalOrchestrator:
-    def __init__(self, harness: DummyHARHarness) -> None:
+    def __init__(
+        self,
+        harness: DummyHARHarness,
+        judge_thresholds: JudgeThresholds | None = None,
+    ) -> None:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
         self.planner = build_planner()
@@ -391,6 +428,7 @@ class HierarchicalOrchestrator:
             branch_name="orchestrator-main",
             worktree_path=str(Path.cwd() / ".worktrees" / "orchestrator_main"),
         )
+        self.judge_thresholds = judge_thresholds or load_judge_thresholds()
 
     def run(
         self,
@@ -404,11 +442,13 @@ class HierarchicalOrchestrator:
             if accepted_history:
                 best_result = self._clone_result(accepted_history[-1])
             elif history:
-                best_result = self._clone_result(max(history, key=lambda item: item.val_score))
+                best_result = self._clone_result(
+                    max(history, key=lambda item: item.val_score)
+                )
             else:
                 best_result = None
             best_by_agent = self._best_by_agent_from_history(history)
-            start_round = (max((result.round_id for result in history), default=0) + 1)
+            start_round = max((result.round_id for result in history), default=0) + 1
         else:
             history = []
             accepted_history = []
@@ -429,14 +469,18 @@ class HierarchicalOrchestrator:
         final_round = start_round + rounds - 1
         for round_id in range(start_round, final_round + 1):
             print(f"[AutoHAR] round {round_id}/{final_round}", flush=True)
-            previous_best = None if best_result is None else self._clone_result(best_result)
+            previous_best = (
+                None if best_result is None else self._clone_result(best_result)
+            )
             round_plan = self.plan_round(
                 round_id=round_id,
                 best_result=best_result,
                 history=history,
                 accepted_history=accepted_history,
             )
-            actions.extend(self.plan_git_actions(round_id=round_id, round_plan=round_plan))
+            actions.extend(
+                self.plan_git_actions(round_id=round_id, round_plan=round_plan)
+            )
             round_results, round_state = self.execute_round(
                 round_id=round_id,
                 round_plan=round_plan,
@@ -453,7 +497,9 @@ class HierarchicalOrchestrator:
                 )
             self._annotate_best_so_far(round_results, best_by_agent)
             round_best = self.evaluate_round(round_results)
-            accepted_candidate = self._select_accepted_candidate(round_results, best_result)
+            accepted_candidate = self._select_accepted_candidate(
+                round_results, best_result
+            )
             if accepted_candidate is not None:
                 accepted_candidate.accepted = True
                 best_result = accepted_candidate
@@ -489,7 +535,9 @@ class HierarchicalOrchestrator:
             "planner_name": getattr(self.planner, "name", "unknown"),
         }
 
-    def _load_round_history(self) -> tuple[list[CandidateResult], list[CandidateResult]]:
+    def _load_round_history(
+        self,
+    ) -> tuple[list[CandidateResult], list[CandidateResult]]:
         history: list[CandidateResult] = []
         accepted_history: list[CandidateResult] = []
         artifacts_root = Path.cwd() / "artifacts"
@@ -525,7 +573,8 @@ class HierarchicalOrchestrator:
                 payload = json.loads(result_path.read_text(encoding="utf-8"))
                 config_payload = dict(payload["config"])
                 score_breakdown_payload = {
-                    key: float(value) for key, value in payload.get("score_breakdown", {}).items()
+                    key: float(value)
+                    for key, value in payload.get("score_breakdown", {}).items()
                 }
                 val_score = float(
                     score_breakdown_payload.get(
@@ -537,17 +586,23 @@ class HierarchicalOrchestrator:
                     round_id=round_id,
                     agent_name=str(payload["agent_name"]),
                     branch_name=str(payload["branch_name"]),
-                    worktree_path=self._workspace_for_branch(str(payload["branch_name"])).worktree_path,
+                    worktree_path=self._workspace_for_branch(
+                        str(payload["branch_name"])
+                    ).worktree_path,
                     config=CandidateConfig(
                         model_name=str(config_payload["model_name"]),
                         preprocessing=str(config_payload["preprocessing"]),
                         augmentation=str(config_payload["augmentation"]),
-                        augmentation_strength=str(config_payload["augmentation_strength"]),
+                        augmentation_strength=str(
+                            config_payload["augmentation_strength"]
+                        ),
                         learning_rate=float(config_payload["learning_rate"]),
                         window_size=int(config_payload["window_size"]),
                         model_params=dict(config_payload.get("model_params", {})),
                         data_params=dict(config_payload.get("data_params", {})),
-                        augmentation_params=dict(config_payload.get("augmentation_params", {})),
+                        augmentation_params=dict(
+                            config_payload.get("augmentation_params", {})
+                        ),
                         notes=str(config_payload.get("notes", "")),
                     ),
                     val_score=val_score,
@@ -586,7 +641,9 @@ class HierarchicalOrchestrator:
 
         return history, accepted_history
 
-    def _best_by_agent_from_history(self, history: list[CandidateResult]) -> dict[str, float]:
+    def _best_by_agent_from_history(
+        self, history: list[CandidateResult]
+    ) -> dict[str, float]:
         best_by_agent: dict[str, float] = {}
         for result in history:
             best_by_agent[result.agent_name] = max(
@@ -649,8 +706,12 @@ class HierarchicalOrchestrator:
         return {
             "round_id": round_id,
             "best_score": best_result.val_score if best_result else None,
-            "baseline_branch": "main" if best_result is None else best_result.branch_name,
-            "planner_name": planner_output.get("planner", getattr(self.planner, "name", "unknown")),
+            "baseline_branch": "main"
+            if best_result is None
+            else best_result.branch_name,
+            "planner_name": planner_output.get(
+                "planner", getattr(self.planner, "name", "unknown")
+            ),
             "planner_summary": planner_output.get("summary", ""),
             "planner_hints": planner_output.get("hints", {}),
             "orchestrator_plan": planner_output.get("orchestrator_plan", {}),
@@ -671,7 +732,7 @@ class HierarchicalOrchestrator:
                     label=f"Round {round_id}: update {workspace.agent_name}",
                     command=(
                         f"git -C {workspace.worktree_path} commit -am "
-                        f"\"round {round_id}: candidate from {workspace.agent_name}\""
+                        f'"round {round_id}: candidate from {workspace.agent_name}"'
                     ),
                 )
             )
@@ -686,13 +747,13 @@ class HierarchicalOrchestrator:
             )
         actions.append(
             GitAction(
-                    label=f"Round {round_id}: compose unified candidate",
-                    command=(
-                        f"git -C {self.orchestrator_workspace.worktree_path} commit -am "
-                        f"\"round {round_id}: orchestrator candidate on top of {baseline_branch}\""
-                    ),
-                )
+                label=f"Round {round_id}: compose unified candidate",
+                command=(
+                    f"git -C {self.orchestrator_workspace.worktree_path} commit -am "
+                    f'"round {round_id}: orchestrator candidate on top of {baseline_branch}"'
+                ),
             )
+        )
         actions.append(
             GitAction(
                 label=f"Round {round_id}: evaluate unified candidate",
@@ -804,7 +865,11 @@ class HierarchicalOrchestrator:
             ("model+augmentation", {"model_agent", "augmentation_agent"}, "current"),
             ("model+data", {"model_agent", "data_agent"}, "current"),
             ("augmentation+data", {"augmentation_agent", "data_agent"}, "current"),
-            ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}, "current"),
+            (
+                "model+augmentation+data",
+                {"model_agent", "augmentation_agent", "data_agent"},
+                "current",
+            ),
         ]
         candidate_specs = [
             (label, included_agents, source_mode)
@@ -820,10 +885,18 @@ class HierarchicalOrchestrator:
                 ("baseline+model", {"model_agent"}, "current"),
                 ("baseline+augmentation", {"augmentation_agent"}, "current"),
                 ("baseline+data", {"data_agent"}, "current"),
-                ("model+augmentation", {"model_agent", "augmentation_agent"}, "current"),
+                (
+                    "model+augmentation",
+                    {"model_agent", "augmentation_agent"},
+                    "current",
+                ),
                 ("model+data", {"model_agent", "data_agent"}, "current"),
                 ("augmentation+data", {"augmentation_agent", "data_agent"}, "current"),
-                ("model+augmentation+data", {"model_agent", "augmentation_agent", "data_agent"}, "current"),
+                (
+                    "model+augmentation+data",
+                    {"model_agent", "augmentation_agent", "data_agent"},
+                    "current",
+                ),
             ]
             for label, included_agents, source_mode in fallback_specs:
                 if (
@@ -875,7 +948,9 @@ class HierarchicalOrchestrator:
                 and round_state.materialized_orchestrator_file
                 and source_mode == "current"
             ):
-                composed_payload = self._load_json(round_state.materialized_orchestrator_file)
+                composed_payload = self._load_json(
+                    round_state.materialized_orchestrator_file
+                )
                 experiment = composed_payload["experiment"]
             config = experiment_to_candidate_config(
                 experiment,
@@ -889,8 +964,10 @@ class HierarchicalOrchestrator:
                 )
             workspace = AgentWorkspace(
                 agent_name="orchestrator",
-                branch_name=round_state.orchestrator_branch or self.orchestrator_workspace.branch_name,
-                worktree_path=round_state.orchestrator_worktree or self.orchestrator_workspace.worktree_path,
+                branch_name=round_state.orchestrator_branch
+                or self.orchestrator_workspace.branch_name,
+                worktree_path=round_state.orchestrator_worktree
+                or self.orchestrator_workspace.worktree_path,
             )
             evaluated.append(
                 self.harness.evaluate(
@@ -920,7 +997,9 @@ class HierarchicalOrchestrator:
             f"{best_candidate.summary} | selected_combination="
             f"{best_candidate.artifact_paths.get('selected_combination', 'unknown')}"
         )
-        best_candidate.artifact_paths["evaluation_report"] = self._write_result_artifact(best_candidate)
+        best_candidate.artifact_paths["evaluation_report"] = (
+            self._write_result_artifact(best_candidate)
+        )
         return best_candidate
 
     def _eligible_combination_agents(
@@ -932,16 +1011,27 @@ class HierarchicalOrchestrator:
         prior_best_by_agent: dict[str, float] = {}
         recent_scores_by_agent: dict[str, list[float]] = {}
         for result in history:
-            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+            if result.agent_name not in {
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+            }:
                 continue
             prior_best_by_agent[result.agent_name] = max(
                 prior_best_by_agent.get(result.agent_name, float("-inf")),
                 result.val_score,
             )
-            recent_scores_by_agent.setdefault(result.agent_name, []).append(result.val_score)
+            recent_scores_by_agent.setdefault(result.agent_name, []).append(
+                result.val_score
+            )
         eligible: set[str] = set()
+        thresholds = self.judge_thresholds
         for result in agent_results:
-            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+            if result.agent_name not in {
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+            }:
                 continue
             judgment = proposal_judgments.get(result.agent_name)
             if judgment is None or not judgment.evaluate_now:
@@ -953,11 +1043,11 @@ class HierarchicalOrchestrator:
             recent_best = max(recent_scores[-5:], default=float("-inf"))
             near_personal_best = (
                 prior_best != float("-inf")
-                and result.val_score >= prior_best - 0.015
+                and result.val_score >= prior_best - thresholds.prior_best_delta
             )
             beats_recent_window = (
                 recent_best != float("-inf")
-                and result.val_score >= recent_best - 0.01
+                and result.val_score >= recent_best - thresholds.recent_window_delta
             )
             judged_promising = (
                 judgment.compatibility in {"medium", "high"}
@@ -982,16 +1072,27 @@ class HierarchicalOrchestrator:
         prior_best_by_agent: dict[str, float] = {}
         recent_scores_by_agent: dict[str, list[float]] = {}
         for result in history:
-            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+            if result.agent_name not in {
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+            }:
                 continue
             prior_best_by_agent[result.agent_name] = max(
                 prior_best_by_agent.get(result.agent_name, float("-inf")),
                 result.val_score,
             )
-            recent_scores_by_agent.setdefault(result.agent_name, []).append(result.val_score)
+            recent_scores_by_agent.setdefault(result.agent_name, []).append(
+                result.val_score
+            )
         relaxed: set[str] = set()
+        thresholds = self.judge_thresholds
         for result in agent_results:
-            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+            if result.agent_name not in {
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+            }:
                 continue
             judgment = proposal_judgments.get(result.agent_name)
             if judgment is None or not judgment.evaluate_now:
@@ -999,16 +1100,21 @@ class HierarchicalOrchestrator:
             if judgment.plausibility == "low" or judgment.compatibility == "low":
                 continue
             prior_best = prior_best_by_agent.get(result.agent_name, float("-inf"))
-            recent_best = max(recent_scores_by_agent.get(result.agent_name, [])[-5:], default=float("-inf"))
+            recent_best = max(
+                recent_scores_by_agent.get(result.agent_name, [])[-5:],
+                default=float("-inf"),
+            )
             near_personal_best = (
                 prior_best != float("-inf")
-                and result.val_score >= prior_best - 0.03
+                and result.val_score >= prior_best - thresholds.relaxed_prior_best_delta
             )
             near_recent_best = (
                 recent_best != float("-inf")
-                and result.val_score >= recent_best - 0.02
+                and result.val_score >= recent_best - thresholds.relaxed_recent_delta
             )
-            strong_judgment = judgment.compatibility == "high" or judgment.novelty == "high"
+            strong_judgment = (
+                judgment.compatibility == "high" or judgment.novelty == "high"
+            )
             if near_personal_best or near_recent_best or strong_judgment:
                 relaxed.add(result.agent_name)
         return relaxed
@@ -1133,7 +1239,11 @@ class HierarchicalOrchestrator:
     ) -> dict[str, CandidateResult]:
         best: dict[str, CandidateResult] = {}
         for result in history:
-            if result.agent_name not in {"model_agent", "augmentation_agent", "data_agent"}:
+            if result.agent_name not in {
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+            }:
                 continue
             current = best.get(result.agent_name)
             if current is None or result.val_score > current.val_score:
@@ -1153,7 +1263,8 @@ class HierarchicalOrchestrator:
         improved_agents = {
             agent_name
             for agent_name, best_result in historical_best.items()
-            if agent_name in current_by_agent and best_result.val_score > current_by_agent[agent_name].val_score
+            if agent_name in current_by_agent
+            and best_result.val_score > current_by_agent[agent_name].val_score
         }
         specs: list[tuple[str, set[str], str]] = []
         single_labels = {
@@ -1167,7 +1278,10 @@ class HierarchicalOrchestrator:
             ("best_model+best_augmentation", {"model_agent", "augmentation_agent"}),
             ("best_model+best_data", {"model_agent", "data_agent"}),
             ("best_augmentation+best_data", {"augmentation_agent", "data_agent"}),
-            ("best_model+best_augmentation+best_data", {"model_agent", "augmentation_agent", "data_agent"}),
+            (
+                "best_model+best_augmentation+best_data",
+                {"model_agent", "augmentation_agent", "data_agent"},
+            ),
         ]
         for label, included_agents in pair_map:
             if included_agents.issubset(improved_agents):
@@ -1210,8 +1324,12 @@ class HierarchicalOrchestrator:
                     config=config,
                     experiment=experiment,
                     artifact_paths={
-                        "proposal_artifact": round_state.proposal_artifacts.get(agent_name, ""),
-                        "materialized_agent_module": round_state.materialized_agent_files.get(agent_name, ""),
+                        "proposal_artifact": round_state.proposal_artifacts.get(
+                            agent_name, ""
+                        ),
+                        "materialized_agent_module": round_state.materialized_agent_files.get(
+                            agent_name, ""
+                        ),
                     },
                 )
             )
@@ -1247,21 +1365,31 @@ class HierarchicalOrchestrator:
                         "model_name": planner_hints["model_agent"].model_name,
                         "learning_rate": planner_hints["model_agent"].learning_rate,
                         "rationale": planner_hints["model_agent"].rationale,
-                        "logic_expression": planner_hints["model_agent"].logic_expression,
+                        "logic_expression": planner_hints[
+                            "model_agent"
+                        ].logic_expression,
                         "helper_code": planner_hints["model_agent"].helper_code,
-                        "function_rewrite": planner_hints["model_agent"].function_rewrite,
+                        "function_rewrite": planner_hints[
+                            "model_agent"
+                        ].function_rewrite,
                     }
                     if "model_agent" in planner_hints
                     else {}
                 ),
                 "augmentation_agent": (
                     {
-                        "augmentation": planner_hints["augmentation_agent"].augmentation,
+                        "augmentation": planner_hints[
+                            "augmentation_agent"
+                        ].augmentation,
                         "strength": planner_hints["augmentation_agent"].strength,
                         "rationale": planner_hints["augmentation_agent"].rationale,
-                        "logic_expression": planner_hints["augmentation_agent"].logic_expression,
+                        "logic_expression": planner_hints[
+                            "augmentation_agent"
+                        ].logic_expression,
                         "helper_code": planner_hints["augmentation_agent"].helper_code,
-                        "function_rewrite": planner_hints["augmentation_agent"].function_rewrite,
+                        "function_rewrite": planner_hints[
+                            "augmentation_agent"
+                        ].function_rewrite,
                     }
                     if "augmentation_agent" in planner_hints
                     else {}
@@ -1271,9 +1399,13 @@ class HierarchicalOrchestrator:
                         "preprocessing": planner_hints["data_agent"].preprocessing,
                         "window_size": planner_hints["data_agent"].window_size,
                         "rationale": planner_hints["data_agent"].rationale,
-                        "logic_expression": planner_hints["data_agent"].logic_expression,
+                        "logic_expression": planner_hints[
+                            "data_agent"
+                        ].logic_expression,
                         "helper_code": planner_hints["data_agent"].helper_code,
-                        "function_rewrite": planner_hints["data_agent"].function_rewrite,
+                        "function_rewrite": planner_hints[
+                            "data_agent"
+                        ].function_rewrite,
                     }
                     if "data_agent" in planner_hints
                     else {}
@@ -1291,10 +1423,14 @@ class HierarchicalOrchestrator:
                 for agent_name, judgment in proposal_judgments.items()
             },
         }
-        planner_artifact = write_json_artifact(round_dir / "planner_decision.json", planner_payload)
+        planner_artifact = write_json_artifact(
+            round_dir / "planner_decision.json", planner_payload
+        )
         memory_dir = round_dir / "agent_memories"
         memory_artifacts = {
-            agent_name: write_json_artifact(memory_dir / f"{agent_name}.json", memory_payload)
+            agent_name: write_json_artifact(
+                memory_dir / f"{agent_name}.json", memory_payload
+            )
             for agent_name, memory_payload in agent_memories.items()
         }
 
@@ -1319,7 +1455,9 @@ class HierarchicalOrchestrator:
             proposal for proposal in proposals if isinstance(proposal, ModelProposal)
         )
         augmentation_proposal = next(
-            proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
+            proposal
+            for proposal in proposals
+            if isinstance(proposal, AugmentationProposal)
         )
         data_proposal = next(
             proposal for proposal in proposals if isinstance(proposal, DataProposal)
@@ -1397,14 +1535,18 @@ class HierarchicalOrchestrator:
             result.val_score = round((original_score + reevaluated.val_score) / 2.0, 4)
             for key, value in reevaluated.score_breakdown.items():
                 if key in result.score_breakdown and isinstance(value, float):
-                    result.score_breakdown[key] = round((float(result.score_breakdown[key]) + value) / 2.0, 4)
+                    result.score_breakdown[key] = round(
+                        (float(result.score_breakdown[key]) + value) / 2.0, 4
+                    )
             result.details["reevaluation"] = {
                 "initial_val_score": original_score,
                 "reevaluated_val_score": reevaluated.val_score,
                 "averaged_val_score": result.val_score,
             }
             result.summary = f"{result.summary} | reevaluated_near_baseline=true"
-            result.artifact_paths["evaluation_report"] = self._write_result_artifact(result)
+            result.artifact_paths["evaluation_report"] = self._write_result_artifact(
+                result
+            )
 
     def _select_accepted_candidate(
         self,
@@ -1447,7 +1589,9 @@ class HierarchicalOrchestrator:
                 return workspace
         raise KeyError(f"Unknown branch workspace for {branch_name}")
 
-    def _baseline_experiment_from_branch(self, baseline_branch: str) -> dict[str, object]:
+    def _baseline_experiment_from_branch(
+        self, baseline_branch: str
+    ) -> dict[str, object]:
         if baseline_branch == "main":
             return base_experiment_config()
         workspace = self._workspace_for_branch(baseline_branch)
@@ -1480,7 +1624,9 @@ class HierarchicalOrchestrator:
         }
         if "model_agent" in included:
             model_proposal = next(
-                proposal for proposal in proposals if isinstance(proposal, ModelProposal)
+                proposal
+                for proposal in proposals
+                if isinstance(proposal, ModelProposal)
             )
             experiment = self._apply_agent_logic(
                 agent_name="model_agent",
@@ -1490,7 +1636,9 @@ class HierarchicalOrchestrator:
             )
         if "augmentation_agent" in included:
             augmentation_proposal = next(
-                proposal for proposal in proposals if isinstance(proposal, AugmentationProposal)
+                proposal
+                for proposal in proposals
+                if isinstance(proposal, AugmentationProposal)
             )
             experiment = self._apply_agent_logic(
                 agent_name="augmentation_agent",
@@ -1528,7 +1676,10 @@ class HierarchicalOrchestrator:
                     notes=f"Historical best overlay from round {model_result.round_id}.",
                 ),
             )
-        if "augmentation_agent" in included_agents and "augmentation_agent" in historical_best:
+        if (
+            "augmentation_agent" in included_agents
+            and "augmentation_agent" in historical_best
+        ):
             augmentation_result = historical_best["augmentation_agent"]
             experiment = apply_augmentation_proposal(
                 clone_experiment(experiment),
@@ -1538,7 +1689,9 @@ class HierarchicalOrchestrator:
                     notes=f"Historical best overlay from round {augmentation_result.round_id}.",
                 ),
             )
-            experiment["augmentation"]["params"] = dict(augmentation_result.config.augmentation_params)
+            experiment["augmentation"]["params"] = dict(
+                augmentation_result.config.augmentation_params
+            )
         if "data_agent" in included_agents and "data_agent" in historical_best:
             data_result = historical_best["data_agent"]
             experiment = apply_data_proposal(
@@ -1574,7 +1727,9 @@ class HierarchicalOrchestrator:
         if agent_name == "model_agent":
             return apply_model_proposal(clone_experiment(baseline_experiment), proposal)  # type: ignore[arg-type]
         if agent_name == "augmentation_agent":
-            return apply_augmentation_proposal(clone_experiment(baseline_experiment), proposal)  # type: ignore[arg-type]
+            return apply_augmentation_proposal(
+                clone_experiment(baseline_experiment), proposal
+            )  # type: ignore[arg-type]
         return apply_data_proposal(clone_experiment(baseline_experiment), proposal)  # type: ignore[arg-type]
 
     def _component_summaries(
@@ -1586,7 +1741,10 @@ class HierarchicalOrchestrator:
         for proposal in proposals:
             if isinstance(proposal, ModelProposal) and "model_agent" in included_agents:
                 summaries["model_agent"] = proposal.notes
-            elif isinstance(proposal, AugmentationProposal) and "augmentation_agent" in included_agents:
+            elif (
+                isinstance(proposal, AugmentationProposal)
+                and "augmentation_agent" in included_agents
+            ):
                 summaries["augmentation_agent"] = proposal.notes
             elif isinstance(proposal, DataProposal) and "data_agent" in included_agents:
                 summaries["data_agent"] = proposal.notes
@@ -1641,7 +1799,12 @@ class HierarchicalOrchestrator:
             accepted_history_csv=accepted_csv_path,
             accepted_history_svg=accepted_svg_path,
             latest_promotion_artifact=(
-                str(Path.cwd() / "artifacts" / f"round_{history[-1].round_id}" / "promotion.json")
+                str(
+                    Path.cwd()
+                    / "artifacts"
+                    / f"round_{history[-1].round_id}"
+                    / "promotion.json"
+                )
                 if history
                 else ""
             ),
@@ -1665,7 +1828,9 @@ class HierarchicalOrchestrator:
             ),
             "",
         )
-        previous_baseline_score = None if previous_best is None else float(previous_best.val_score)
+        previous_baseline_score = (
+            None if previous_best is None else float(previous_best.val_score)
+        )
         payload = {
             "round_id": round_id,
             "orchestrator_combination_order": (
@@ -1682,7 +1847,9 @@ class HierarchicalOrchestrator:
                 "agent_name": round_best.agent_name,
                 "branch_name": round_best.branch_name,
                 "val_score": round(round_best.val_score, 4),
-                "selected_combination": round_best.artifact_paths.get("selected_combination", ""),
+                "selected_combination": round_best.artifact_paths.get(
+                    "selected_combination", ""
+                ),
             },
             "accepted_new_baseline": accepted_candidate is not None,
             "promoted_baseline": None
@@ -1702,7 +1869,9 @@ class HierarchicalOrchestrator:
                     previous_baseline_score=previous_baseline_score,
                     accepted_candidate=accepted_candidate,
                 )
-                for result in sorted(round_results, key=lambda item: item.val_score, reverse=True)
+                for result in sorted(
+                    round_results, key=lambda item: item.val_score, reverse=True
+                )
             ],
         }
         round_dir = ensure_round_dir(round_id)
@@ -1723,7 +1892,8 @@ class HierarchicalOrchestrator:
             and abs(result.val_score - round_best.val_score) < 1e-9
         )
         beats_previous_baseline = (
-            previous_baseline_score is None or result.val_score > previous_baseline_score
+            previous_baseline_score is None
+            or result.val_score > previous_baseline_score
         )
         accepted_as_new_baseline = (
             accepted_candidate is not None
@@ -1754,7 +1924,9 @@ class HierarchicalOrchestrator:
             "branch_name": result.branch_name,
             "domain_focus": domain_focus,
             "candidate_type": (
-                "orchestrator_combination" if result.agent_name == "orchestrator" else "specialist_agent"
+                "orchestrator_combination"
+                if result.agent_name == "orchestrator"
+                else "specialist_agent"
             ),
             "val_score": round(result.val_score, 4),
             "selected_combination": selected_combination,

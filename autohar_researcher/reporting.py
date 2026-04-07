@@ -4,6 +4,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 
+from autohar_researcher.config import DEFAULT_COLORS, load_reporting_colors
 from autohar_researcher.types import CandidateResult
 
 
@@ -73,17 +74,19 @@ def write_history_svg(
     )
     grouped: dict[str, list[tuple[int, float]]] = defaultdict(list)
     for result in filtered_history:
-        value = result.val_score if value_key == "val_score" else result.best_so_far_score
+        value = (
+            result.val_score if value_key == "val_score" else result.best_so_far_score
+        )
         grouped[result.agent_name].append((result.round_id, value))
-    colors = {
-        "model_agent": "#0b7285",
-        "augmentation_agent": "#e67700",
-        "data_agent": "#2b8a3e",
-        "orchestrator": "#c2255c",
-    }
+    colors = load_reporting_colors()
     agent_order = [
         agent_name
-        for agent_name in ("model_agent", "augmentation_agent", "data_agent", "orchestrator")
+        for agent_name in (
+            "model_agent",
+            "augmentation_agent",
+            "data_agent",
+            "orchestrator",
+        )
         if agent_name in grouped
     ]
     if not agent_order:
@@ -124,29 +127,51 @@ def write_history_svg(
             top = panel_top(index)
             bottom = top + panel_height - 55
             color = colors.get(agent_name, "#555")
-            label = legend_labels.get(agent_name, agent_name) if legend_labels else agent_name
+            label = (
+                legend_labels.get(agent_name, agent_name)
+                if legend_labels
+                else agent_name
+            )
             inner_ticks = 5
-            elements.append(f'<text x="{margin_left}" y="{top - 8:.1f}" font-family="Arial, sans-serif" font-size="13" fill="#111">{label}</text>')
+            elements.append(
+                f'<text x="{margin_left}" y="{top - 8:.1f}" font-family="Arial, sans-serif" font-size="13" fill="#111">{label}</text>'
+            )
 
             for tick in range(0, inner_ticks + 1):
                 score = tick / inner_ticks
                 y = y_coord(score, index)
-                elements.append(f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#e5e5e5" stroke-width="1"/>')
-                elements.append(f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="11" fill="#444">{score:.1f}</text>')
+                elements.append(
+                    f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#e5e5e5" stroke-width="1"/>'
+                )
+                elements.append(
+                    f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="11" fill="#444">{score:.1f}</text>'
+                )
 
             for tick in range(1, max_round + 1):
                 if max_round > 12 and tick not in {1, max_round} and tick % 5 != 0:
                     continue
                 x = x_coord(tick)
-                elements.append(f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{bottom:.1f}" stroke="#f0f0f0" stroke-width="1"/>')
+                elements.append(
+                    f'<line x1="{x:.1f}" y1="{top}" x2="{x:.1f}" y2="{bottom:.1f}" stroke="#f0f0f0" stroke-width="1"/>'
+                )
                 if index == len(agent_order) - 1:
-                    elements.append(f'<text x="{x:.1f}" y="{height - 14}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>')
+                    elements.append(
+                        f'<text x="{x:.1f}" y="{height - 14}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>'
+                    )
 
-            elements.append(f'<line x1="{margin_left}" y1="{top:.1f}" x2="{margin_left}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>')
-            elements.append(f'<line x1="{margin_left}" y1="{bottom:.1f}" x2="{width - margin_right}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>')
+            elements.append(
+                f'<line x1="{margin_left}" y1="{top:.1f}" x2="{margin_left}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>'
+            )
+            elements.append(
+                f'<line x1="{margin_left}" y1="{bottom:.1f}" x2="{width - margin_right}" y2="{bottom:.1f}" stroke="#333" stroke-width="1.2"/>'
+            )
 
             ordered_results = sorted(
-                (result for result in filtered_history if result.agent_name == agent_name),
+                (
+                    result
+                    for result in filtered_history
+                    if result.agent_name == agent_name
+                ),
                 key=lambda result: result.round_id,
             )
             improvement_points: list[tuple[int, float]] = []
@@ -161,14 +186,20 @@ def write_history_svg(
                     f"{x_coord(round_id):.1f},{y_coord(score, index):.1f}"
                     for round_id, score in improvement_points
                 )
-                elements.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>')
+                elements.append(
+                    f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>'
+                )
 
             for result in ordered_results:
                 x = x_coord(result.round_id)
                 y = y_coord(result.val_score, index)
-                elements.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="{color}"/>')
+                elements.append(
+                    f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.5" fill="{color}"/>'
+                )
 
-        elements.append(f'<text x="{width / 2:.1f}" y="{height - 2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>')
+        elements.append(
+            f'<text x="{width / 2:.1f}" y="{height - 2}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>'
+        )
         elements.append("</svg>")
         output_path.write_text("\n".join(elements) + "\n", encoding="utf-8")
         return str(output_path)
@@ -199,32 +230,59 @@ def write_history_svg(
     for tick in range(0, 6):
         score = tick / 5.0
         y = y_coord(score)
-        elements.append(f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#d9d9d9" stroke-width="1"/>')
-        elements.append(f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#444">{score:.1f}</text>')
+        elements.append(
+            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#d9d9d9" stroke-width="1"/>'
+        )
+        elements.append(
+            f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#444">{score:.1f}</text>'
+        )
 
     for tick in range(1, max_round + 1):
         if max_round > 12 and tick not in {1, max_round} and tick % 5 != 0:
             continue
         x = x_coord(tick)
-        elements.append(f'<line x1="{x:.1f}" y1="{margin_top}" x2="{x:.1f}" y2="{height - margin_bottom}" stroke="#efefef" stroke-width="1"/>')
-        elements.append(f'<text x="{x:.1f}" y="{height - margin_bottom + 20}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>')
+        elements.append(
+            f'<line x1="{x:.1f}" y1="{margin_top}" x2="{x:.1f}" y2="{height - margin_bottom}" stroke="#efefef" stroke-width="1"/>'
+        )
+        elements.append(
+            f'<text x="{x:.1f}" y="{height - margin_bottom + 20}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>'
+        )
 
-    elements.append(f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>')
-    elements.append(f'<line x1="{margin_left}" y1="{height - margin_bottom}" x2="{width - margin_right}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>')
-    elements.append(f'<text x="{width / 2:.1f}" y="{height - 15}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>')
-    elements.append(f'<text x="18" y="{height / 2:.1f}" text-anchor="middle" transform="rotate(-90 18 {height / 2:.1f})" font-family="Arial, sans-serif" font-size="14" fill="#111">Macro-F1</text>')
+    elements.append(
+        f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>'
+    )
+    elements.append(
+        f'<line x1="{margin_left}" y1="{height - margin_bottom}" x2="{width - margin_right}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>'
+    )
+    elements.append(
+        f'<text x="{width / 2:.1f}" y="{height - 15}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>'
+    )
+    elements.append(
+        f'<text x="18" y="{height / 2:.1f}" text-anchor="middle" transform="rotate(-90 18 {height / 2:.1f})" font-family="Arial, sans-serif" font-size="14" fill="#111">Macro-F1</text>'
+    )
 
     legend_x = width - margin_right - 210
     legend_y = margin_top + 10
     for index, (agent_name, points) in enumerate(sorted(grouped.items())):
         color = colors.get(agent_name, "#555")
         y = legend_y + index * 22
-        elements.append(f'<line x1="{legend_x}" y1="{y}" x2="{legend_x + 24}" y2="{y}" stroke="{color}" stroke-width="3"/>')
-        label = legend_labels.get(agent_name, agent_name) if legend_labels else agent_name
-        elements.append(f'<text x="{legend_x + 32}" y="{y + 4}" font-family="Arial, sans-serif" font-size="12" fill="#222">{label}</text>')
+        elements.append(
+            f'<line x1="{legend_x}" y1="{y}" x2="{legend_x + 24}" y2="{y}" stroke="{color}" stroke-width="3"/>'
+        )
+        label = (
+            legend_labels.get(agent_name, agent_name) if legend_labels else agent_name
+        )
+        elements.append(
+            f'<text x="{legend_x + 32}" y="{y + 4}" font-family="Arial, sans-serif" font-size="12" fill="#222">{label}</text>'
+        )
         ordered = sorted(points)
-        polyline = " ".join(f"{x_coord(round_id):.1f},{y_coord(score):.1f}" for round_id, score in ordered)
-        elements.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>')
+        polyline = " ".join(
+            f"{x_coord(round_id):.1f},{y_coord(score):.1f}"
+            for round_id, score in ordered
+        )
+        elements.append(
+            f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>'
+        )
         for round_id, score in ordered:
             elements.append(
                 f'<circle cx="{x_coord(round_id):.1f}" cy="{y_coord(score):.1f}" r="3.5" fill="{color}"/>'
@@ -235,7 +293,9 @@ def write_history_svg(
     return str(output_path)
 
 
-def write_promotion_svg(history: list[CandidateResult], output_path: Path, title: str) -> str:
+def write_promotion_svg(
+    history: list[CandidateResult], output_path: Path, title: str
+) -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ordered = sorted(history, key=lambda result: result.round_id)
 
@@ -267,28 +327,53 @@ def write_promotion_svg(history: list[CandidateResult], output_path: Path, title
     for tick in range(0, 6):
         score = tick / 5.0
         y = y_coord(score)
-        elements.append(f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#d9d9d9" stroke-width="1"/>')
-        elements.append(f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#444">{score:.1f}</text>')
+        elements.append(
+            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" stroke="#d9d9d9" stroke-width="1"/>'
+        )
+        elements.append(
+            f'<text x="{margin_left - 12}" y="{y + 4:.1f}" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#444">{score:.1f}</text>'
+        )
 
     for tick in range(1, max_round + 1):
         if max_round > 12 and tick not in {1, max_round} and tick % 5 != 0:
             continue
         x = x_coord(tick)
-        elements.append(f'<line x1="{x:.1f}" y1="{margin_top}" x2="{x:.1f}" y2="{height - margin_bottom}" stroke="#efefef" stroke-width="1"/>')
-        elements.append(f'<text x="{x:.1f}" y="{height - margin_bottom + 20}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>')
+        elements.append(
+            f'<line x1="{x:.1f}" y1="{margin_top}" x2="{x:.1f}" y2="{height - margin_bottom}" stroke="#efefef" stroke-width="1"/>'
+        )
+        elements.append(
+            f'<text x="{x:.1f}" y="{height - margin_bottom + 20}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#444">{tick}</text>'
+        )
 
-    elements.append(f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>')
-    elements.append(f'<line x1="{margin_left}" y1="{height - margin_bottom}" x2="{width - margin_right}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>')
-    elements.append(f'<text x="{width / 2:.1f}" y="{height - 15}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>')
-    elements.append(f'<text x="18" y="{height / 2:.1f}" text-anchor="middle" transform="rotate(-90 18 {height / 2:.1f})" font-family="Arial, sans-serif" font-size="14" fill="#111">Macro-F1</text>')
+    elements.append(
+        f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>'
+    )
+    elements.append(
+        f'<line x1="{margin_left}" y1="{height - margin_bottom}" x2="{width - margin_right}" y2="{height - margin_bottom}" stroke="#333" stroke-width="1.5"/>'
+    )
+    elements.append(
+        f'<text x="{width / 2:.1f}" y="{height - 15}" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#111">Round</text>'
+    )
+    elements.append(
+        f'<text x="18" y="{height / 2:.1f}" text-anchor="middle" transform="rotate(-90 18 {height / 2:.1f})" font-family="Arial, sans-serif" font-size="14" fill="#111">Macro-F1</text>'
+    )
 
     legend_x = width - margin_right - 260
     legend_y = margin_top + 10
-    elements.append(f'<line x1="{legend_x}" y1="{legend_y}" x2="{legend_x + 24}" y2="{legend_y}" stroke="{color}" stroke-width="3"/>')
-    elements.append(f'<text x="{legend_x + 32}" y="{legend_y + 4}" font-family="Arial, sans-serif" font-size="12" fill="#222">accepted_baseline</text>')
-    polyline = " ".join(f"{x_coord(result.round_id):.1f},{y_coord(result.val_score):.1f}" for result in ordered)
+    elements.append(
+        f'<line x1="{legend_x}" y1="{legend_y}" x2="{legend_x + 24}" y2="{legend_y}" stroke="{color}" stroke-width="3"/>'
+    )
+    elements.append(
+        f'<text x="{legend_x + 32}" y="{legend_y + 4}" font-family="Arial, sans-serif" font-size="12" fill="#222">accepted_baseline</text>'
+    )
+    polyline = " ".join(
+        f"{x_coord(result.round_id):.1f},{y_coord(result.val_score):.1f}"
+        for result in ordered
+    )
     if polyline:
-        elements.append(f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>')
+        elements.append(
+            f'<polyline fill="none" stroke="{color}" stroke-width="2.5" points="{polyline}"/>'
+        )
     for result in ordered:
         x = x_coord(result.round_id)
         y = y_coord(result.val_score)

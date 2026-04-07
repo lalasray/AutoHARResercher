@@ -69,13 +69,19 @@ class DummyHARHarness:
                 for window, label in dataset.load_split("test")
             ]
 
-            train_features = [self._extract_features(window, config) for window, _ in train_samples]
+            train_features = [
+                self._extract_features(window, config) for window, _ in train_samples
+            ]
             train_labels = [self.LABELS.index(label) for _, label in train_samples]
-            val_features = [self._extract_features(window, config) for window, _ in val_samples]
+            val_features = [
+                self._extract_features(window, config) for window, _ in val_samples
+            ]
             val_labels = [self.LABELS.index(label) for _, label in val_samples]
-            inner_train_features, inner_train_labels, stop_features, stop_labels = self._split_inner_validation(
-                train_features,
-                train_labels,
+            inner_train_features, inner_train_labels, stop_features, stop_labels = (
+                self._split_inner_validation(
+                    train_features,
+                    train_labels,
+                )
             )
 
             model, training_report = self._train_model(
@@ -134,9 +140,7 @@ class DummyHARHarness:
         )
         details = dict(cached["details"])
         score_breakdown = {
-            key: value
-            for key, value in cached.items()
-            if isinstance(value, float)
+            key: value for key, value in cached.items() if isinstance(value, float)
         }
         evaluation_artifact = self._write_evaluation_artifact(
             round_id=round_id,
@@ -207,9 +211,15 @@ class DummyHARHarness:
         config: CandidateConfig,
         split: str,
     ) -> list[list[float]]:
-        processed = self._select_channels(window, config.preprocessing, config.data_params)
-        processed = self._resample_window(processed, config.window_size, config.data_params)
-        processed = self._preprocess(processed, config.preprocessing, config.data_params)
+        processed = self._select_channels(
+            window, config.preprocessing, config.data_params
+        )
+        processed = self._resample_window(
+            processed, config.window_size, config.data_params
+        )
+        processed = self._preprocess(
+            processed, config.preprocessing, config.data_params
+        )
         if split == "train":
             rng = random.Random(config.window_size + len(window))
             processed = self._augment(
@@ -232,7 +242,14 @@ class DummyHARHarness:
             total_acc = row[:3]
             body_acc = row[3:6]
             body_gyro = row[6:9]
-            channel_layout = str(params.get("channel_layout", "body_acc+gyro" if mode == "normalized+gravity_filter" else "total_acc+gyro"))
+            channel_layout = str(
+                params.get(
+                    "channel_layout",
+                    "body_acc+gyro"
+                    if mode == "normalized+gravity_filter"
+                    else "total_acc+gyro",
+                )
+            )
             if channel_layout == "body_acc+gyro":
                 selected.append(body_acc + body_gyro)
             else:
@@ -257,7 +274,8 @@ class DummyHARHarness:
                 mix = position - left
                 resampled.append(
                     [
-                        ((1.0 - mix) * window[left][channel]) + (mix * window[right][channel])
+                        ((1.0 - mix) * window[left][channel])
+                        + (mix * window[right][channel])
                         for channel in range(len(window[0]))
                     ]
                 )
@@ -273,7 +291,17 @@ class DummyHARHarness:
         params: dict[str, float | int | str | bool],
     ) -> list[list[float]]:
         processed = [row[:] for row in window]
-        if bool(params.get("normalize", mode in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"})):
+        if bool(
+            params.get(
+                "normalize",
+                mode
+                in {
+                    "normalized",
+                    "normalized+gravity_filter",
+                    "normalized+magnitude_channels",
+                },
+            )
+        ):
             processed = self._normalize(processed)
         if mode == "normalized+gravity_filter":
             gravity_scale = float(params.get("gravity_scale", 1.0))
@@ -284,7 +312,9 @@ class DummyHARHarness:
             for row in processed:
                 for channel in range(3):
                     row[channel] -= gravity_scale * accel_means[channel]
-        if bool(params.get("append_magnitude", mode == "normalized+magnitude_channels")):
+        if bool(
+            params.get("append_magnitude", mode == "normalized+magnitude_channels")
+        ):
             extended: list[list[float]] = []
             for row in processed:
                 accel_mag = math.sqrt(sum(value * value for value in row[:3]))
@@ -323,11 +353,19 @@ class DummyHARHarness:
             return augmented
         if mode == "jitter":
             radius = float(params.get("jitter_std", 0.02 * strength_scale))
-            return [[value + rng.uniform(-radius, radius) for value in row] for row in augmented]
+            return [
+                [value + rng.uniform(-radius, radius) for value in row]
+                for row in augmented
+            ]
         if mode == "scaling":
             span = float(params.get("scale_span", 0.1 * strength_scale))
-            scales = [rng.uniform(1.0 - span, 1.0 + span) for _ in range(len(augmented[0]))]
-            return [[value * scales[index] for index, value in enumerate(row)] for row in augmented]
+            scales = [
+                rng.uniform(1.0 - span, 1.0 + span) for _ in range(len(augmented[0]))
+            ]
+            return [
+                [value * scales[index] for index, value in enumerate(row)]
+                for row in augmented
+            ]
         if mode == "rotation":
             angle_deg = float(params.get("angle_deg", 10.0 * strength_scale))
             angle = math.radians(angle_deg)
@@ -350,7 +388,9 @@ class DummyHARHarness:
             return rotated
         if mode == "time_warp":
             warped = []
-            compression = float(params.get("compression_ratio", max(0.7, 1.0 - (0.08 * strength_scale))))
+            compression = float(
+                params.get("compression_ratio", max(0.7, 1.0 - (0.08 * strength_scale)))
+            )
             for index in range(len(augmented)):
                 source_index = min(len(augmented) - 1, int(index * compression))
                 warped.append(augmented[source_index][:])
@@ -358,7 +398,12 @@ class DummyHARHarness:
         if mode == "permutation":
             if len(augmented) < 8:
                 return augmented
-            segment_count = int(params.get("segment_count", min(6, max(3, int(round(2 + (2 * strength_scale)))))))
+            segment_count = int(
+                params.get(
+                    "segment_count",
+                    min(6, max(3, int(round(2 + (2 * strength_scale))))),
+                )
+            )
             segment_size = max(len(augmented) // segment_count, 1)
             segments = [
                 augmented[index : index + segment_size]
@@ -368,7 +413,10 @@ class DummyHARHarness:
             return [row[:] for segment in segments for row in segment]
         if mode == "drift":
             drift_radius = float(params.get("drift_max", 0.015 * strength_scale))
-            drifts = [rng.uniform(-drift_radius, drift_radius) for _ in range(len(augmented[0]))]
+            drifts = [
+                rng.uniform(-drift_radius, drift_radius)
+                for _ in range(len(augmented[0]))
+            ]
             drifted: list[list[float]] = []
             for step, row in enumerate(augmented):
                 alpha = step / max(len(augmented) - 1, 1)
@@ -383,7 +431,9 @@ class DummyHARHarness:
             warped: list[list[float]] = []
             for step, row in enumerate(augmented):
                 alpha = step / max(len(augmented) - 1, 1)
-                left = max(index for index, anchor in enumerate(anchors) if anchor <= alpha)
+                left = max(
+                    index for index, anchor in enumerate(anchors) if anchor <= alpha
+                )
                 right = min(left + 1, len(anchors) - 1)
                 if left == right:
                     scale = knots[left]
@@ -394,22 +444,30 @@ class DummyHARHarness:
                 warped.append([value * scale for value in row])
             return warped
         if mode == "mixup":
-            blend = float(params.get("blend", min(0.45, 0.15 + (0.15 * strength_scale))))
+            blend = float(
+                params.get("blend", min(0.45, 0.15 + (0.15 * strength_scale)))
+            )
             mixed = []
             reversed_window = list(reversed(augmented))
             for left, right in zip(augmented, reversed_window):
-                mixed.append([((1.0 - blend) * a) + (blend * b) for a, b in zip(left, right)])
+                mixed.append(
+                    [((1.0 - blend) * a) + (blend * b) for a, b in zip(left, right)]
+                )
             return mixed
         return augmented
 
-    def _extract_features(self, window: list[list[float]], config: CandidateConfig) -> list[float]:
+    def _extract_features(
+        self, window: list[list[float]], config: CandidateConfig
+    ) -> list[float]:
         channels = len(window[0])
         model_params = config.model_params
         temporal_pool = str(model_params.get("temporal_pool", "avg"))
         spectral_bins = max(2, int(model_params.get("spectral_bins", 6)))
         use_interactions = bool(model_params.get("use_interactions", True))
         use_multiscale = bool(model_params.get("use_multiscale", True))
-        attention_mix = max(0.0, min(1.0, float(model_params.get("attention_mix", 0.5))))
+        attention_mix = max(
+            0.0, min(1.0, float(model_params.get("attention_mix", 0.5)))
+        )
         means = [sum(row[i] for row in window) / len(window) for i in range(channels)]
         stds = []
         energies = []
@@ -419,7 +477,10 @@ class DummyHARHarness:
             stds.append(math.sqrt(variance))
             energies.append(sum(row[i] * row[i] for row in window) / len(window))
             diffs.append(
-                sum(abs(window[idx][i] - window[idx - 1][i]) for idx in range(1, len(window)))
+                sum(
+                    abs(window[idx][i] - window[idx - 1][i])
+                    for idx in range(1, len(window))
+                )
                 / max(len(window) - 1, 1)
             )
 
@@ -433,25 +494,55 @@ class DummyHARHarness:
         if config.model_name == "cnn":
             return means + stds + energies
         if config.model_name == "gru":
-            return means + diffs + [window[-1][i] - window[0][i] for i in range(channels)]
+            return (
+                means + diffs + [window[-1][i] - window[0][i] for i in range(channels)]
+            )
         if config.model_name == "tiny_transformer":
             midpoint = len(window) // 2
-            first_half = [sum(window[i][c] for i in range(midpoint)) / max(midpoint, 1) for c in range(channels)]
-            second_half = [
-                sum(window[i][c] for i in range(midpoint, len(window))) / max(len(window) - midpoint, 1)
+            first_half = [
+                sum(window[i][c] for i in range(midpoint)) / max(midpoint, 1)
                 for c in range(channels)
             ]
-            return means + stds + temporal + [second_half[i] - first_half[i] for i in range(channels)] + spectral[: channels]
+            second_half = [
+                sum(window[i][c] for i in range(midpoint, len(window)))
+                / max(len(window) - midpoint, 1)
+                for c in range(channels)
+            ]
+            return (
+                means
+                + stds
+                + temporal
+                + [second_half[i] - first_half[i] for i in range(channels)]
+                + spectral[:channels]
+            )
         if config.model_name == "deepconvlstm":
-            return means + stds + energies + diffs + temporal + multiscale + interactions
+            return (
+                means + stds + energies + diffs + temporal + multiscale + interactions
+            )
         if config.model_name == "deepconvlstmattention":
-            return means + stds + energies + attention + multiscale + interactions + spectral[: channels]
+            return (
+                means
+                + stds
+                + energies
+                + attention
+                + multiscale
+                + interactions
+                + spectral[:channels]
+            )
         if config.model_name == "hart":
-            return means + stds + saliency + temporal + multiscale + interactions + spectral[: channels]
+            return (
+                means
+                + stds
+                + saliency
+                + temporal
+                + multiscale
+                + interactions
+                + spectral[:channels]
+            )
         if config.model_name == "tinierhar":
             return means + stds + saliency + temporal + interactions
         if config.model_name == "tinyhar":
-            return means + stds + temporal + spectral[: channels]
+            return means + stds + temporal + spectral[:channels]
         if config.model_name == "spectra":
             return means + stds + spectral + diffs
         if config.model_name == "cnn_gru":
@@ -486,9 +577,25 @@ class DummyHARHarness:
                 min_epochs=min_epochs,
                 device_preference=device_preference,
             )
-        if model_name in {"deepconvlstm", "deepconvlstmattention", "hart", "tinierhar", "tinyhar", "spectra"}:
-            hidden_dim = int(model_params.get("hidden_dim", 48 if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"} else 24))
-            depth = int(model_params.get("depth", 2 if model_name != "tinierhar" else 1))
+        if model_name in {
+            "deepconvlstm",
+            "deepconvlstmattention",
+            "hart",
+            "tinierhar",
+            "tinyhar",
+            "spectra",
+        }:
+            hidden_dim = int(
+                model_params.get(
+                    "hidden_dim",
+                    48
+                    if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"}
+                    else 24,
+                )
+            )
+            depth = int(
+                model_params.get("depth", 2 if model_name != "tinierhar" else 1)
+            )
             return self._train_mlp_model(
                 train_features=train_features,
                 train_labels=train_labels,
@@ -527,14 +634,19 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         weights = [[0.0 for _ in range(feature_dim + 1)] for _ in range(num_classes)]
-        scaled_lr = max(0.01, min(learning_rate * 500.0, 0.18))
+        lr_scale = 1.0 / math.sqrt(feature_dim)
+        base_lr = max(0.005, min(learning_rate * 400.0, 0.2)) * lr_scale
         order = list(range(len(train_features)))
         best_weights = [row[:] for row in weights]
         best_score = float("-inf")
         best_epoch = 0
         stale_epochs = 0
+        current_lr = base_lr
+        grad_clip = 2.0
 
         for epoch in range(max(epochs * 4, 8)):
+            if epoch > 0 and epoch % 8 == 0 and stale_epochs > 0:
+                current_lr *= 0.92
             random.Random(epochs + epoch).shuffle(order)
             for sample_index in order:
                 features = train_features[sample_index]
@@ -544,9 +656,16 @@ class DummyHARHarness:
                 for class_index in range(num_classes):
                     error = probs[class_index] - (1.0 if class_index == label else 0.0)
                     for feature_index, value in enumerate(features):
-                        weights[class_index][feature_index] -= scaled_lr * error * value
-                    weights[class_index][-1] -= scaled_lr * error
-            stop_predictions = [self._predict({"kind": "linear", "weights": weights}, features) for features in stop_features]
+                        grad = current_lr * error * value
+                        grad = max(-grad_clip, min(grad_clip, grad))
+                        weights[class_index][feature_index] -= grad
+                    bias_grad = current_lr * error
+                    bias_grad = max(-grad_clip, min(grad_clip, bias_grad))
+                    weights[class_index][-1] -= bias_grad
+            stop_predictions = [
+                self._predict({"kind": "linear", "weights": weights}, features)
+                for features in stop_features
+            ]
             stop_score = self._macro_f1(stop_predictions, stop_labels)
             if stop_score > best_score:
                 best_score = stop_score
@@ -584,28 +703,37 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         rng = random.Random(feature_dim + hidden_dim + epochs)
+        fan_in = feature_dim
+        scale = math.sqrt(2.0 / (fan_in + hidden_dim))
         hidden_layers: list[list[list[float]]] = []
         input_dim = feature_dim
-        for _ in range(max(1, depth)):
+        for layer_idx in range(max(1, depth)):
+            scale = math.sqrt(2.0 / (input_dim + hidden_dim))
             hidden_layers.append(
                 [
-                    [rng.uniform(-0.05, 0.05) for _ in range(input_dim + 1)]
+                    [rng.gauss(0.0, scale) for _ in range(input_dim + 1)]
                     for _ in range(hidden_dim)
                 ]
             )
             input_dim = hidden_dim
+        output_scale = math.sqrt(2.0 / (hidden_dim + num_classes))
         output = [
-            [rng.uniform(-0.05, 0.05) for _ in range(hidden_dim + 1)]
+            [rng.gauss(0.0, output_scale) for _ in range(hidden_dim + 1)]
             for _ in range(num_classes)
         ]
-        scaled_lr = max(0.003, min(learning_rate * 60.0, 0.03))
+        lr_scale = 1.0 / math.sqrt(feature_dim)
+        base_lr = max(0.001, min(learning_rate * 50.0, 0.05)) * lr_scale
         order = list(range(len(train_features)))
         best_hidden_layers = [[row[:] for row in layer] for layer in hidden_layers]
         best_output = [row[:] for row in output]
         best_score = float("-inf")
         best_epoch = 0
         stale_epochs = 0
+        current_lr = base_lr
+        grad_clip = 5.0
         for epoch in range(max(epochs * 3, 6)):
+            if epoch > 0 and epoch % 10 == 0 and stale_epochs > 0:
+                current_lr *= 0.9
             random.Random(hidden_dim + epoch).shuffle(order)
             for sample_index in order:
                 features = train_features[sample_index]
@@ -613,7 +741,9 @@ class DummyHARHarness:
                 layer_inputs = [features]
                 layer_states: list[list[float]] = []
                 for layer in hidden_layers:
-                    hidden_linear = [self._dot(weight, layer_inputs[-1]) for weight in layer]
+                    hidden_linear = [
+                        self._dot(weight, layer_inputs[-1]) for weight in layer
+                    ]
                     hidden_state = [math.tanh(value) for value in hidden_linear]
                     layer_states.append(hidden_state)
                     layer_inputs.append(hidden_state)
@@ -631,12 +761,20 @@ class DummyHARHarness:
                         output[class_index][hidden_index] * output_errors[class_index]
                         for class_index in range(num_classes)
                     )
-                    last_errors.append((1.0 - (last_hidden[hidden_index] ** 2)) * downstream)
+                    grad = (1.0 - (last_hidden[hidden_index] ** 2)) * downstream
+                    grad = max(-grad_clip, min(grad_clip, grad))
+                    last_errors.append(grad)
                 downstream_errors.append(last_errors)
+                grad_norms: list[float] = []
                 for class_index in range(num_classes):
-                    for hidden_index, value in enumerate(last_hidden):
-                        output[class_index][hidden_index] -= scaled_lr * output_errors[class_index] * value
-                    output[class_index][-1] -= scaled_lr * output_errors[class_index]
+                    grad_norm = output_errors[class_index] * current_lr
+                    grad_norm = max(-grad_clip, min(grad_norm, grad_clip))
+                    for hidden_index in range(hidden_dim):
+                        output[class_index][hidden_index] -= (
+                            grad_norm * last_hidden[hidden_index]
+                        )
+                    output[class_index][-1] -= grad_norm
+                    grad_norms.append(abs(grad_norm))
                 for layer_index in range(len(hidden_layers) - 2, -1, -1):
                     layer_state = layer_states[layer_index]
                     next_layer = hidden_layers[layer_index + 1]
@@ -644,26 +782,46 @@ class DummyHARHarness:
                     current_errors = []
                     for hidden_index in range(hidden_dim):
                         downstream = sum(
-                            next_layer[next_index][hidden_index] * next_errors[next_index]
+                            next_layer[next_index][hidden_index]
+                            * next_errors[next_index]
                             for next_index in range(hidden_dim)
                         )
-                        current_errors.append((1.0 - (layer_state[hidden_index] ** 2)) * downstream)
+                        grad = (1.0 - (layer_state[hidden_index] ** 2)) * downstream
+                        grad = max(-grad_clip, min(grad_clip, grad))
+                        current_errors.append(grad)
                     downstream_errors.insert(0, current_errors)
                 for layer_index, layer in enumerate(hidden_layers):
                     errors = downstream_errors[layer_index]
                     inputs = layer_inputs[layer_index]
+                    max_grad = 0.0
                     for hidden_index in range(hidden_dim):
-                        for feature_index, value in enumerate(inputs):
-                            layer[hidden_index][feature_index] -= scaled_lr * errors[hidden_index] * value
-                        layer[hidden_index][-1] -= scaled_lr * errors[hidden_index]
-            stop_model = {"kind": "mlp", "hidden_layers": hidden_layers, "output": output}
-            stop_predictions = [self._predict(stop_model, features) for features in stop_features]
+                        for feature_index in range(len(inputs)):
+                            g = (
+                                current_lr
+                                * errors[hidden_index]
+                                * inputs[feature_index]
+                            )
+                            max_grad = max(max_grad, abs(g))
+                            layer[hidden_index][feature_index] -= g
+                        bias_grad = current_lr * errors[hidden_index]
+                        layer[hidden_index][-1] -= bias_grad
+                        max_grad = max(max_grad, abs(bias_grad))
+            stop_model = {
+                "kind": "mlp",
+                "hidden_layers": hidden_layers,
+                "output": output,
+            }
+            stop_predictions = [
+                self._predict(stop_model, features) for features in stop_features
+            ]
             stop_score = self._macro_f1(stop_predictions, stop_labels)
             if stop_score > best_score:
                 best_score = stop_score
                 best_epoch = epoch + 1
                 stale_epochs = 0
-                best_hidden_layers = [[row[:] for row in layer] for layer in hidden_layers]
+                best_hidden_layers = [
+                    [row[:] for row in layer] for layer in hidden_layers
+                ]
                 best_output = [row[:] for row in output]
             else:
                 stale_epochs += 1
@@ -677,6 +835,7 @@ class DummyHARHarness:
                 "best_epoch": best_epoch,
                 "best_stop_macro_f1": round(best_score, 4),
                 "stopped_early": stale_epochs >= patience,
+                "final_lr": round(current_lr, 6),
             },
         )
 
@@ -698,9 +857,25 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         device = self._resolve_device(device_preference)
-        if model_name in {"deepconvlstm", "deepconvlstmattention", "hart", "tinierhar", "tinyhar", "spectra"}:
-            hidden_dim = int(model_params.get("hidden_dim", 64 if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"} else 32))
-            depth = max(1, int(model_params.get("depth", 2 if model_name != "tinierhar" else 1)))
+        if model_name in {
+            "deepconvlstm",
+            "deepconvlstmattention",
+            "hart",
+            "tinierhar",
+            "tinyhar",
+            "spectra",
+        }:
+            hidden_dim = int(
+                model_params.get(
+                    "hidden_dim",
+                    64
+                    if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"}
+                    else 32,
+                )
+            )
+            depth = max(
+                1, int(model_params.get("depth", 2 if model_name != "tinierhar" else 1))
+            )
             if model_name == "deepconvlstmattention":
                 module = self._build_torch_attention_mlp(
                     feature_dim=feature_dim,
@@ -721,13 +896,24 @@ class DummyHARHarness:
         else:
             module = self._torch.nn.Linear(feature_dim, num_classes)
         module = module.to(device)
-        optimizer = self._torch.optim.Adam(module.parameters(), lr=max(learning_rate, 1e-4))
+        optimizer = self._torch.optim.Adam(
+            module.parameters(), lr=max(learning_rate, 1e-4)
+        )
         criterion = self._torch.nn.CrossEntropyLoss()
-        train_x = self._torch.tensor(train_features, dtype=self._torch.float32, device=device)
-        train_y = self._torch.tensor(train_labels, dtype=self._torch.long, device=device)
-        stop_x = self._torch.tensor(stop_features, dtype=self._torch.float32, device=device)
+        train_x = self._torch.tensor(
+            train_features, dtype=self._torch.float32, device=device
+        )
+        train_y = self._torch.tensor(
+            train_labels, dtype=self._torch.long, device=device
+        )
+        stop_x = self._torch.tensor(
+            stop_features, dtype=self._torch.float32, device=device
+        )
         batch_size = min(128, len(train_features))
-        best_state = {key: value.detach().cpu().clone() for key, value in module.state_dict().items()}
+        best_state = {
+            key: value.detach().cpu().clone()
+            for key, value in module.state_dict().items()
+        }
         best_score = float("-inf")
         best_epoch = 0
         stale_epochs = 0
@@ -750,7 +936,10 @@ class DummyHARHarness:
                 best_score = stop_score
                 best_epoch = epoch + 1
                 stale_epochs = 0
-                best_state = {key: value.detach().cpu().clone() for key, value in module.state_dict().items()}
+                best_state = {
+                    key: value.detach().cpu().clone()
+                    for key, value in module.state_dict().items()
+                }
             else:
                 stale_epochs += 1
             if (epoch + 1) >= min_epochs and stale_epochs >= patience:
@@ -774,12 +963,16 @@ class DummyHARHarness:
         elif model["kind"] == "torch":
             assert self._torch is not None
             with self._torch.no_grad():
-                tensor = self._torch.tensor(features, dtype=self._torch.float32).unsqueeze(0)
+                tensor = self._torch.tensor(
+                    features, dtype=self._torch.float32
+                ).unsqueeze(0)
                 logits = model["module"](tensor).squeeze(0).tolist()
         else:
             hidden_state = features
             for layer in model["hidden_layers"]:
-                hidden_state = [math.tanh(self._dot(weight, hidden_state)) for weight in layer]
+                hidden_state = [
+                    math.tanh(self._dot(weight, hidden_state)) for weight in layer
+                ]
             logits = [self._dot(weight, hidden_state) for weight in model["output"]]
         return max(range(len(logits)), key=lambda index: logits[index])
 
@@ -826,7 +1019,9 @@ class DummyHARHarness:
                 stop_labels.append(label)
         return train_features, train_labels, stop_features, stop_labels
 
-    def _temporal_pool_features(self, window: list[list[float]], mode: str) -> list[float]:
+    def _temporal_pool_features(
+        self, window: list[list[float]], mode: str
+    ) -> list[float]:
         channels = len(window[0])
         if mode == "attention":
             return self._attention_pool_features(window, 0.75)
@@ -838,14 +1033,17 @@ class DummyHARHarness:
             for c in range(channels)
         ]
         second_half = [
-            sum(window[i][c] for i in range(midpoint, len(window))) / max(len(window) - midpoint, 1)
+            sum(window[i][c] for i in range(midpoint, len(window)))
+            / max(len(window) - midpoint, 1)
             for c in range(channels)
         ]
         if mode == "concat":
             return first_half + second_half
         return [0.5 * (first_half[c] + second_half[c]) for c in range(channels)]
 
-    def _attention_pool_features(self, window: list[list[float]], attention_mix: float) -> list[float]:
+    def _attention_pool_features(
+        self, window: list[list[float]], attention_mix: float
+    ) -> list[float]:
         channels = len(window[0])
         energies = [sum(value * value for value in row) for row in window]
         temperature = max(1e-4, 1.0 - (0.5 * attention_mix))
@@ -858,13 +1056,19 @@ class DummyHARHarness:
             sum(weight * row[channel] for weight, row in zip(normalized, window))
             for channel in range(channels)
         ]
-        mean_pool = [sum(row[channel] for row in window) / len(window) for channel in range(channels)]
+        mean_pool = [
+            sum(row[channel] for row in window) / len(window)
+            for channel in range(channels)
+        ]
         return [
-            ((1.0 - attention_mix) * mean_pool[channel]) + (attention_mix * attention[channel])
+            ((1.0 - attention_mix) * mean_pool[channel])
+            + (attention_mix * attention[channel])
             for channel in range(channels)
         ]
 
-    def _spectral_features(self, window: list[list[float]], spectral_bins: int) -> list[float]:
+    def _spectral_features(
+        self, window: list[list[float]], spectral_bins: int
+    ) -> list[float]:
         channels = len(window[0])
         bins = max(2, min(spectral_bins, max(2, len(window) // 8)))
         features: list[float] = []
@@ -878,7 +1082,9 @@ class DummyHARHarness:
                     angle = (2.0 * math.pi * k * index) / len(signal)
                     real += value * math.cos(angle)
                     imag -= value * math.sin(angle)
-                channel_features.append(math.sqrt((real * real) + (imag * imag)) / len(signal))
+                channel_features.append(
+                    math.sqrt((real * real) + (imag * imag)) / len(signal)
+                )
             features.extend(channel_features)
         return features
 
@@ -935,18 +1141,26 @@ class DummyHARHarness:
     def _saliency_features(self, window: list[list[float]]) -> list[float]:
         channels = len(window[0])
         motion = [
-            sum(abs(window[index][channel] - window[index - 1][channel]) for channel in range(channels))
+            sum(
+                abs(window[index][channel] - window[index - 1][channel])
+                for channel in range(channels)
+            )
             for index in range(1, len(window))
         ]
         if not motion:
             return [0.0 for _ in range(channels * 2)]
-        top_indices = sorted(range(len(motion)), key=lambda index: motion[index], reverse=True)[: max(2, len(motion) // 8)]
+        top_indices = sorted(
+            range(len(motion)), key=lambda index: motion[index], reverse=True
+        )[: max(2, len(motion) // 8)]
         salient_rows = [window[index + 1] for index in top_indices]
         pooled = [
             sum(row[channel] for row in salient_rows) / len(salient_rows)
             for channel in range(channels)
         ]
-        peak = [max(abs(row[channel]) for row in salient_rows) for channel in range(channels)]
+        peak = [
+            max(abs(row[channel]) for row in salient_rows)
+            for channel in range(channels)
+        ]
         return pooled + peak
 
     def _interaction_features(self, window: list[list[float]]) -> list[float]:
@@ -960,7 +1174,9 @@ class DummyHARHarness:
         return interactions
 
     def _dot(self, weight: list[float], features: list[float]) -> float:
-        return sum(coef * value for coef, value in zip(weight[:-1], features)) + weight[-1]
+        return (
+            sum(coef * value for coef, value in zip(weight[:-1], features)) + weight[-1]
+        )
 
     def _softmax(self, logits: list[float]) -> list[float]:
         max_logit = max(logits)
@@ -969,7 +1185,9 @@ class DummyHARHarness:
         return [value / total for value in exps]
 
     def _accuracy(self, predictions: list[int], labels: list[int]) -> float:
-        correct = sum(int(prediction == label) for prediction, label in zip(predictions, labels))
+        correct = sum(
+            int(prediction == label) for prediction, label in zip(predictions, labels)
+        )
         return correct / max(len(labels), 1)
 
     def _macro_f1(self, predictions: list[int], labels: list[int]) -> float:
@@ -995,7 +1213,9 @@ class DummyHARHarness:
                 scores.append((2.0 * precision * recall) / (precision + recall))
         return sum(scores) / len(scores)
 
-    def _per_class_f1(self, predictions: list[int], labels: list[int]) -> dict[str, float]:
+    def _per_class_f1(
+        self, predictions: list[int], labels: list[int]
+    ) -> dict[str, float]:
         scores: dict[str, float] = {}
         for class_index, label_name in enumerate(self.LABELS):
             tp = sum(
@@ -1012,11 +1232,17 @@ class DummyHARHarness:
             )
             precision = tp / max(tp + fp, 1)
             recall = tp / max(tp + fn, 1)
-            score = 0.0 if precision + recall == 0 else (2.0 * precision * recall) / (precision + recall)
+            score = (
+                0.0
+                if precision + recall == 0
+                else (2.0 * precision * recall) / (precision + recall)
+            )
             scores[label_name] = round(score, 4)
         return scores
 
-    def _confusion_matrix(self, predictions: list[int], labels: list[int]) -> list[list[int]]:
+    def _confusion_matrix(
+        self, predictions: list[int], labels: list[int]
+    ) -> list[list[int]]:
         matrix = [[0 for _ in self.LABELS] for _ in self.LABELS]
         for prediction, label in zip(predictions, labels):
             matrix[label][prediction] += 1

@@ -5,6 +5,7 @@ import os
 import re
 from dataclasses import asdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 try:
     from openai import OpenAI
@@ -19,6 +20,9 @@ from autohar_researcher.types import (
     ProposalJudgment,
 )
 from autohar_researcher.datasets import UCIHARDataset
+
+if TYPE_CHECKING:
+    from autohar_researcher.heuristic_planner import HeuristicPlanner
 
 
 def load_local_env(path: Path | None = None) -> None:
@@ -116,7 +120,9 @@ class OpenAIPlanner:
         )
         hints: dict[str, object] = {
             "model_agent": self._plan_model_agent(context, orchestrator_plan),
-            "augmentation_agent": self._plan_augmentation_agent(context, orchestrator_plan),
+            "augmentation_agent": self._plan_augmentation_agent(
+                context, orchestrator_plan
+            ),
             "data_agent": self._plan_data_agent(context, orchestrator_plan),
         }
         agent_memories = context["agent_memories"]
@@ -184,7 +190,9 @@ class OpenAIPlanner:
         )
         payload = self._relax_judgments(context=context, payload=payload)
         return {
-            agent_name: ProposalJudgment(agent_name=agent_name, **dict(judgment_payload))
+            agent_name: ProposalJudgment(
+                agent_name=agent_name, **dict(judgment_payload)
+            )
             for agent_name, judgment_payload in payload.items()
         }
 
@@ -233,16 +241,28 @@ class OpenAIPlanner:
             "trend_summary": trend_summary,
             "recent_trials": recent_trials,
             "accepted_history": accepted,
-            "exploration_pressure": self._exploration_pressure_summary(best_result, history, accepted_history),
-            "combination_memory": self._combination_memory_summary(history, accepted_history),
+            "exploration_pressure": self._exploration_pressure_summary(
+                best_result, history, accepted_history
+            ),
+            "combination_memory": self._combination_memory_summary(
+                history, accepted_history
+            ),
             "agent_memories": {
-                "model_agent": self._agent_memory_summary("model_agent", history, accepted_history),
-                "augmentation_agent": self._agent_memory_summary("augmentation_agent", history, accepted_history),
-                "data_agent": self._agent_memory_summary("data_agent", history, accepted_history),
+                "model_agent": self._agent_memory_summary(
+                    "model_agent", history, accepted_history
+                ),
+                "augmentation_agent": self._agent_memory_summary(
+                    "augmentation_agent", history, accepted_history
+                ),
+                "data_agent": self._agent_memory_summary(
+                    "data_agent", history, accepted_history
+                ),
             },
         }
 
-    def _dataset_metadata(self, best_result: CandidateResult | None) -> dict[str, object]:
+    def _dataset_metadata(
+        self, best_result: CandidateResult | None
+    ) -> dict[str, object]:
         dataset_name = "uci_har"
         if best_result is not None:
             # Future-proofing for multi-dataset support if config later carries dataset name differently.
@@ -333,7 +353,7 @@ class OpenAIPlanner:
             "That function must return only a dict of model param overrides or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            "`{\"model\": {\"name\": ..., \"learning_rate\": ..., \"params\": {...}}}`. Use exact keys `name` and `learning_rate`. "
+            '`{"model": {"name": ..., "learning_rate": ..., "params": {...}}}`. Use exact keys `name` and `learning_rate`. '
             "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
             "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned model updates. "
@@ -375,7 +395,15 @@ class OpenAIPlanner:
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
             },
-            "required": ["model_name", "learning_rate", "model_params", "rationale", "logic_expression", "helper_code", "function_rewrite"],
+            "required": [
+                "model_name",
+                "learning_rate",
+                "model_params",
+                "rationale",
+                "logic_expression",
+                "helper_code",
+                "function_rewrite",
+            ],
         }
         payload = self._call_json_schema(
             name="autohar_model_agent_plan",
@@ -389,7 +417,9 @@ class OpenAIPlanner:
             round_id=int(context["round_id"]),
             payload=payload,
         )
-        payload = self._finalize_model_payload(payload=payload, original_payload=original_payload)
+        payload = self._finalize_model_payload(
+            payload=payload, original_payload=original_payload
+        )
         return ModelPlanHint(**payload)
 
     def _plan_augmentation_agent(
@@ -431,7 +461,7 @@ class OpenAIPlanner:
             "That function must return only a dict of augmentation param overrides or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            "`{\"augmentation\": {\"name\": ..., \"strength\": ...}}`. Use exact keys `name` and `strength`. "
+            '`{"augmentation": {"name": ..., "strength": ...}}`. Use exact keys `name` and `strength`. '
             "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
             "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned augmentation updates. "
@@ -451,7 +481,14 @@ class OpenAIPlanner:
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
             },
-            "required": ["augmentation", "strength", "rationale", "logic_expression", "helper_code", "function_rewrite"],
+            "required": [
+                "augmentation",
+                "strength",
+                "rationale",
+                "logic_expression",
+                "helper_code",
+                "function_rewrite",
+            ],
         }
         payload = self._call_json_schema(
             name="autohar_augmentation_agent_plan",
@@ -465,8 +502,12 @@ class OpenAIPlanner:
             round_id=int(context["round_id"]),
             payload=payload,
         )
-        payload = self._reconcile_augmentation_logic(payload=payload, original_payload=original_payload)
-        payload = self._finalize_augmentation_payload(payload=payload, original_payload=original_payload)
+        payload = self._reconcile_augmentation_logic(
+            payload=payload, original_payload=original_payload
+        )
+        payload = self._finalize_augmentation_payload(
+            payload=payload, original_payload=original_payload
+        )
         return AugmentationPlanHint(**payload)
 
     def _plan_data_agent(
@@ -508,7 +549,7 @@ class OpenAIPlanner:
             "That function must return only a dict of data param overrides or `None` to fall back.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            "`{\"data\": {\"preprocessing\": ..., \"window_size\": ...}}`. Use exact keys `preprocessing` and `window_size`. "
+            '`{"data": {"preprocessing": ..., "window_size": ...}}`. Use exact keys `preprocessing` and `window_size`. '
             "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
             "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
             "`llm_choose_patch(base_experiment, config)` function. That function must return only owned data updates. "
@@ -528,7 +569,14 @@ class OpenAIPlanner:
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
             },
-            "required": ["preprocessing", "window_size", "rationale", "logic_expression", "helper_code", "function_rewrite"],
+            "required": [
+                "preprocessing",
+                "window_size",
+                "rationale",
+                "logic_expression",
+                "helper_code",
+                "function_rewrite",
+            ],
         }
         payload = self._call_json_schema(
             name="autohar_data_agent_plan",
@@ -542,8 +590,12 @@ class OpenAIPlanner:
             round_id=int(context["round_id"]),
             payload=payload,
         )
-        payload = self._reconcile_data_logic(payload=payload, original_payload=original_payload)
-        payload = self._finalize_data_payload(payload=payload, original_payload=original_payload)
+        payload = self._reconcile_data_logic(
+            payload=payload, original_payload=original_payload
+        )
+        payload = self._finalize_data_payload(
+            payload=payload, original_payload=original_payload
+        )
         return DataPlanHint(**payload)
 
     def _call_json_schema(
@@ -629,34 +681,56 @@ class OpenAIPlanner:
 
     def _client_for_role(self, role: str) -> tuple[OpenAI, str, str]:
         role_key = self.ROLE_KEYS.get(role, role.upper())
-        backend = os.getenv(f"AUTOHAR_{role_key}_BACKEND", os.getenv("AUTOHAR_LLM_BACKEND", "openai")).strip().lower()
+        backend = (
+            os.getenv(
+                f"AUTOHAR_{role_key}_BACKEND",
+                os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
+            )
+            .strip()
+            .lower()
+        )
         if backend == "lmstudio":
             model_name = os.getenv(
                 f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
-                os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model)),
+                os.getenv(
+                    f"AUTOHAR_{role_key}_MODEL",
+                    os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model),
+                ),
             )
             base_url = os.getenv(
                 f"AUTOHAR_LMSTUDIO_{role_key}_BASE_URL",
                 os.getenv(
                     f"AUTOHAR_{role_key}_BASE_URL",
-                os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+                    os.getenv(
+                        "AUTOHAR_LLM_BASE_URL",
+                        self.base_url or "http://127.0.0.1:1234/v1",
+                    ),
                 ),
             )
             api_key = os.getenv(
                 f"AUTOHAR_LMSTUDIO_{role_key}_API_KEY",
                 os.getenv(
                     f"AUTOHAR_{role_key}_API_KEY",
-                    os.getenv("AUTOHAR_LLM_API_KEY", self.default_api_key or "lm-studio"),
+                    os.getenv(
+                        "AUTOHAR_LLM_API_KEY", self.default_api_key or "lm-studio"
+                    ),
                 ),
             )
-            api_mode = os.getenv(
-                f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
-                os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
-            ).strip().lower()
+            api_mode = (
+                os.getenv(
+                    f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
+                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
+                )
+                .strip()
+                .lower()
+            )
         else:
             model_name = os.getenv(
                 f"AUTOHAR_OPENAI_{role_key}_MODEL",
-                os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_OPENAI_MODEL", self.model)),
+                os.getenv(
+                    f"AUTOHAR_{role_key}_MODEL",
+                    os.getenv("AUTOHAR_OPENAI_MODEL", self.model),
+                ),
             )
             base_url = os.getenv(
                 f"AUTOHAR_OPENAI_{role_key}_BASE_URL",
@@ -669,10 +743,14 @@ class OpenAIPlanner:
                     self.default_api_key or os.getenv("OPENAI_API_KEY", ""),
                 ),
             )
-            api_mode = os.getenv(
-                f"AUTOHAR_OPENAI_{role_key}_API_MODE",
-                os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
-            ).strip().lower()
+            api_mode = (
+                os.getenv(
+                    f"AUTOHAR_OPENAI_{role_key}_API_MODE",
+                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
+                )
+                .strip()
+                .lower()
+            )
 
         cache_key = (backend, base_url, api_key, api_mode)
         client = self._client_cache.get(cache_key)
@@ -688,41 +766,68 @@ class OpenAIPlanner:
 
     def role_runtime_summary(self) -> dict[str, dict[str, str]]:
         summary: dict[str, dict[str, str]] = {}
-        for role in ("orchestrator", "model_agent", "augmentation_agent", "data_agent", "judge"):
+        for role in (
+            "orchestrator",
+            "model_agent",
+            "augmentation_agent",
+            "data_agent",
+            "judge",
+        ):
             role_key = self.ROLE_KEYS.get(role, role.upper())
-            backend = os.getenv(
-                f"AUTOHAR_{role_key}_BACKEND",
-                os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
-            ).strip().lower()
+            backend = (
+                os.getenv(
+                    f"AUTOHAR_{role_key}_BACKEND",
+                    os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
+                )
+                .strip()
+                .lower()
+            )
             if backend == "lmstudio":
                 model_name = os.getenv(
                     f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
-                    os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model)),
+                    os.getenv(
+                        f"AUTOHAR_{role_key}_MODEL",
+                        os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model),
+                    ),
                 )
                 base_url = os.getenv(
                     f"AUTOHAR_LMSTUDIO_{role_key}_BASE_URL",
                     os.getenv(
                         f"AUTOHAR_{role_key}_BASE_URL",
-                        os.getenv("AUTOHAR_LLM_BASE_URL", self.base_url or "http://127.0.0.1:1234/v1"),
+                        os.getenv(
+                            "AUTOHAR_LLM_BASE_URL",
+                            self.base_url or "http://127.0.0.1:1234/v1",
+                        ),
                     ),
                 )
-                api_mode = os.getenv(
-                    f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
-                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
-                ).strip().lower()
+                api_mode = (
+                    os.getenv(
+                        f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
+                        os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
+                    )
+                    .strip()
+                    .lower()
+                )
             else:
                 model_name = os.getenv(
                     f"AUTOHAR_OPENAI_{role_key}_MODEL",
-                    os.getenv(f"AUTOHAR_{role_key}_MODEL", os.getenv("AUTOHAR_OPENAI_MODEL", self.model)),
+                    os.getenv(
+                        f"AUTOHAR_{role_key}_MODEL",
+                        os.getenv("AUTOHAR_OPENAI_MODEL", self.model),
+                    ),
                 )
                 base_url = os.getenv(
                     f"AUTOHAR_OPENAI_{role_key}_BASE_URL",
                     os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or ""),
                 )
-                api_mode = os.getenv(
-                    f"AUTOHAR_OPENAI_{role_key}_API_MODE",
-                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
-                ).strip().lower()
+                api_mode = (
+                    os.getenv(
+                        f"AUTOHAR_OPENAI_{role_key}_API_MODE",
+                        os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
+                    )
+                    .strip()
+                    .lower()
+                )
             summary[role] = {
                 "backend": backend,
                 "model": model_name,
@@ -762,7 +867,11 @@ class OpenAIPlanner:
             }
         from dataclasses import asdict
 
-        return asdict(proposal) if hasattr(proposal, "__dataclass_fields__") else {"raw": str(proposal)}
+        return (
+            asdict(proposal)
+            if hasattr(proposal, "__dataclass_fields__")
+            else {"raw": str(proposal)}
+        )
 
     def _judgment_schema(self) -> dict[str, object]:
         return {
@@ -789,9 +898,13 @@ class OpenAIPlanner:
     def _load_guides(self) -> dict[str, str]:
         guide_root = Path.cwd() / "agent_guides"
         return {
-            "orchestrator": (guide_root / "orchestrator.md").read_text(encoding="utf-8"),
+            "orchestrator": (guide_root / "orchestrator.md").read_text(
+                encoding="utf-8"
+            ),
             "model_agent": (guide_root / "model_agent.md").read_text(encoding="utf-8"),
-            "augmentation_agent": (guide_root / "augmentation_agent.md").read_text(encoding="utf-8"),
+            "augmentation_agent": (guide_root / "augmentation_agent.md").read_text(
+                encoding="utf-8"
+            ),
             "data_agent": (guide_root / "data_agent.md").read_text(encoding="utf-8"),
         }
 
@@ -806,7 +919,11 @@ class OpenAIPlanner:
         if recent:
             agent_names = sorted({result.agent_name for result in recent})
             for agent_name in agent_names:
-                scores = [result.val_score for result in recent if result.agent_name == agent_name]
+                scores = [
+                    result.val_score
+                    for result in recent
+                    if result.agent_name == agent_name
+                ]
                 best_by_agent[agent_name] = round(max(scores), 4)
                 avg_by_agent[agent_name] = round(sum(scores) / len(scores), 4)
         plateau = False
@@ -814,7 +931,9 @@ class OpenAIPlanner:
             recent_accepts = [result.val_score for result in accepted_history[-3:]]
             plateau = max(recent_accepts) - min(recent_accepts) < 0.01
         latest_round = max((result.round_id for result in history), default=0)
-        last_accept_round = max((result.round_id for result in accepted_history), default=0)
+        last_accept_round = max(
+            (result.round_id for result in accepted_history), default=0
+        )
         stagnation_rounds = max(0, latest_round - last_accept_round)
         return {
             "recent_best_by_agent": best_by_agent,
@@ -844,14 +963,22 @@ class OpenAIPlanner:
         for result in history:
             round_groups.setdefault(result.round_id, []).append(result)
             if result.agent_name == "orchestrator":
-                label = str(result.artifact_paths.get("selected_combination", "model+augmentation+data"))
+                label = str(
+                    result.artifact_paths.get(
+                        "selected_combination", "model+augmentation+data"
+                    )
+                )
             else:
                 label = result.agent_name
             if label in by_label:
                 by_label[label].append(result.val_score)
         for result in accepted_history:
             if result.agent_name == "orchestrator":
-                label = str(result.artifact_paths.get("selected_combination", "model+augmentation+data"))
+                label = str(
+                    result.artifact_paths.get(
+                        "selected_combination", "model+augmentation+data"
+                    )
+                )
             else:
                 label = result.agent_name
             if label in accepted_by_label:
@@ -860,22 +987,34 @@ class OpenAIPlanner:
             "model+augmentation": ["model_agent", "augmentation_agent"],
             "model+data": ["model_agent", "data_agent"],
             "augmentation+data": ["augmentation_agent", "data_agent"],
-            "model+augmentation+data": ["model_agent", "augmentation_agent", "data_agent"],
+            "model+augmentation+data": [
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+            ],
         }
         for round_id, round_results in round_groups.items():
             singles = {
                 result.agent_name: result.val_score
                 for result in round_results
-                if result.agent_name in {"model_agent", "augmentation_agent", "data_agent"}
+                if result.agent_name
+                in {"model_agent", "augmentation_agent", "data_agent"}
             }
             for result in round_results:
                 if result.agent_name != "orchestrator":
                     continue
-                label = str(result.artifact_paths.get("selected_combination", "model+augmentation+data"))
+                label = str(
+                    result.artifact_paths.get(
+                        "selected_combination", "model+augmentation+data"
+                    )
+                )
                 included = included_map.get(label)
                 if not included:
                     continue
-                component_best = max((singles.get(name, float("-inf")) for name in included), default=float("-inf"))
+                component_best = max(
+                    (singles.get(name, float("-inf")) for name in included),
+                    default=float("-inf"),
+                )
                 if component_best == float("-inf"):
                     continue
                 synergy_records.append(
@@ -888,9 +1027,7 @@ class OpenAIPlanner:
                     }
                 )
         recent_best = {
-            label: round(max(scores), 4)
-            for label, scores in by_label.items()
-            if scores
+            label: round(max(scores), 4) for label, scores in by_label.items() if scores
         }
         recent_avg = {
             label: round(sum(scores) / len(scores), 4)
@@ -902,10 +1039,15 @@ class OpenAIPlanner:
             for label, scores in accepted_by_label.items()
             if scores
         }
-        synergy_sorted = sorted(synergy_records, key=lambda item: item["synergy"], reverse=True)
-        compatible_patterns = [item for item in synergy_sorted if float(item["synergy"]) > 0][:3]
+        synergy_sorted = sorted(
+            synergy_records, key=lambda item: item["synergy"], reverse=True
+        )
+        compatible_patterns = [
+            item for item in synergy_sorted if float(item["synergy"]) > 0
+        ][:3]
         conflicting_patterns = [
-            item for item in sorted(synergy_records, key=lambda item: item["synergy"])
+            item
+            for item in sorted(synergy_records, key=lambda item: item["synergy"])
             if float(item["synergy"]) < 0
         ][:3]
         return {
@@ -918,9 +1060,7 @@ class OpenAIPlanner:
 
     def _rewrite_preference_note(self, round_id: int) -> str:
         if round_id <= 1:
-            return (
-                "In round 1, bounded function rewrites are optional; prefer them only when they add real value.\n"
-            )
+            return "In round 1, bounded function rewrites are optional; prefer them only when they add real value.\n"
         return (
             "For round 2 and later, bounded `function_rewrite` is the preferred specialist path whenever the mutation depends on local reusable logic. "
             "Leave it empty only if the proposal is truly a trivial direct override.\n"
@@ -1009,8 +1149,12 @@ class OpenAIPlanner:
         history: list[CandidateResult],
         accepted_history: list[CandidateResult],
     ) -> dict[str, object]:
-        scoped_history = [result for result in history if result.agent_name == agent_name]
-        accepted_scoped = [result for result in accepted_history if result.agent_name == agent_name]
+        scoped_history = [
+            result for result in history if result.agent_name == agent_name
+        ]
+        accepted_scoped = [
+            result for result in accepted_history if result.agent_name == agent_name
+        ]
         recent_trials = [
             {
                 "round_id": result.round_id,
@@ -1070,10 +1214,16 @@ class OpenAIPlanner:
             recent_accepts = [result.val_score for result in accepted_history[-3:]]
             plateau = max(recent_accepts) - min(recent_accepts) < 0.01
         latest_round = max((result.round_id for result in history), default=0)
-        last_accept_round = max((result.round_id for result in accepted_history), default=0)
+        last_accept_round = max(
+            (result.round_id for result in accepted_history), default=0
+        )
         stagnation_rounds = max(0, latest_round - last_accept_round)
 
-        model_values = [result.config.model_name for result in history if result.agent_name == "model_agent"]
+        model_values = [
+            result.config.model_name
+            for result in history
+            if result.agent_name == "model_agent"
+        ]
         augmentation_values = [
             (result.config.augmentation, result.config.augmentation_strength)
             for result in history
@@ -1113,7 +1263,9 @@ class OpenAIPlanner:
                 depth = int(params.get("depth", 2))
                 params["hidden_dim"] = max(hidden_dim, int(round(hidden_dim * 1.2)))
                 params["depth"] = min(6, depth + 1)
-                params["attention_mix"] = max(0.35, min(0.9, float(params.get("attention_mix", 0.5)) + 0.08))
+                params["attention_mix"] = max(
+                    0.35, min(0.9, float(params.get("attention_mix", 0.5)) + 0.08)
+                )
                 payload["model_params"] = params
                 payload["rationale"] = (
                     f"{payload.get('rationale', '').strip()} "
@@ -1124,7 +1276,9 @@ class OpenAIPlanner:
             return payload
         recent_models = [
             str(item["config"]["model_name"])
-            for item in context["agent_memories"]["model_agent"].get("recent_trials", [])
+            for item in context["agent_memories"]["model_agent"].get(
+                "recent_trials", []
+            )
             if isinstance(item, dict)
         ]
         candidate_order = self.MODEL_FAMILIES
@@ -1132,18 +1286,25 @@ class OpenAIPlanner:
             candidate_order = [
                 candidate
                 for candidate in self.MODEL_FAMILIES
-                if candidate not in {baseline_model, "deepconvlstm", "deepconvlstmattention"}
+                if candidate
+                not in {baseline_model, "deepconvlstm", "deepconvlstmattention"}
             ] + self.MODEL_FAMILIES
         for candidate in candidate_order:
             if candidate != baseline_model and candidate not in recent_models[-3:]:
                 payload["model_name"] = candidate
                 if stagnation_rounds >= 10:
                     current_params = dict(payload.get("model_params") or {})
-                    current_params["hidden_dim"] = max(int(current_params.get("hidden_dim", 96)), 128)
-                    current_params["depth"] = min(6, max(int(current_params.get("depth", 2)), 3))
+                    current_params["hidden_dim"] = max(
+                        int(current_params.get("hidden_dim", 96)), 128
+                    )
+                    current_params["depth"] = min(
+                        6, max(int(current_params.get("depth", 2)), 3)
+                    )
                     current_params["attention_mix"] = max(
                         0.35,
-                        min(0.9, float(current_params.get("attention_mix", 0.5)) + 0.08),
+                        min(
+                            0.9, float(current_params.get("attention_mix", 0.5)) + 0.08
+                        ),
                     )
                     payload["model_params"] = current_params
                 payload["rationale"] = (
@@ -1165,10 +1326,17 @@ class OpenAIPlanner:
         repeat_streak = int(pressure.get("augmentation_repeat_streak", 0))
         plateau = bool(pressure.get("plateau", False))
         stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
-        current = (str(payload.get("augmentation", "")), str(payload.get("strength", "")))
+        current = (
+            str(payload.get("augmentation", "")),
+            str(payload.get("strength", "")),
+        )
         if current != (baseline_aug, baseline_strength):
             if stagnation_rounds >= 10:
-                payload["strength"] = "medium" if str(payload.get("strength", "")) == "weak" else str(payload.get("strength", "medium"))
+                payload["strength"] = (
+                    "medium"
+                    if str(payload.get("strength", "")) == "weak"
+                    else str(payload.get("strength", "medium"))
+                )
                 payload["rationale"] = (
                     f"{payload.get('rationale', '').strip()} "
                     "[forced real augmentation-family/strength shift after prolonged stagnation]"
@@ -1181,18 +1349,29 @@ class OpenAIPlanner:
                 str(item["config"]["augmentation"]),
                 str(item["config"]["augmentation_strength"]),
             )
-            for item in context["agent_memories"]["augmentation_agent"].get("recent_trials", [])
+            for item in context["agent_memories"]["augmentation_agent"].get(
+                "recent_trials", []
+            )
             if isinstance(item, dict)
         ]
         augmentation_order = self.AUGMENTATIONS
         if stagnation_rounds >= 5:
-            augmentation_order = [aug for aug in self.AUGMENTATIONS if aug not in {baseline_aug, "none"}] + self.AUGMENTATIONS
+            augmentation_order = [
+                aug for aug in self.AUGMENTATIONS if aug not in {baseline_aug, "none"}
+            ] + self.AUGMENTATIONS
         for augmentation in augmentation_order:
             for strength in self.AUGMENTATION_STRENGTHS:
                 candidate = (augmentation, strength)
-                if candidate != (baseline_aug, baseline_strength) and candidate not in recent_values[-3:]:
+                if (
+                    candidate != (baseline_aug, baseline_strength)
+                    and candidate not in recent_values[-3:]
+                ):
                     payload["augmentation"] = augmentation
-                    payload["strength"] = "medium" if stagnation_rounds >= 10 and strength == "weak" else strength
+                    payload["strength"] = (
+                        "medium"
+                        if stagnation_rounds >= 10 and strength == "weak"
+                        else strength
+                    )
                     payload["rationale"] = (
                         f"{payload.get('rationale', '').strip()} "
                         f"[exploration pressure: diversify away from repeated/stagnant baseline augmentation {baseline_aug}:{baseline_strength} -> {augmentation}:{strength}]"
@@ -1212,10 +1391,17 @@ class OpenAIPlanner:
         repeat_streak = int(pressure.get("data_repeat_streak", 0))
         plateau = bool(pressure.get("plateau", False))
         stagnation_rounds = int(pressure.get("stagnation_rounds", 0))
-        current = (str(payload.get("preprocessing", "")), int(payload.get("window_size", 128)))
+        current = (
+            str(payload.get("preprocessing", "")),
+            int(payload.get("window_size", 128)),
+        )
         if current != (baseline_pre, baseline_window):
             if stagnation_rounds >= 10:
-                payload["window_size"] = 192 if int(payload.get("window_size", 128)) == baseline_window else int(payload.get("window_size", 128))
+                payload["window_size"] = (
+                    192
+                    if int(payload.get("window_size", 128)) == baseline_window
+                    else int(payload.get("window_size", 128))
+                )
                 payload["rationale"] = (
                     f"{payload.get('rationale', '').strip()} "
                     "[forced larger data-regime shift after prolonged stagnation]"
@@ -1234,14 +1420,25 @@ class OpenAIPlanner:
         preprocessing_order = self.PREPROCESSING_MODES
         window_order = self.WINDOW_SIZES
         if stagnation_rounds >= 5:
-            preprocessing_order = [mode for mode in self.PREPROCESSING_MODES if mode != baseline_pre] + self.PREPROCESSING_MODES
-            window_order = [size for size in self.WINDOW_SIZES if size != baseline_window] + self.WINDOW_SIZES
+            preprocessing_order = [
+                mode for mode in self.PREPROCESSING_MODES if mode != baseline_pre
+            ] + self.PREPROCESSING_MODES
+            window_order = [
+                size for size in self.WINDOW_SIZES if size != baseline_window
+            ] + self.WINDOW_SIZES
         for preprocessing in preprocessing_order:
             for window_size in window_order:
                 candidate = (preprocessing, window_size)
-                if candidate != (baseline_pre, baseline_window) and candidate not in recent_values[-3:]:
+                if (
+                    candidate != (baseline_pre, baseline_window)
+                    and candidate not in recent_values[-3:]
+                ):
                     payload["preprocessing"] = preprocessing
-                    payload["window_size"] = 192 if stagnation_rounds >= 10 and window_size == baseline_window else window_size
+                    payload["window_size"] = (
+                        192
+                        if stagnation_rounds >= 10 and window_size == baseline_window
+                        else window_size
+                    )
                     payload["rationale"] = (
                         f"{payload.get('rationale', '').strip()} "
                         f"[exploration pressure: diversify away from repeated/stagnant baseline data setting {baseline_pre}:{baseline_window} -> {preprocessing}:{window_size}]"
@@ -1287,7 +1484,11 @@ class OpenAIPlanner:
             novelty = str(judgment.get("novelty", "medium"))
             if plausibility != "low" and compatibility != "low":
                 judgment["evaluate_now"] = True
-            if stagnation_rounds >= 10 and novelty == "low" and judgment.get("mutation_size") == "small":
+            if (
+                stagnation_rounds >= 10
+                and novelty == "low"
+                and judgment.get("mutation_size") == "small"
+            ):
                 judgment["mutation_size"] = "medium"
                 judgment["rationale"] = (
                     f"{str(judgment.get('rationale', '')).strip()} "
@@ -1304,12 +1505,16 @@ class OpenAIPlanner:
         params = dict(payload.get("model_params") or {})
         original_model = str(original_payload.get("model_name", ""))
         final_model = str(payload.get("model_name", ""))
-        original_lr = float(original_payload.get("learning_rate", payload.get("learning_rate", 0.0)))
+        original_lr = float(
+            original_payload.get("learning_rate", payload.get("learning_rate", 0.0))
+        )
         final_lr = float(payload.get("learning_rate", original_lr))
         tags = self._extract_rationale_tags(str(payload.get("rationale", "")))
         change_note = ""
         if final_model != original_model or abs(final_lr - original_lr) > 1e-12:
-            change_note = f" postprocessed from {original_model or 'unknown'}@{original_lr:.5g}."
+            change_note = (
+                f" postprocessed from {original_model or 'unknown'}@{original_lr:.5g}."
+            )
         payload["rationale"] = (
             f"Final model proposal: target {final_model} at lr={final_lr:.5g}; "
             f"hidden_dim={int(params.get('hidden_dim', 0))}, depth={int(params.get('depth', 0))}, "
@@ -1349,13 +1554,17 @@ class OpenAIPlanner:
         original_payload: dict[str, object],
     ) -> dict[str, object]:
         original_pre = str(original_payload.get("preprocessing", ""))
-        original_window = int(original_payload.get("window_size", payload.get("window_size", 128)))
+        original_window = int(
+            original_payload.get("window_size", payload.get("window_size", 128))
+        )
         final_pre = str(payload.get("preprocessing", ""))
         final_window = int(payload.get("window_size", original_window))
         tags = self._extract_rationale_tags(str(payload.get("rationale", "")))
         change_note = ""
         if (final_pre, final_window) != (original_pre, original_window):
-            change_note = f" postprocessed from {original_pre or 'unknown'}:{original_window}."
+            change_note = (
+                f" postprocessed from {original_pre or 'unknown'}:{original_window}."
+            )
         payload["rationale"] = (
             f"Final data proposal: target preprocessing={final_pre}, window={final_window}."
             f"{change_note}"
@@ -1382,7 +1591,9 @@ class OpenAIPlanner:
         function_rewrite = str(payload.get("function_rewrite", ""))
         helper_code = str(payload.get("helper_code", ""))
         logic_expression = str(payload.get("logic_expression", ""))
-        combined = " ".join([function_rewrite.lower(), helper_code.lower(), logic_expression.lower()])
+        combined = " ".join(
+            [function_rewrite.lower(), helper_code.lower(), logic_expression.lower()]
+        )
         if original_aug and original_aug in combined and final_aug not in combined:
             payload["logic_expression"] = ""
             payload["helper_code"] = ""
@@ -1396,7 +1607,9 @@ class OpenAIPlanner:
         original_payload: dict[str, object],
     ) -> dict[str, object]:
         final_pre = str(payload.get("preprocessing", "")).strip().lower()
-        final_window = int(payload.get("window_size", original_payload.get("window_size", 128)))
+        final_window = int(
+            payload.get("window_size", original_payload.get("window_size", 128))
+        )
         original_pre = str(original_payload.get("preprocessing", "")).strip().lower()
         original_window = int(original_payload.get("window_size", final_window))
         if (final_pre, final_window) == (original_pre, original_window):
@@ -1404,9 +1617,15 @@ class OpenAIPlanner:
         function_rewrite = str(payload.get("function_rewrite", ""))
         helper_code = str(payload.get("helper_code", ""))
         logic_expression = str(payload.get("logic_expression", ""))
-        combined = " ".join([function_rewrite.lower(), helper_code.lower(), logic_expression.lower()])
-        contradictory_pre = original_pre and original_pre in combined and final_pre not in combined
-        contradictory_window = str(original_window) in combined and str(final_window) not in combined
+        combined = " ".join(
+            [function_rewrite.lower(), helper_code.lower(), logic_expression.lower()]
+        )
+        contradictory_pre = (
+            original_pre and original_pre in combined and final_pre not in combined
+        )
+        contradictory_window = (
+            str(original_window) in combined and str(final_window) not in combined
+        )
         if contradictory_pre or contradictory_window:
             payload["logic_expression"] = ""
             payload["helper_code"] = ""
@@ -1435,14 +1654,13 @@ class OpenAIPlanner:
         return " " + " ".join(unique_tags)
 
 
-def build_planner() -> OpenAIPlanner:
+def build_planner() -> OpenAIPlanner | HeuristicPlanner:
     load_local_env()
     backend = os.getenv("AUTOHAR_LLM_BACKEND", "openai").strip().lower()
-    if OpenAI is None:
-        raise RuntimeError(
-            "The openai Python package is required for planning. "
-            "Install project dependencies first."
-        )
+    allow_fallback = (
+        os.getenv("AUTOHAR_ALLOW_LLM_FALLBACK", "true").strip().lower() == "true"
+    )
+
     if backend == "lmstudio":
         base_url = os.getenv("AUTOHAR_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
         api_key = os.getenv("AUTOHAR_LLM_API_KEY", "lm-studio")
@@ -1454,9 +1672,35 @@ def build_planner() -> OpenAIPlanner:
             planner_name="lmstudio_chat_multiagent",
             api_mode="chat",
         )
+
     if not os.getenv("OPENAI_API_KEY"):
+        if allow_fallback:
+            from autohar_researcher.heuristic_planner import HeuristicPlanner
+
+            print(
+                "[AutoHAR] Warning: No OpenAI API key found. Using heuristic fallback planner."
+            )
+            print(
+                "[AutoHAR] Set OPENAI_API_KEY or AUTOHAR_LLM_BACKEND=lmstudio to use LLM-based planning."
+            )
+            return HeuristicPlanner()
         raise RuntimeError(
             "OPENAI_API_KEY is required for the default OpenAI planner. "
-            "Put it in .autohar.env, export it in your shell, or set AUTOHAR_LLM_BACKEND=lmstudio."
+            "Put it in .autohar.env, export it in your shell, or set AUTOHAR_LLM_BACKEND=lmstudio. "
+            "Or set AUTOHAR_ALLOW_LLM_FALLBACK=true to use heuristic fallback."
         )
+
+    if OpenAI is None:
+        if allow_fallback:
+            from autohar_researcher.heuristic_planner import HeuristicPlanner
+
+            print(
+                "[AutoHAR] Warning: openai package not installed. Using heuristic fallback planner."
+            )
+            return HeuristicPlanner()
+        raise RuntimeError(
+            "The openai Python package is required for planning. "
+            "Install project dependencies or set AUTOHAR_ALLOW_LLM_FALLBACK=true for heuristic fallback."
+        )
+
     return OpenAIPlanner()
