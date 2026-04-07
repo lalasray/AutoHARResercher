@@ -72,6 +72,7 @@ class OpenAIPlanner:
         "drift",
         "permutation",
         "magnitude_warp",
+        "custom",
     ]
     AUGMENTATION_STRENGTHS = ["weak", "medium", "strong"]
     PREPROCESSING_MODES = [
@@ -456,7 +457,7 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"AugmentationAgent local memory:\n{json.dumps(context['agent_memories']['augmentation_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp}.\n"
+            "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp, custom}.\n"
             "Common strengths include {weak, medium, strong}.\n"
             "Treat those labels as anchors for the runtime, not as the main source of expertise. "
             "Put the interesting reasoning into augmentation-side parameter logic, compatibility rules, and bounded rewrites inside the owned module.\n"
@@ -478,6 +479,11 @@ class OpenAIPlanner:
             "`augmentation_params_override(base_experiment, target_name, target_strength, proposed_params, config)` "
             "when you want to rewrite augmentation-parameter compatibility logic itself inside the owned module. "
             "That function must return only a dict of augmentation param overrides or `None` to fall back.\n"
+            "For a genuinely new augmentation algorithm, set `augmentation` to `custom` and define "
+            "`custom_augment_window(window, strength, params, rng)` in `function_rewrite`. "
+            "It may include small helper functions in the same block, must return a window with the same shape, "
+            "and should use only bounded deterministic math/list operations plus `rng.uniform(...)` for randomness. "
+            "If the custom code errors or returns an invalid shape, the harness falls back to the unmodified window.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             '`{"augmentation": {"name": ..., "strength": ...}}`. Use exact keys `name` and `strength`. '

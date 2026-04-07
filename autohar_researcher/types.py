@@ -35,17 +35,6 @@ class CandidateResult:
 
 
 @dataclass(frozen=True)
-class ProposalJudgment:
-    agent_name: str
-    mutation_size: str
-    novelty: str
-    plausibility: str
-    compatibility: str
-    evaluate_now: bool
-    rationale: str = ""
-
-
-@dataclass(frozen=True)
 class FilePatch:
     file_path: str
     content: str

@@ -82,6 +82,7 @@ Stable augmentation-family anchors:
 - `drift`
 - `permutation`
 - `magnitude_warp`
+- `custom`
 
 Stable strength anchors:
 
@@ -90,6 +91,15 @@ Stable strength anchors:
 - `strong`
 
 Those anchors are not the whole point of the search. If the best move is a robustness heuristic, context-sensitive parameter policy, or compatibility rule, express that through owned-module code rather than behaving like a menu picker.
+
+Use `custom` only when a new bounded augmentation algorithm is more appropriate than tuning an existing family. For `custom`, define this function inside `function_rewrite`:
+
+```python
+def custom_augment_window(window, strength, params, rng):
+    ...
+```
+
+It may include small helper functions in the same code block. It must return a window with the same shape as the input, should use only bounded math/list operations plus `rng.uniform(...)` for randomness, and should fall back naturally when uncertain. The harness validates the returned shape and falls back to the original window if the function errors or returns invalid values.
 
 ## What To Optimize
 
@@ -154,6 +164,7 @@ A good proposal:
 - uses owned helper logic when the real novelty is in parameter shaping or context-sensitive robustness rules
 - if helper code is used, it stays short, local, and only affects augmentation-side decisions
 - if parameterization changes are made, they stay plausible for the chosen augmentation family
+- if `custom` is used, the custom function is bounded, shape-preserving, and sensor-realistic
 
 A bad proposal:
 

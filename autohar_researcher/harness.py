@@ -12,6 +12,7 @@ except Exception:  # pragma: no cover - optional dependency path
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
 from autohar_researcher.datasets import UCIHARDataset
+from autohar_researcher.sandbox import sandboxed_namespace
 from autohar_researcher.types import CandidateConfig, CandidateResult
 
 
@@ -23,6 +24,7 @@ class DummyHARHarness:
     def __init__(self) -> None:
         self._dataset: UCIHARDataset | None = None
         self._evaluation_cache: dict[tuple[object, ...], dict[str, object]] = {}
+        self._custom_augmentation_cache: dict[str, object | None] = {}
         self._torch = torch
 
     def runtime_backend_summary(self) -> str:
@@ -351,6 +353,13 @@ class DummyHARHarness:
         }.get(strength, 1.0)
         if mode == "none":
             return augmented
+        if mode == "custom":
+            return self._custom_augment(
+                augmented,
+                strength=strength,
+                params=params,
+                rng=rng,
+            )
         if mode == "jitter":
             radius = float(params.get("jitter_std", 0.02 * strength_scale))
             return [
@@ -455,6 +464,62 @@ class DummyHARHarness:
                 )
             return mixed
         return augmented
+
+    def _custom_augment(
+        self,
+        window: list[list[float]],
+        strength: str,
+        params: dict[str, float | int | str],
+        rng: random.Random,
+    ) -> list[list[float]]:
+        custom_code = str(params.get("custom_code", "")).strip()
+        if not custom_code:
+            return [row[:] for row in window]
+        augment_fn = self._custom_augmentation_callable(custom_code)
+        if not callable(augment_fn):
+            return [row[:] for row in window]
+        safe_params = {
+            key: value for key, value in params.items() if key != "custom_code"
+        }
+        try:
+            result = augment_fn(
+                [row[:] for row in window],
+                str(strength),
+                dict(safe_params),
+                rng,
+            )
+        except Exception:  # noqa: BLE001
+            return [row[:] for row in window]
+        return self._validated_custom_window(result, window)
+
+    def _custom_augmentation_callable(self, custom_code: str) -> object | None:
+        if custom_code not in self._custom_augmentation_cache:
+            namespace = sandboxed_namespace(custom_code) or {}
+            candidate = namespace.get("custom_augment_window")
+            self._custom_augmentation_cache[custom_code] = (
+                candidate if callable(candidate) else None
+            )
+        return self._custom_augmentation_cache[custom_code]
+
+    def _validated_custom_window(
+        self,
+        candidate: object,
+        fallback: list[list[float]],
+    ) -> list[list[float]]:
+        if not isinstance(candidate, list) or len(candidate) != len(fallback):
+            return [row[:] for row in fallback]
+        channel_count = len(fallback[0]) if fallback else 0
+        validated: list[list[float]] = []
+        for row in candidate:
+            if not isinstance(row, list) or len(row) != channel_count:
+                return [fallback_row[:] for fallback_row in fallback]
+            clean_row: list[float] = []
+            for value in row:
+                if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                    return [fallback_row[:] for fallback_row in fallback]
+                clean_row.append(float(value))
+            validated.append(clean_row)
+        return validated
 
     def _extract_features(
         self, window: list[list[float]], config: CandidateConfig

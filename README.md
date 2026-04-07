@@ -88,6 +88,15 @@ agent_guides/            # Agent instructions
 
 Each agent owns one module file. Orchestrator combines them.
 
+AugmentationAgent can also define a bounded custom augmentation algorithm in its owned module by targeting `custom` and providing:
+
+```python
+def custom_augment_window(window, strength, params, rng):
+    ...
+```
+
+The harness validates the output shape and falls back to the original window if the custom function errors or returns invalid values.
+
 ## Results
 
 The main multi-agent loop writes round artifacts and reports under `artifacts/`:

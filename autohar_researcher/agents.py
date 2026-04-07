@@ -169,6 +169,7 @@ class AugmentationAgent:
         "drift",
         "permutation",
         "magnitude_warp",
+        "custom",
     ]
     STRENGTHS = ["weak", "medium", "strong"]
 

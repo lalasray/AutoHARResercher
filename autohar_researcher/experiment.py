@@ -74,7 +74,7 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
     return params
 
 
-def default_augmentation_params(name: str, strength: str) -> dict[str, float | int]:
+def default_augmentation_params(name: str, strength: str) -> dict[str, float | int | str]:
     strength_key = strength if strength in {"weak", "medium", "strong"} else "medium"
     strength_scale = {
         "weak": 0.5,
@@ -97,6 +97,8 @@ def default_augmentation_params(name: str, strength: str) -> dict[str, float | i
         return {"warp_span": round(0.15 * strength_scale, 5)}
     if name == "mixup":
         return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}
+    if name == "custom":
+        return {"custom_code": ""}
     return {}
 
 
@@ -438,7 +440,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    return dict(base_experiment.get("augmentation", {}))\n\n'
             "def valid_augmentations() -> list[str]:\n"
             '    """Return supported augmentation families."""\n'
-            '    return ["none", "rotation", "time_warp", "jitter", "mixup", "scaling", "drift", "permutation", "magnitude_warp"]\n\n'
+            '    return ["none", "rotation", "time_warp", "jitter", "mixup", "scaling", "drift", "permutation", "magnitude_warp", "custom"]\n\n'
             "def choose_augmentation_name(base_experiment: dict[str, object], requested_name: str) -> str:\n"
             '    """Apply simple compatibility heuristics for augmentation selection."""\n'
             "    valid = valid_augmentations()\n"
@@ -475,6 +477,8 @@ def _module_patch_builder(agent_name: str) -> str:
             '        return {"warp_span": round(0.15 * strength_scale, 5)}\n'
             '    if target_name == "mixup":\n'
             '        return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}\n'
+            '    if target_name == "custom":\n'
+            '        return {"custom_code": LLM_FUNCTION_REWRITE}\n'
             "    return {}\n\n"
             "def compatibility_strength(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str:\n"
             '    """Downshift aggressive augmentation when the baseline context is fragile."""\n'
@@ -568,6 +572,8 @@ def _module_patch_builder(agent_name: str) -> str:
             "    rewritten_params = llm_augmentation_params_override(base_experiment, target_name, target_strength, target_params)\n"
             "    if isinstance(rewritten_params, dict):\n"
             "        target_params.update(rewritten_params)\n"
+            '    if target_name == "custom" and not target_params.get("custom_code"):\n'
+            '        target_params["custom_code"] = LLM_FUNCTION_REWRITE\n'
             "    patch = {\n"
             '        "augmentation": {\n'
             '            "name": target_name,\n'
@@ -584,6 +590,10 @@ def _module_patch_builder(agent_name: str) -> str:
             '            merged_params = dict(patch["augmentation"].get("params", {}))\n'
             '            merged_params.update(adjustments["augmentation"]["params"])\n'
             '            adjustments["augmentation"]["params"] = merged_params\n'
+            '        if adjustments["augmentation"].get("name") == "custom":\n'
+            '            params = adjustments["augmentation"].setdefault("params", {})\n'
+            '            if isinstance(params, dict) and not params.get("custom_code"):\n'
+            '                params["custom_code"] = LLM_FUNCTION_REWRITE\n'
             '        patch["augmentation"].update(adjustments["augmentation"])\n'
             "    return patch\n"
         )
@@ -853,10 +863,13 @@ def apply_augmentation_proposal(
     updated = clone_experiment(experiment)
     updated["augmentation"]["name"] = proposal.augmentation
     updated["augmentation"]["strength"] = proposal.strength
-    updated["augmentation"]["params"] = default_augmentation_params(
+    params = default_augmentation_params(
         proposal.augmentation,
         proposal.strength,
     )
+    if proposal.augmentation == "custom" and proposal.function_rewrite:
+        params["custom_code"] = proposal.function_rewrite
+    updated["augmentation"]["params"] = params
     updated["augmentation"]["notes"] = proposal.notes
     return updated
 
