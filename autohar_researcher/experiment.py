@@ -71,6 +71,15 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
         )
     elif name == "cnn_gru":
         params.update({"hidden_dim": 56, "depth": 2, "temporal_pool": "last"})
+    elif name == "custom":
+        params.update(
+            {
+                "hidden_dim": 64,
+                "depth": 2,
+                "temporal_pool": "avg",
+                "custom_code": "",
+            }
+        )
     return params
 
 
@@ -115,6 +124,8 @@ def default_data_params(
     }
     if preprocessing == "normalized+gravity_filter":
         params["channel_layout"] = "body_acc+gyro"
+    if preprocessing == "custom":
+        params["custom_code"] = ""
     if window_size >= 192:
         params["resample_mode"] = "linear"
     return params
@@ -273,7 +284,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    return dict(base_experiment.get("model", {}))\n\n'
             "def stable_model_families() -> list[str]:\n"
             '    """Return model families that are usually safe early choices."""\n'
-            '    return ["deepconvlstm", "deepconvlstmattention", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tinyhar", "spectra", "tiny_transformer"]\n\n'
+            '    return ["deepconvlstm", "deepconvlstmattention", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tinyhar", "spectra", "tiny_transformer", "custom"]\n\n'
             "def choose_target_name(requested_name: str, baseline_name: str) -> str:\n"
             '    """Prefer valid, stable model families and fall back safely."""\n'
             "    valid = stable_model_families()\n"
@@ -328,6 +339,8 @@ def _module_patch_builder(agent_name: str) -> str:
             '        params.update({"hidden_dim": 56, "depth": 2, "temporal_pool": "concat", "spectral_bins": 10, "use_interactions": False})\n'
             '    elif target_name == "cnn_gru":\n'
             '        params.update({"hidden_dim": 56, "depth": 2, "temporal_pool": "last"})\n'
+            '    elif target_name == "custom":\n'
+            '        params.update({"hidden_dim": 64, "depth": 2, "temporal_pool": "avg", "custom_code": LLM_FUNCTION_REWRITE})\n'
             "    return params\n\n"
             "def strategy_summary(base_experiment: dict[str, object]) -> str:\n"
             '    """Describe the model-side mutation relative to baseline."""\n'
@@ -414,6 +427,8 @@ def _module_patch_builder(agent_name: str) -> str:
             "    rewritten_params = llm_model_params_override(base_experiment, target_name, target_params)\n"
             "    if isinstance(rewritten_params, dict):\n"
             "        target_params.update(rewritten_params)\n"
+            '    if target_name == "custom" and not target_params.get("custom_code"):\n'
+            '        target_params["custom_code"] = LLM_FUNCTION_REWRITE\n'
             "    patch = {\n"
             '        "model": {\n'
             '            "name": target_name,\n'
@@ -430,6 +445,10 @@ def _module_patch_builder(agent_name: str) -> str:
             '            merged_params = dict(patch["model"].get("params", {}))\n'
             '            merged_params.update(adjustments["model"]["params"])\n'
             '            adjustments["model"]["params"] = merged_params\n'
+            '        if adjustments["model"].get("name") == "custom":\n'
+            '            params = adjustments["model"].setdefault("params", {})\n'
+            '            if isinstance(params, dict) and not params.get("custom_code"):\n'
+            '                params["custom_code"] = LLM_FUNCTION_REWRITE\n'
             '        patch["model"].update(adjustments["model"])\n'
             "    return patch\n"
         )
@@ -603,7 +622,7 @@ def _module_patch_builder(agent_name: str) -> str:
         '    return dict(base_experiment.get("data", {}))\n\n'
         "def valid_preprocessing_modes() -> list[str]:\n"
         '    """Return supported preprocessing modes."""\n'
-        '    return ["raw", "normalized", "normalized+gravity_filter", "normalized+magnitude_channels"]\n\n'
+        '    return ["raw", "normalized", "normalized+gravity_filter", "normalized+magnitude_channels", "custom"]\n\n'
         "def nearest_valid_window(requested_window: int) -> int:\n"
         '    """Snap a requested window size to the supported search space."""\n'
         "    valid_windows = [64, 96, 128, 192, 256]\n"
@@ -635,6 +654,8 @@ def _module_patch_builder(agent_name: str) -> str:
         "    }\n"
         '    if target_preprocessing == "normalized+gravity_filter":\n'
         '        params["channel_layout"] = "body_acc+gyro"\n'
+        '    if target_preprocessing == "custom":\n'
+        '        params["custom_code"] = LLM_FUNCTION_REWRITE\n'
         "    if target_window >= 192:\n"
         '        params["resample_mode"] = "linear"\n'
         "    return params\n\n"
@@ -720,6 +741,8 @@ def _module_patch_builder(agent_name: str) -> str:
         "    rewritten_params = llm_data_params_override(base_experiment, target_preprocessing, target_window, target_params)\n"
         "    if isinstance(rewritten_params, dict):\n"
         "        target_params.update(rewritten_params)\n"
+        '    if target_preprocessing == "custom" and not target_params.get("custom_code"):\n'
+        '        target_params["custom_code"] = LLM_FUNCTION_REWRITE\n'
         "    patch = {\n"
         '        "data": {\n'
         '            "preprocessing": target_preprocessing,\n'
@@ -734,6 +757,10 @@ def _module_patch_builder(agent_name: str) -> str:
         '            merged_params = dict(patch["data"].get("params", {}))\n'
         '            merged_params.update(adjustments["data"]["params"])\n'
         '            adjustments["data"]["params"] = merged_params\n'
+        '        if adjustments["data"].get("preprocessing") == "custom":\n'
+        '            params = adjustments["data"].setdefault("params", {})\n'
+        '            if isinstance(params, dict) and not params.get("custom_code"):\n'
+        '                params["custom_code"] = LLM_FUNCTION_REWRITE\n'
         '        patch["data"].update(adjustments["data"])\n'
         "    return patch\n"
     )
@@ -852,6 +879,8 @@ def apply_model_proposal(
         if proposal.model_params
         else default_model_params(proposal.model_name)
     )
+    if proposal.model_name == "custom" and proposal.function_rewrite:
+        updated["model"]["params"]["custom_code"] = proposal.function_rewrite
     updated["model"]["notes"] = proposal.notes
     return updated
 
@@ -881,10 +910,13 @@ def apply_data_proposal(
     updated = clone_experiment(experiment)
     updated["data"]["preprocessing"] = proposal.preprocessing
     updated["data"]["window_size"] = proposal.window_size
-    updated["data"]["params"] = default_data_params(
+    params = default_data_params(
         proposal.preprocessing,
         proposal.window_size,
     )
+    if proposal.preprocessing == "custom" and proposal.function_rewrite:
+        params["custom_code"] = proposal.function_rewrite
+    updated["data"]["params"] = params
     updated["data"]["notes"] = proposal.notes
     return updated
 

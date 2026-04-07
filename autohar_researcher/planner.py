@@ -61,6 +61,7 @@ class OpenAIPlanner:
         "cnn",
         "tiny_transformer",
         "gru",
+        "custom",
     ]
     AUGMENTATIONS = [
         "none",
@@ -80,6 +81,7 @@ class OpenAIPlanner:
         "normalized",
         "normalized+gravity_filter",
         "normalized+magnitude_channels",
+        "custom",
     ]
     WINDOW_SIZES = [64, 96, 128, 192, 256]
 
@@ -331,7 +333,7 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"ModelAgent local memory:\n{json.dumps(context['agent_memories']['model_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Common available model families include {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru}.\n"
+            "Common available model families include {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru, custom}.\n"
             "Treat those families as stable anchors, not as the whole point of the search. "
             "Use them when they fit, but put most of your expertise into model-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, use_multiscale, and attention_mix.\n"
@@ -353,6 +355,11 @@ class OpenAIPlanner:
             "`model_params_override(base_experiment, target_name, proposed_params, config)` "
             "when you want to rewrite model-parameter compatibility logic itself inside the owned module. "
             "That function must return only a dict of model param overrides or `None` to fall back.\n"
+            "For a genuinely new bounded model-side representation, set `model_name` to `custom` and define "
+            "`custom_model_features(window, base_features, params)` in `function_rewrite`. "
+            "It may include small helper functions in the same block, must return a finite numeric feature list, "
+            "and should be deterministic and shape-stable across windows. "
+            "If the custom code errors or returns invalid features, the harness falls back to the standard feature vector.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             '`{"model": {"name": ..., "learning_rate": ..., "params": {...}}}`. Use exact keys `name` and `learning_rate`. '
@@ -568,7 +575,7 @@ class OpenAIPlanner:
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"DataAgent local memory:\n{json.dumps(context['agent_memories']['data_agent'], indent=2)}\n\n"
             f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Common stable preprocessing regimes include {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels}.\n"
+            "Common stable preprocessing regimes include {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels, custom}.\n"
             "Common stable window sizes include {64, 96, 128, 192, 256}.\n"
             "Treat those settings as anchors for the runtime, not as the whole search space. "
             "Put the interesting reasoning into data-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
@@ -590,6 +597,11 @@ class OpenAIPlanner:
             "`data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config)` "
             "when you want to rewrite data-parameter compatibility logic itself inside the owned module. "
             "That function must return only a dict of data param overrides or `None` to fall back.\n"
+            "For a genuinely new bounded preprocessing transform, set `preprocessing` to `custom` and define "
+            "`custom_prepare_window(window, params)` in `function_rewrite`. "
+            "It may include small helper functions in the same block, must return a finite numeric window with the same shape, "
+            "and should preserve label semantics. "
+            "If the custom code errors or returns an invalid shape, the harness falls back to the standard preprocessed window.\n"
             "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
             "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
             '`{"data": {"preprocessing": ..., "window_size": ...}}`. Use exact keys `preprocessing` and `window_size`. '

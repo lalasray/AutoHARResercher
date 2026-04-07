@@ -25,6 +25,8 @@ class DummyHARHarness:
         self._dataset: UCIHARDataset | None = None
         self._evaluation_cache: dict[tuple[object, ...], dict[str, object]] = {}
         self._custom_augmentation_cache: dict[str, object | None] = {}
+        self._custom_model_feature_cache: dict[str, object | None] = {}
+        self._custom_data_cache: dict[str, object | None] = {}
         self._torch = torch
 
     def runtime_backend_summary(self) -> str:
@@ -293,6 +295,8 @@ class DummyHARHarness:
         params: dict[str, float | int | str | bool],
     ) -> list[list[float]]:
         processed = [row[:] for row in window]
+        if mode == "custom":
+            return self._custom_prepare_window(processed, params)
         if bool(
             params.get(
                 "normalize",
@@ -324,6 +328,35 @@ class DummyHARHarness:
                 extended.append(row + [accel_mag, gyro_mag])
             processed = extended
         return processed
+
+    def _custom_prepare_window(
+        self,
+        window: list[list[float]],
+        params: dict[str, float | int | str | bool],
+    ) -> list[list[float]]:
+        custom_code = str(params.get("custom_code", "")).strip()
+        if not custom_code:
+            return [row[:] for row in window]
+        prepare_fn = self._custom_data_callable(custom_code)
+        if not callable(prepare_fn):
+            return [row[:] for row in window]
+        safe_params = {
+            key: value for key, value in params.items() if key != "custom_code"
+        }
+        try:
+            result = prepare_fn([row[:] for row in window], dict(safe_params))
+        except Exception:  # noqa: BLE001
+            return [row[:] for row in window]
+        return self._validated_custom_window(result, window)
+
+    def _custom_data_callable(self, custom_code: str) -> object | None:
+        if custom_code not in self._custom_data_cache:
+            namespace = sandboxed_namespace(custom_code) or {}
+            candidate = namespace.get("custom_prepare_window")
+            self._custom_data_cache[custom_code] = (
+                candidate if callable(candidate) else None
+            )
+        return self._custom_data_cache[custom_code]
 
     def _normalize(self, window: list[list[float]]) -> list[list[float]]:
         channels = len(window[0])
@@ -556,6 +589,8 @@ class DummyHARHarness:
         spectral = self._spectral_features(window, spectral_bins)
         attention = self._attention_pool_features(window, attention_mix)
 
+        default_features = means + stds + energies + diffs + temporal
+
         if config.model_name == "cnn":
             return means + stds + energies
         if config.model_name == "gru":
@@ -612,7 +647,67 @@ class DummyHARHarness:
             return means + stds + spectral + diffs
         if config.model_name == "cnn_gru":
             return means + stds + energies + diffs + temporal + interactions
-        return means + stds + energies + diffs + temporal
+        if config.model_name == "custom":
+            base_features = (
+                default_features + spectral[:channels] + interactions + multiscale
+            )
+            return self._custom_model_features(
+                window=window,
+                base_features=base_features,
+                params=config.model_params,
+            )
+        return default_features
+
+    def _custom_model_features(
+        self,
+        window: list[list[float]],
+        base_features: list[float],
+        params: dict[str, float | int | str | bool],
+    ) -> list[float]:
+        custom_code = str(params.get("custom_code", "")).strip()
+        if not custom_code:
+            return list(base_features)
+        feature_fn = self._custom_model_feature_callable(custom_code)
+        if not callable(feature_fn):
+            return list(base_features)
+        safe_params = {
+            key: value for key, value in params.items() if key != "custom_code"
+        }
+        try:
+            result = feature_fn(
+                [row[:] for row in window],
+                list(base_features),
+                dict(safe_params),
+            )
+        except Exception:  # noqa: BLE001
+            return list(base_features)
+        return self._validated_custom_features(result, base_features)
+
+    def _custom_model_feature_callable(self, custom_code: str) -> object | None:
+        if custom_code not in self._custom_model_feature_cache:
+            namespace = sandboxed_namespace(custom_code) or {}
+            candidate = namespace.get("custom_model_features")
+            self._custom_model_feature_cache[custom_code] = (
+                candidate if callable(candidate) else None
+            )
+        return self._custom_model_feature_cache[custom_code]
+
+    def _validated_custom_features(
+        self,
+        candidate: object,
+        fallback: list[float],
+    ) -> list[float]:
+        if not isinstance(candidate, list):
+            return list(fallback)
+        max_feature_count = max(len(fallback) * 4, 16)
+        if not 1 <= len(candidate) <= max_feature_count:
+            return list(fallback)
+        clean_features: list[float] = []
+        for value in candidate:
+            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                return list(fallback)
+            clean_features.append(float(value))
+        return clean_features
 
     def _train_model(
         self,
@@ -649,6 +744,7 @@ class DummyHARHarness:
             "tinierhar",
             "tinyhar",
             "spectra",
+            "custom",
         }:
             hidden_dim = int(
                 model_params.get(
@@ -929,6 +1025,7 @@ class DummyHARHarness:
             "tinierhar",
             "tinyhar",
             "spectra",
+            "custom",
         }:
             hidden_dim = int(
                 model_params.get(
@@ -949,7 +1046,14 @@ class DummyHARHarness:
                     num_classes=num_classes,
                     attention_mix=float(model_params.get("attention_mix", 0.8)),
                 )
-            else:
+            elif model_name in {
+                "deepconvlstm",
+                "hart",
+                "tinierhar",
+                "tinyhar",
+                "spectra",
+                "custom",
+            }:
                 layers: list[object] = []
                 input_dim = feature_dim
                 for _ in range(depth):

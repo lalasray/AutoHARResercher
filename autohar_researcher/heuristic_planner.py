@@ -29,6 +29,7 @@ MODEL_FAMILIES = [
     "cnn",
     "tiny_transformer",
     "gru",
+    "custom",
 ]
 
 AUGMENTATIONS = [
@@ -50,6 +51,7 @@ PREPROCESSING_MODES = [
     "normalized",
     "normalized+gravity_filter",
     "normalized+magnitude_channels",
+    "custom",
 ]
 
 WINDOW_SIZES = [64, 96, 128, 192, 256]

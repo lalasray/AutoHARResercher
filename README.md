@@ -97,6 +97,24 @@ def custom_augment_window(window, strength, params, rng):
 
 The harness validates the output shape and falls back to the original window if the custom function errors or returns invalid values.
 
+ModelAgent has an analogous bounded `custom` model path for feature construction:
+
+```python
+def custom_model_features(window, base_features, params):
+    ...
+```
+
+The harness validates the returned finite numeric feature list and falls back to the standard feature vector if the custom function fails.
+
+DataAgent has a bounded `custom` preprocessing path:
+
+```python
+def custom_prepare_window(window, params):
+    ...
+```
+
+The harness validates the returned same-shape finite numeric window and falls back to the standard preprocessed window if the custom function fails.
+
 ## Results
 
 The main multi-agent loop writes round artifacts and reports under `artifacts/`:

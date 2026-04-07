@@ -72,6 +72,7 @@ Stable preprocessing anchors:
 - `normalized`
 - `normalized+gravity_filter`
 - `normalized+magnitude_channels`
+- `custom`
 
 Stable window-size anchors:
 
@@ -82,6 +83,15 @@ Stable window-size anchors:
 - `256`
 
 Those anchors are not the whole point of the search. If the best move is a representation heuristic, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
+
+Use `custom` only when a new bounded preprocessing transform is more appropriate than tuning an existing regime. For `custom`, define this function inside `function_rewrite`:
+
+```python
+def custom_prepare_window(window, params):
+    ...
+```
+
+It may include small helper functions in the same code block. It must return a window with the same shape as the input, use finite numeric values, and preserve label semantics. The harness validates the returned shape and falls back to the standard preprocessed window if the function errors or returns invalid values.
 
 ## What To Optimize
 
@@ -94,6 +104,7 @@ You should think about:
 - whether the current model likely benefits from simpler or richer preprocessing
 - whether a change is likely to be compatible with the accepted baseline
 - whether the concrete data parameters are helping or hurting, such as channel layout, resampling mode, gravity scaling, and magnitude feature construction
+- whether a bounded custom transform can preserve sensor semantics while improving representation quality
 
 ## Decision Style
 

@@ -82,6 +82,7 @@ class ModelAgent:
         "cnn",
         "tiny_transformer",
         "gru",
+        "custom",
     ]
 
     def propose(
@@ -327,6 +328,7 @@ class DataAgent:
         "normalized",
         "normalized+gravity_filter",
         "normalized+magnitude_channels",
+        "custom",
     ]
     WINDOW_CANDIDATES = [64, 96, 128, 192, 256]
 

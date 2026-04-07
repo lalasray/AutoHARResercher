@@ -81,8 +81,18 @@ Stable model-family anchors:
 - `cnn`
 - `tiny_transformer`
 - `gru`
+- `custom`
 
 Those anchors are not the whole point of the search. If the best move is a model-side heuristic, compatibility rule, or local strategy, express that through owned-module code rather than treating family names like a dropdown.
+
+Use `custom` only when a new bounded model-side representation is more appropriate than tuning an existing family. For `custom`, define this function inside `function_rewrite`:
+
+```python
+def custom_model_features(window, base_features, params):
+    ...
+```
+
+It may include small helper functions in the same code block. It must return a finite numeric feature list, should be deterministic, and should be shape-stable across windows. The harness validates the returned features and falls back to the standard feature vector if the function errors or returns invalid values.
 
 You may also change model-side parameters such as:
 
@@ -94,6 +104,7 @@ You may also change model-side parameters such as:
 - `use_interactions`
 - `use_multiscale`
 - learning rate
+- `custom_code` when using the `custom` family
 
 ## What To Optimize
 
