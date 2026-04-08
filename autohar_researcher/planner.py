@@ -117,17 +117,18 @@ class OpenAIPlanner:
             history=history,
             accepted_history=accepted_history,
         )
-        orchestrator_plan = self._plan_orchestrator(context)
+        prompt_context = self._prompt_context(context)
+        orchestrator_plan = self._plan_orchestrator(prompt_context)
         orchestrator_plan = self._apply_stagnation_overrides_to_orchestrator_plan(
             context=context,
             orchestrator_plan=orchestrator_plan,
         )
         hints: dict[str, object] = {
-            "model_agent": self._plan_model_agent(context, orchestrator_plan),
+            "model_agent": self._plan_model_agent(prompt_context, orchestrator_plan),
             "augmentation_agent": self._plan_augmentation_agent(
-                context, orchestrator_plan
+                prompt_context, orchestrator_plan
             ),
-            "data_agent": self._plan_data_agent(context, orchestrator_plan),
+            "data_agent": self._plan_data_agent(prompt_context, orchestrator_plan),
         }
         agent_memories = context["agent_memories"]
         return {
@@ -155,6 +156,7 @@ class OpenAIPlanner:
             history=history,
             accepted_history=accepted_history,
         )
+        prompt_context = self._prompt_context(context)
         proposal_payload = {
             agent_name: self._proposal_payload(proposal)
             for agent_name, proposal in proposals.items()
@@ -163,7 +165,7 @@ class OpenAIPlanner:
             "You are an IMU HAR proposal judge.\n"
             "You are not the final evaluator. The harness is the final truth.\n"
             "Your role is to judge whether each specialist proposal is coherent, novel enough, and compatible enough to be worth using in orchestrator composition this round.\n\n"
-            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+            f"Round context:\n{json.dumps(prompt_context, indent=2)}\n\n"
             f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
             f"Specialist proposals:\n{json.dumps(proposal_payload, indent=2)}\n\n"
             "For each agent, return:\n"
@@ -263,6 +265,134 @@ class OpenAIPlanner:
                 ),
             },
         }
+
+    def _prompt_context(self, context: dict[str, object]) -> dict[str, object]:
+        if not self._uses_chat_backend():
+            return context
+        best_result = context.get("best_result")
+        return {
+            "round_id": context.get("round_id"),
+            "best_result": self._compact_result(best_result),
+            "dataset_metadata": self._compact_dataset_metadata(
+                dict(context.get("dataset_metadata", {}))
+            ),
+            "trend_summary": context.get("trend_summary", {}),
+            "exploration_pressure": context.get("exploration_pressure", {}),
+            "combination_memory": self._compact_combination_memory(
+                dict(context.get("combination_memory", {}))
+            ),
+            "recent_trials": [
+                self._compact_result(item)
+                for item in list(context.get("recent_trials", []))[-6:]
+            ],
+            "accepted_history": [
+                self._compact_result(item)
+                for item in list(context.get("accepted_history", []))[-3:]
+            ],
+            "agent_memories": self._compact_agent_memories(
+                dict(context.get("agent_memories", {}))
+            ),
+        }
+
+    def _uses_chat_backend(self) -> bool:
+        for role_name in self.ROLE_KEYS:
+            backend = str(self._role_backend(role_name)).strip().lower()
+            api_mode = str(self._role_api_mode(role_name, backend)).strip().lower()
+            if backend == "lmstudio" or api_mode == "chat":
+                return True
+        return False
+
+    def _role_backend(self, role: str) -> str:
+        role_key = self.ROLE_KEYS.get(role, role.upper())
+        return os.getenv(
+            f"AUTOHAR_{role_key}_BACKEND",
+            os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
+        )
+
+    def _role_api_mode(self, role: str, backend: str) -> str:
+        role_key = self.ROLE_KEYS.get(role, role.upper())
+        if backend == "lmstudio":
+            return os.getenv(
+                f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
+                os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
+            )
+        return os.getenv(
+            f"AUTOHAR_OPENAI_{role_key}_API_MODE",
+            os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
+        )
+
+    def _compact_result(self, item: object) -> dict[str, object] | None:
+        if not isinstance(item, dict):
+            return None
+        config = dict(item.get("config", {})) if isinstance(item.get("config"), dict) else {}
+        config.pop("notes", None)
+        for key in ("model_params", "data_params", "augmentation_params"):
+            if isinstance(config.get(key), dict):
+                config[key] = self._compact_params(dict(config[key]))
+        return {
+            "round_id": item.get("round_id"),
+            "agent_name": item.get("agent_name"),
+            "score": item.get("score"),
+            "config": config,
+        }
+
+    def _compact_params(self, params: dict[str, object]) -> dict[str, object]:
+        compact = dict(params)
+        if "custom_code" in compact:
+            compact["custom_code"] = "[omitted]"
+        return compact
+
+    def _compact_dataset_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
+        return {
+            key: metadata.get(key)
+            for key in (
+                "dataset_name",
+                "activity_labels",
+                "sensor_count",
+                "sensor_modalities",
+                "sensor_placement",
+                "sampling_rate_hz",
+                "window_length_steps",
+            )
+            if key in metadata
+        }
+
+    def _compact_combination_memory(
+        self, memory: dict[str, object]
+    ) -> dict[str, object]:
+        compact: dict[str, object] = {}
+        for key in (
+            "recent_best_by_combination",
+            "accepted_best_by_combination",
+            "compatible_patterns",
+            "conflicting_patterns",
+        ):
+            value = memory.get(key)
+            if isinstance(value, list):
+                compact[key] = value[:4]
+            elif isinstance(value, dict):
+                compact[key] = value
+        return compact
+
+    def _compact_agent_memories(
+        self, memories: dict[str, object]
+    ) -> dict[str, object]:
+        compact: dict[str, object] = {}
+        for agent_name, memory in memories.items():
+            if not isinstance(memory, dict):
+                continue
+            compact[agent_name] = {
+                "best_score": memory.get("best_score"),
+                "recent_trials": [
+                    self._compact_result(item)
+                    for item in list(memory.get("recent_trials", []))[-3:]
+                ],
+                "accepted_trials": [
+                    self._compact_result(item)
+                    for item in list(memory.get("accepted_trials", []))[-2:]
+                ],
+            }
+        return compact
 
     def _dataset_metadata(
         self, best_result: CandidateResult | None
@@ -681,6 +811,10 @@ class OpenAIPlanner:
     ) -> dict[str, object]:
         client, model_name, api_mode = self._client_for_role(role)
         if api_mode == "chat":
+            max_tokens = int(os.getenv("AUTOHAR_CHAT_MAX_TOKENS", "2048"))
+            response_format_mode = (
+                os.getenv("AUTOHAR_CHAT_RESPONSE_FORMAT", "text").strip().lower()
+            )
             messages = [
                 {
                     "role": "system",
@@ -693,19 +827,40 @@ class OpenAIPlanner:
             ]
             last_error: Exception | None = None
             for attempt in range(3):
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {
-                            "name": name,
-                            "schema": schema,
-                        },
-                    },
-                    temperature=0.0,
-                    max_tokens=8192,
-                )
+                try:
+                    response_format: dict[str, object]
+                    if response_format_mode == "json_schema":
+                        response_format = {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": name,
+                                "schema": schema,
+                            },
+                        }
+                    else:
+                        response_format = {"type": "text"}
+                    response = client.chat.completions.create(
+                        model=model_name,
+                        messages=messages,
+                        response_format=response_format,
+                        temperature=0.0,
+                        max_tokens=max_tokens,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    if attempt < 2:
+                        messages = [
+                            messages[0],
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Return a minimal valid JSON payload for "
+                                    f"{name}. Avoid explanations and omit optional detail."
+                                ),
+                            },
+                        ]
+                        continue
+                    return self._fallback_json_payload(name=name)
                 content = response.choices[0].message.content or "{}"
                 try:
                     return self._parse_json_response(content)

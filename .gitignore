@@ -7,3 +7,4 @@ data/
 /autoharresearcher.egg-info
 /artifacts_online
 /tests/__pycache__
+/artifacts_openai
