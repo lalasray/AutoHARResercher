@@ -472,13 +472,17 @@ class HierarchicalOrchestrator:
             config=self.repair_config,
         )
 
-    def run(
+    def _initialize_run_state(
         self,
-        rounds: int = 3,
-        materialize_git: bool = False,
-        auto_push_non_main: bool = False,
-        resume: bool = False,
-    ) -> dict[str, object]:
+        *,
+        resume: bool,
+    ) -> tuple[
+        list[CandidateResult],
+        list[CandidateResult],
+        CandidateResult | None,
+        dict[str, float],
+        int,
+    ]:
         if resume:
             history, accepted_history = self._load_round_history()
             if accepted_history:
@@ -498,31 +502,102 @@ class HierarchicalOrchestrator:
             best_by_agent = {}
             start_round = 1
         self._refresh_active_mission(history, accepted_history)
+        return history, accepted_history, best_result, best_by_agent, start_round
+
+    def _bootstrap_worktrees_if_needed(self, materialize_git: bool) -> None:
+        if not materialize_git:
+            return
+        self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
+        self.git_runtime.bootstrap_orchestrator_workspace(
+            orchestrator_branch=self.orchestrator_workspace.branch_name,
+            orchestrator_worktree=self.orchestrator_workspace.worktree_path,
+        )
+
+    def _prepare_round(
+        self,
+        *,
+        round_id: int,
+        best_result: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+        actions: list[GitAction],
+    ) -> tuple[CandidateResult | None, dict[str, object]]:
+        previous_best = (
+            None if best_result is None else self._clone_result(best_result)
+        )
+        round_plan = self.plan_round(
+            round_id=round_id,
+            best_result=best_result,
+            history=history,
+            accepted_history=accepted_history,
+        )
+        actions.extend(self.plan_git_actions(round_id=round_id, round_plan=round_plan))
+        return previous_best, round_plan
+
+    def _finalize_round(
+        self,
+        *,
+        round_id: int,
+        round_results: list[CandidateResult],
+        round_state: RoundState,
+        previous_best: CandidateResult | None,
+        current_best: CandidateResult | None,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+        best_by_agent: dict[str, float],
+        round_states: list[RoundState],
+    ) -> tuple[CandidateResult, CandidateResult | None, RunOutputs]:
+        if current_best is not None:
+            self._reevaluate_promising_candidates(
+                round_results=round_results,
+                baseline_result=current_best,
+            )
+        self._annotate_best_so_far(round_results, best_by_agent)
+        round_best = self.evaluate_round(round_results)
+        accepted_candidate = self._select_accepted_candidate(round_results, current_best)
+        if accepted_candidate is not None:
+            accepted_candidate.accepted = True
+            current_best = accepted_candidate
+            accepted_history.append(self._clone_result(accepted_candidate))
+
+        history.extend(round_results)
+        self._refresh_active_mission(history, accepted_history)
+        round_state.promotion_artifact = self._write_promotion_artifact(
+            round_id=round_id,
+            round_results=round_results,
+            round_best=round_best,
+            previous_best=previous_best,
+            accepted_candidate=accepted_candidate,
+            current_best=current_best,
+        )
+        run_outputs = self._write_run_outputs(history, accepted_history)
+        round_states.append(round_state)
+        return round_best, accepted_candidate, run_outputs
+
+    def run(
+        self,
+        rounds: int = 3,
+        materialize_git: bool = False,
+        auto_push_non_main: bool = False,
+        resume: bool = False,
+    ) -> dict[str, object]:
+        history, accepted_history, best_result, best_by_agent, start_round = (
+            self._initialize_run_state(resume=resume)
+        )
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
         run_outputs = self._write_run_outputs(history, accepted_history)
 
-        if materialize_git:
-            self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
-            self.git_runtime.bootstrap_orchestrator_workspace(
-                orchestrator_branch=self.orchestrator_workspace.branch_name,
-                orchestrator_worktree=self.orchestrator_workspace.worktree_path,
-            )
-
+        self._bootstrap_worktrees_if_needed(materialize_git)
         final_round = start_round + rounds - 1
         for round_id in range(start_round, final_round + 1):
             print(f"[AutoHAR] round {round_id}/{final_round}", flush=True)
-            previous_best = (
-                None if best_result is None else self._clone_result(best_result)
-            )
-            round_plan = self.plan_round(
+            previous_best, round_plan = self._prepare_round(
                 round_id=round_id,
                 best_result=best_result,
                 history=history,
                 accepted_history=accepted_history,
-            )
-            actions.extend(
-                self.plan_git_actions(round_id=round_id, round_plan=round_plan)
+                actions=actions,
             )
             round_results, round_state = self.execute_round(
                 round_id=round_id,
@@ -533,33 +608,19 @@ class HierarchicalOrchestrator:
                 materialize_git=materialize_git,
                 auto_push_non_main=auto_push_non_main,
             )
-            if best_result is not None:
-                self._reevaluate_promising_candidates(
-                    round_results=round_results,
-                    baseline_result=best_result,
-                )
-            self._annotate_best_so_far(round_results, best_by_agent)
-            round_best = self.evaluate_round(round_results)
-            accepted_candidate = self._select_accepted_candidate(
-                round_results, best_result
-            )
-            if accepted_candidate is not None:
-                accepted_candidate.accepted = True
-                best_result = accepted_candidate
-                accepted_history.append(self._clone_result(accepted_candidate))
-
-            history.extend(round_results)
-            self._refresh_active_mission(history, accepted_history)
-            round_state.promotion_artifact = self._write_promotion_artifact(
+            round_best, accepted_candidate, run_outputs = self._finalize_round(
                 round_id=round_id,
                 round_results=round_results,
-                round_best=round_best,
+                round_state=round_state,
                 previous_best=previous_best,
-                accepted_candidate=accepted_candidate,
                 current_best=best_result,
+                history=history,
+                accepted_history=accepted_history,
+                best_by_agent=best_by_agent,
+                round_states=round_states,
             )
-            run_outputs = self._write_run_outputs(history, accepted_history)
-            round_states.append(round_state)
+            if accepted_candidate is not None:
+                best_result = accepted_candidate
             if best_result is None:
                 best_result = round_best
 
@@ -596,29 +657,13 @@ class HierarchicalOrchestrator:
         if resume:
             results_tracker.load_from_file()
 
-        history, accepted_history = self._load_round_history()
-        if accepted_history:
-            best_result = self._clone_result(accepted_history[-1])
-        elif history:
-            best_result = self._clone_result(
-                max(history, key=lambda item: item.val_score)
-            )
-        else:
-            best_result = None
-
-        best_by_agent = self._best_by_agent_from_history(history)
-        start_round = max((result.round_id for result in history), default=0) + 1
-        self._refresh_active_mission(history, accepted_history)
+        history, accepted_history, best_result, best_by_agent, start_round = (
+            self._initialize_run_state(resume=resume)
+        )
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
 
-        if materialize_git:
-            self.git_runtime.bootstrap_agent_workspaces(self.workspaces)
-            self.git_runtime.bootstrap_orchestrator_workspace(
-                orchestrator_branch=self.orchestrator_workspace.branch_name,
-                orchestrator_worktree=self.orchestrator_workspace.worktree_path,
-            )
-
+        self._bootstrap_worktrees_if_needed(materialize_git)
         rounds_without_improvement = 0
         experiment_count = 0
         run_outputs = None
@@ -635,19 +680,13 @@ class HierarchicalOrchestrator:
                 flush=True,
             )
 
-            previous_best = (
-                None if best_result is None else self._clone_result(best_result)
-            )
-            round_plan = self.plan_round(
+            previous_best, round_plan = self._prepare_round(
                 round_id=round_id,
                 best_result=best_result,
                 history=history,
                 accepted_history=accepted_history,
+                actions=actions,
             )
-            actions.extend(
-                self.plan_git_actions(round_id=round_id, round_plan=round_plan)
-            )
-
             try:
                 round_results, round_state = self.execute_round(
                     round_id=round_id,
@@ -673,16 +712,16 @@ class HierarchicalOrchestrator:
                 start_round += 1
                 continue
 
-            if best_result is not None:
-                self._reevaluate_promising_candidates(
-                    round_results=round_results,
-                    baseline_result=best_result,
-                )
-
-            self._annotate_best_so_far(round_results, best_by_agent)
-            round_best = self.evaluate_round(round_results)
-            accepted_candidate = self._select_accepted_candidate(
-                round_results, best_result
+            round_best, accepted_candidate, run_outputs = self._finalize_round(
+                round_id=round_id,
+                round_results=round_results,
+                round_state=round_state,
+                previous_best=previous_best,
+                current_best=best_result,
+                history=history,
+                accepted_history=accepted_history,
+                best_by_agent=best_by_agent,
+                round_states=round_states,
             )
 
             commit = get_git_commit()
@@ -691,9 +730,7 @@ class HierarchicalOrchestrator:
             description = ""
 
             if accepted_candidate is not None:
-                accepted_candidate.accepted = True
                 best_result = accepted_candidate
-                accepted_history.append(self._clone_result(accepted_candidate))
                 status = "keep"
                 description = accepted_candidate.summary
                 rounds_without_improvement = 0
@@ -729,19 +766,6 @@ class HierarchicalOrchestrator:
                 domain=round_best.agent_name,
             )
             results_tracker.add(experiment_result)
-
-            history.extend(round_results)
-            self._refresh_active_mission(history, accepted_history)
-            round_state.promotion_artifact = self._write_promotion_artifact(
-                round_id=round_id,
-                round_results=round_results,
-                round_best=round_best,
-                previous_best=previous_best,
-                accepted_candidate=accepted_candidate,
-                current_best=best_result,
-            )
-            run_outputs = self._write_run_outputs(history, accepted_history)
-            round_states.append(round_state)
 
             if rounds_without_improvement > max_rounds_without_improvement:
                 print(

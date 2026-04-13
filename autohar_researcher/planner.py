@@ -478,59 +478,222 @@ class OpenAIPlanner:
             role="orchestrator",
         )
 
+    def _file_patches_schema(self) -> dict[str, object]:
+        return {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "patch_mode": {"type": "string"},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["file_path", "content", "patch_mode", "rationale"],
+            },
+        }
+
+    def _agent_prompt_prefix(
+        self,
+        *,
+        agent_label: str,
+        controls_text: str,
+        guide_key: str,
+        memory_key: str,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> str:
+        return (
+            f"You are {agent_label} in an IMU HAR auto-research system.\n"
+            f"{controls_text}\n\n"
+            f"{agent_label} guide:\n{self.guides[guide_key]}\n\n"
+            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
+            f"{agent_label} local memory:\n"
+            f"{json.dumps(context['agent_memories'][memory_key], indent=2)}\n\n"
+            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
+        )
+
+    def _model_agent_prompt(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> str:
+        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
+        return (
+            self._agent_prompt_prefix(
+                agent_label="ModelAgent",
+                controls_text=(
+                    "You only control model_name, learning_rate, and model-side params.\n"
+                    "Propose one model-side mutation for this round.\n"
+                    "Do not change augmentation or data settings."
+                ),
+                guide_key="model_agent",
+                memory_key="model_agent",
+                context=context,
+                orchestrator_plan=orchestrator_plan,
+            )
+            + "Common available model families include {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru, custom}.\n"
+            + "Treat those families as stable anchors, not as the whole point of the search. "
+            + "Use them when they fit, but put most of your expertise into model-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
+            + "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, use_multiscale, and attention_mix.\n"
+            + "Keep the rationale short and trend-aware.\n"
+            + "Use `logic_expression` only for trivial direct overrides.\n"
+            + "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            + "Do not behave like a dropdown picker. "
+            + "If the important idea is a local model heuristic rather than a family switch, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
+            + rewrite_preference
+            + "When the main mutation is family-dependent parameter compatibility, prefer defining "
+            + "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
+            + "In particular, use `model_params_override(...)` when hidden_dim, depth, temporal_pool, spectral_bins, "
+            + "use_interactions, use_multiscale, or attention_mix should depend on the current baseline context.\n"
+            + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
+            + "`bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`. "
+            + "Use this when you want to rewrite model learning-rate bounding logic itself inside the owned module. "
+            + "Return only a float learning rate or `None` to fall back.\n"
+            + "The same `function_rewrite` block may also define "
+            + "`model_params_override(base_experiment, target_name, proposed_params, config)` "
+            + "when you want to rewrite model-parameter compatibility logic itself inside the owned module. "
+            + "That function must return only a dict of model param overrides or `None` to fall back.\n"
+            + "For a genuinely new bounded model-side representation, set `model_name` to `custom` and define "
+            + "`custom_model_features(window, base_features, params)` in `function_rewrite`. "
+            + "It may include small helper functions in the same block, must return a finite numeric feature list, "
+            + "and should be deterministic and shape-stable across windows. "
+            + "If the custom code errors or returns invalid features, the harness falls back to the standard feature vector.\n"
+            + "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
+            + "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
+            + '`{"model": {"name": ..., "learning_rate": ..., "params": {...}}}`. Use exact keys `name` and `learning_rate`. '
+            + "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
+            + "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
+            + "`llm_choose_patch(base_experiment, config)` function. That function must return only owned model updates. "
+            + "Keep helper_code short, self-contained, and limited to model-side reasoning. "
+            + "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
+            + "Prefer owned-module reasoning over menu hopping: use code when your idea is about architecture compatibility, family-dependent defaults, "
+            + "or training-shape heuristics rather than just swapping one named family for another.\n"
+        )
+
+    def _augmentation_agent_prompt(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> str:
+        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
+        return (
+            self._agent_prompt_prefix(
+                agent_label="AugmentationAgent",
+                controls_text=(
+                    "You only control augmentation and strength.\n"
+                    "Propose one augmentation-side mutation for this round.\n"
+                    "Do not change model or data settings."
+                ),
+                guide_key="augmentation_agent",
+                memory_key="augmentation_agent",
+                context=context,
+                orchestrator_plan=orchestrator_plan,
+            )
+            + "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp, custom}.\n"
+            + "Common strengths include {weak, medium, strong}.\n"
+            + "Treat those labels as anchors for the runtime, not as the main source of expertise. "
+            + "Put the interesting reasoning into augmentation-side parameter logic, compatibility rules, and bounded rewrites inside the owned module.\n"
+            + "Keep the rationale short and trend-aware.\n"
+            + "Use `logic_expression` only for trivial direct overrides.\n"
+            + "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            + "Do not behave like a menu selector. "
+            + "If the important move is a context-sensitive perturbation policy, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
+            + rewrite_preference
+            + "When the main mutation is augmentation-family or strength-dependent parameter compatibility, prefer defining "
+            + "`augmentation_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
+            + "Use `augmentation_params_override(...)` when rotation angle, jitter std, time-warp compression, scaling span, "
+            + "drift magnitude, permutation segments, magnitude-warp span, or mixup blend should depend on the current baseline context.\n"
+            + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
+            + "`compatibility_strength_override(base_experiment, target_name, requested_strength, config)`. "
+            + "Use this when you want to rewrite augmentation strength compatibility logic itself inside the owned module. "
+            + "Return only a valid strength string or `None` to fall back.\n"
+            + "The same `function_rewrite` block may also define "
+            + "`augmentation_params_override(base_experiment, target_name, target_strength, proposed_params, config)` "
+            + "when you want to rewrite augmentation-parameter compatibility logic itself inside the owned module. "
+            + "That function must return only a dict of augmentation param overrides or `None` to fall back.\n"
+            + "For a genuinely new augmentation algorithm, set `augmentation` to `custom` and define "
+            + "`custom_augment_window(window, strength, params, rng)` in `function_rewrite`. "
+            + "It may include small helper functions in the same block, must return a window with the same shape, "
+            + "and should use only bounded deterministic math/list operations plus `rng.uniform(...)` for randomness. "
+            + "If the custom code errors or returns an invalid shape, the harness falls back to the unmodified window.\n"
+            + "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
+            + "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
+            + '`{"augmentation": {"name": ..., "strength": ...}}`. Use exact keys `name` and `strength`. '
+            + "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
+            + "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
+            + "`llm_choose_patch(base_experiment, config)` function. That function must return only owned augmentation updates. "
+            + "Keep helper_code short, self-contained, and limited to augmentation-side reasoning. "
+            + "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
+            + "Prefer owned-module reasoning over family roulette: use code when your idea is about realism, robustness, parameter shaping, or compatibility "
+            + "with the current model/data context.\n"
+        )
+
+    def _data_agent_prompt(
+        self,
+        context: dict[str, object],
+        orchestrator_plan: dict[str, object],
+    ) -> str:
+        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
+        return (
+            self._agent_prompt_prefix(
+                agent_label="DataAgent",
+                controls_text=(
+                    "You only control preprocessing and window_size.\n"
+                    "Propose one data-side mutation for this round.\n"
+                    "Do not change model or augmentation settings."
+                ),
+                guide_key="data_agent",
+                memory_key="data_agent",
+                context=context,
+                orchestrator_plan=orchestrator_plan,
+            )
+            + "Common stable preprocessing regimes include {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels, custom}.\n"
+            + "Common stable window sizes include {64, 96, 128, 192, 256}.\n"
+            + "Treat those settings as anchors for the runtime, not as the whole search space. "
+            + "Put the interesting reasoning into data-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
+            + "Keep the rationale short and trend-aware.\n"
+            + "Use `logic_expression` only for trivial direct overrides.\n"
+            + "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
+            + "Do not behave like a fixed menu chooser. "
+            + "If the real idea is a representation heuristic, keep the top-level setting stable and express the novelty through `helper_code` or `function_rewrite`.\n"
+            + rewrite_preference
+            + "When the main mutation is preprocessing/window-dependent data parameter compatibility, prefer defining "
+            + "`data_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
+            + "Use `data_params_override(...)` when channel layout, resampling mode, gravity scale, or magnitude toggles "
+            + "should depend on the current baseline context.\n"
+            + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
+            + "`choose_window_override(base_experiment, requested_window, config)`. "
+            + "Use this when you want to rewrite data window-selection logic itself inside the owned module. "
+            + "Return only an integer window size or `None` to fall back.\n"
+            + "The same `function_rewrite` block may also define "
+            + "`data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config)` "
+            + "when you want to rewrite data-parameter compatibility logic itself inside the owned module. "
+            + "That function must return only a dict of data param overrides or `None` to fall back.\n"
+            + "For a genuinely new bounded preprocessing transform, set `preprocessing` to `custom` and define "
+            + "`custom_prepare_window(window, params)` in `function_rewrite`. "
+            + "It may include small helper functions in the same block, must return a finite numeric window with the same shape, "
+            + "and should preserve label semantics. "
+            + "If the custom code errors or returns an invalid shape, the harness falls back to the standard preprocessed window.\n"
+            + "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
+            + "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
+            + '`{"data": {"preprocessing": ..., "window_size": ...}}`. Use exact keys `preprocessing` and `window_size`. '
+            + "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
+            + "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
+            + "`llm_choose_patch(base_experiment, config)` function. That function must return only owned data updates. "
+            + "Keep helper_code short, self-contained, and limited to data-side reasoning. "
+            + "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
+            + "Prefer owned-module reasoning over cosmetic setting churn: use code when your idea is about representation quality, window compatibility, "
+            + "or preprocessing guardrails rather than just flipping to a neighboring preset.\n"
+        )
+
     def _plan_model_agent(
         self,
         context: dict[str, object],
         orchestrator_plan: dict[str, object],
     ) -> ModelPlanHint:
-        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
-        prompt = (
-            "You are ModelAgent in an IMU HAR auto-research system.\n"
-            "You only control model_name, learning_rate, and model-side params.\n"
-            "Propose one model-side mutation for this round.\n"
-            "Do not change augmentation or data settings.\n\n"
-            f"ModelAgent guide:\n{self.guides['model_agent']}\n\n"
-            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
-            f"ModelAgent local memory:\n{json.dumps(context['agent_memories']['model_agent'], indent=2)}\n\n"
-            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Common available model families include {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru, custom}.\n"
-            "Treat those families as stable anchors, not as the whole point of the search. "
-            "Use them when they fit, but put most of your expertise into model-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
-            "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, use_multiscale, and attention_mix.\n"
-            "Keep the rationale short and trend-aware.\n"
-            "Use `logic_expression` only for trivial direct overrides.\n"
-            "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
-            "Do not behave like a dropdown picker. "
-            "If the important idea is a local model heuristic rather than a family switch, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
-            f"{rewrite_preference}"
-            "When the main mutation is family-dependent parameter compatibility, prefer defining "
-            "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
-            "In particular, use `model_params_override(...)` when hidden_dim, depth, temporal_pool, spectral_bins, "
-            "use_interactions, use_multiscale, or attention_mix should depend on the current baseline context.\n"
-            "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
-            "`bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`. "
-            "Use this when you want to rewrite model learning-rate bounding logic itself inside the owned module. "
-            "Return only a float learning rate or `None` to fall back.\n"
-            "The same `function_rewrite` block may also define "
-            "`model_params_override(base_experiment, target_name, proposed_params, config)` "
-            "when you want to rewrite model-parameter compatibility logic itself inside the owned module. "
-            "That function must return only a dict of model param overrides or `None` to fall back.\n"
-            "For a genuinely new bounded model-side representation, set `model_name` to `custom` and define "
-            "`custom_model_features(window, base_features, params)` in `function_rewrite`. "
-            "It may include small helper functions in the same block, must return a finite numeric feature list, "
-            "and should be deterministic and shape-stable across windows. "
-            "If the custom code errors or returns invalid features, the harness falls back to the standard feature vector.\n"
-            "Optionally provide a short Python expression in `logic_expression` that returns a dict of model-field overrides. "
-            "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            '`{"model": {"name": ..., "learning_rate": ..., "params": {...}}}`. Use exact keys `name` and `learning_rate`. '
-            "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
-            "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
-            "`llm_choose_patch(base_experiment, config)` function. That function must return only owned model updates. "
-            "Keep helper_code short, self-contained, and limited to model-side reasoning. "
-            "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
-            "Prefer owned-module reasoning over menu hopping: use code when your idea is about architecture compatibility, family-dependent defaults, "
-            "or training-shape heuristics rather than just swapping one named family for another.\n"
-        )
+        prompt = self._model_agent_prompt(context, orchestrator_plan)
         schema = {
             "type": "object",
             "additionalProperties": False,
@@ -563,20 +726,7 @@ class OpenAIPlanner:
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
-                "file_patches": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "file_path": {"type": "string"},
-                            "content": {"type": "string"},
-                            "patch_mode": {"type": "string"},
-                            "rationale": {"type": "string"},
-                        },
-                        "required": ["file_path", "content", "patch_mode", "rationale"],
-                    },
-                },
+                "file_patches": self._file_patches_schema(),
             },
             "required": [
                 "model_name",
@@ -614,54 +764,7 @@ class OpenAIPlanner:
         context: dict[str, object],
         orchestrator_plan: dict[str, object],
     ) -> AugmentationPlanHint:
-        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
-        prompt = (
-            "You are AugmentationAgent in an IMU HAR auto-research system.\n"
-            "You only control augmentation and strength.\n"
-            "Propose one augmentation-side mutation for this round.\n"
-            "Do not change model or data settings.\n\n"
-            f"AugmentationAgent guide:\n{self.guides['augmentation_agent']}\n\n"
-            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
-            f"AugmentationAgent local memory:\n{json.dumps(context['agent_memories']['augmentation_agent'], indent=2)}\n\n"
-            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp, custom}.\n"
-            "Common strengths include {weak, medium, strong}.\n"
-            "Treat those labels as anchors for the runtime, not as the main source of expertise. "
-            "Put the interesting reasoning into augmentation-side parameter logic, compatibility rules, and bounded rewrites inside the owned module.\n"
-            "Keep the rationale short and trend-aware.\n"
-            "Use `logic_expression` only for trivial direct overrides.\n"
-            "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
-            "Do not behave like a menu selector. "
-            "If the important move is a context-sensitive perturbation policy, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
-            f"{rewrite_preference}"
-            "When the main mutation is augmentation-family or strength-dependent parameter compatibility, prefer defining "
-            "`augmentation_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
-            "Use `augmentation_params_override(...)` when rotation angle, jitter std, time-warp compression, scaling span, "
-            "drift magnitude, permutation segments, magnitude-warp span, or mixup blend should depend on the current baseline context.\n"
-            "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
-            "`compatibility_strength_override(base_experiment, target_name, requested_strength, config)`. "
-            "Use this when you want to rewrite augmentation strength compatibility logic itself inside the owned module. "
-            "Return only a valid strength string or `None` to fall back.\n"
-            "The same `function_rewrite` block may also define "
-            "`augmentation_params_override(base_experiment, target_name, target_strength, proposed_params, config)` "
-            "when you want to rewrite augmentation-parameter compatibility logic itself inside the owned module. "
-            "That function must return only a dict of augmentation param overrides or `None` to fall back.\n"
-            "For a genuinely new augmentation algorithm, set `augmentation` to `custom` and define "
-            "`custom_augment_window(window, strength, params, rng)` in `function_rewrite`. "
-            "It may include small helper functions in the same block, must return a window with the same shape, "
-            "and should use only bounded deterministic math/list operations plus `rng.uniform(...)` for randomness. "
-            "If the custom code errors or returns an invalid shape, the harness falls back to the unmodified window.\n"
-            "Optionally provide a short Python expression in `logic_expression` that returns a dict of augmentation-field overrides. "
-            "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            '`{"augmentation": {"name": ..., "strength": ...}}`. Use exact keys `name` and `strength`. '
-            "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
-            "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
-            "`llm_choose_patch(base_experiment, config)` function. That function must return only owned augmentation updates. "
-            "Keep helper_code short, self-contained, and limited to augmentation-side reasoning. "
-            "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
-            "Prefer owned-module reasoning over family roulette: use code when your idea is about realism, robustness, parameter shaping, or compatibility "
-            "with the current model/data context.\n"
-        )
+        prompt = self._augmentation_agent_prompt(context, orchestrator_plan)
         schema = {
             "type": "object",
             "additionalProperties": False,
@@ -672,20 +775,7 @@ class OpenAIPlanner:
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
-                "file_patches": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "file_path": {"type": "string"},
-                            "content": {"type": "string"},
-                            "patch_mode": {"type": "string"},
-                            "rationale": {"type": "string"},
-                        },
-                        "required": ["file_path", "content", "patch_mode", "rationale"],
-                    },
-                },
+                "file_patches": self._file_patches_schema(),
             },
             "required": [
                 "augmentation",
@@ -725,54 +815,7 @@ class OpenAIPlanner:
         context: dict[str, object],
         orchestrator_plan: dict[str, object],
     ) -> DataPlanHint:
-        rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
-        prompt = (
-            "You are DataAgent in an IMU HAR auto-research system.\n"
-            "You only control preprocessing and window_size.\n"
-            "Propose one data-side mutation for this round.\n"
-            "Do not change model or augmentation settings.\n\n"
-            f"DataAgent guide:\n{self.guides['data_agent']}\n\n"
-            f"Orchestrator strategy:\n{json.dumps(orchestrator_plan, indent=2)}\n\n"
-            f"DataAgent local memory:\n{json.dumps(context['agent_memories']['data_agent'], indent=2)}\n\n"
-            f"Round context:\n{json.dumps(context, indent=2)}\n\n"
-            "Common stable preprocessing regimes include {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels, custom}.\n"
-            "Common stable window sizes include {64, 96, 128, 192, 256}.\n"
-            "Treat those settings as anchors for the runtime, not as the whole search space. "
-            "Put the interesting reasoning into data-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
-            "Keep the rationale short and trend-aware.\n"
-            "Use `logic_expression` only for trivial direct overrides.\n"
-            "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
-            "Do not behave like a fixed menu chooser. "
-            "If the real idea is a representation heuristic, keep the top-level setting stable and express the novelty through `helper_code` or `function_rewrite`.\n"
-            f"{rewrite_preference}"
-            "When the main mutation is preprocessing/window-dependent data parameter compatibility, prefer defining "
-            "`data_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
-            "Use `data_params_override(...)` when channel layout, resampling mode, gravity scale, or magnitude toggles "
-            "should depend on the current baseline context.\n"
-            "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
-            "`choose_window_override(base_experiment, requested_window, config)`. "
-            "Use this when you want to rewrite data window-selection logic itself inside the owned module. "
-            "Return only an integer window size or `None` to fall back.\n"
-            "The same `function_rewrite` block may also define "
-            "`data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config)` "
-            "when you want to rewrite data-parameter compatibility logic itself inside the owned module. "
-            "That function must return only a dict of data param overrides or `None` to fall back.\n"
-            "For a genuinely new bounded preprocessing transform, set `preprocessing` to `custom` and define "
-            "`custom_prepare_window(window, params)` in `function_rewrite`. "
-            "It may include small helper functions in the same block, must return a finite numeric window with the same shape, "
-            "and should preserve label semantics. "
-            "If the custom code errors or returns an invalid shape, the harness falls back to the standard preprocessed window.\n"
-            "Optionally provide a short Python expression in `logic_expression` that returns a dict of data-field overrides. "
-            "The expression may reference `base_experiment` and `config`. Return only owned-section updates such as "
-            '`{"data": {"preprocessing": ..., "window_size": ...}}`. Use exact keys `preprocessing` and `window_size`. '
-            "You may also return a lambda `(lambda base_experiment, config: {...})`. Use an empty string when unnecessary.\n"
-            "Optionally provide `helper_code` containing small Python helper functions plus a top-level "
-            "`llm_choose_patch(base_experiment, config)` function. That function must return only owned data updates. "
-            "Keep helper_code short, self-contained, and limited to data-side reasoning. "
-            "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
-            "Prefer owned-module reasoning over cosmetic setting churn: use code when your idea is about representation quality, window compatibility, "
-            "or preprocessing guardrails rather than just flipping to a neighboring preset.\n"
-        )
+        prompt = self._data_agent_prompt(context, orchestrator_plan)
         schema = {
             "type": "object",
             "additionalProperties": False,
@@ -783,20 +826,7 @@ class OpenAIPlanner:
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
                 "function_rewrite": {"type": "string"},
-                "file_patches": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "file_path": {"type": "string"},
-                            "content": {"type": "string"},
-                            "patch_mode": {"type": "string"},
-                            "rationale": {"type": "string"},
-                        },
-                        "required": ["file_path", "content", "patch_mode", "rationale"],
-                    },
-                },
+                "file_patches": self._file_patches_schema(),
             },
             "required": [
                 "preprocessing",
