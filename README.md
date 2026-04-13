@@ -19,6 +19,7 @@ cp .autohar.env.example .autohar.env
 | Script | Description |
 |--------|-------------|
 | `./run_mission.sh missions/your_mission.md` | Start directly from a mission markdown file |
+| `./run_autohar_opencode.sh` | Use local opencode CLI |
 | `./run_autohar_lmstudio.sh` | Use local LM Studio (no API key) |
 | `./run_autohar_openai.sh` | Use OpenAI API |
 | `./run_autoresearch.sh` | Simple single-script loop |
@@ -77,7 +78,7 @@ AUTOHAR_TIME_BUDGET_SECONDS=300
 AUTOHAR_MISSION_FILE=missions/example_mission.md
 ```
 
-The OpenAI and LM Studio wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
+The OpenAI, OpenCode, and LM Studio wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
 
 ## Architecture
 
@@ -161,6 +162,9 @@ b2c3d4e  0.8612    keep    better_augmentation
 ```bash
 # Basic multi-agent loop
 ./run_autohar_lmstudio.sh --rounds 10
+
+# Local opencode backend
+./run_autohar_opencode.sh --rounds 10
 
 # Run with a markdown mission brief
 ./run_autohar_lmstudio.sh --rounds 10 --mission-file missions/example_mission.md

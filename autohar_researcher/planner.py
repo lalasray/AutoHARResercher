@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -96,8 +97,6 @@ class OpenAIPlanner:
         mission_brief: str | None = None,
         mission_source: str | None = None,
     ) -> None:
-        if OpenAI is None:
-            raise RuntimeError("openai package is not installed")
         self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "gpt-5-mini")
         self.base_url = base_url
         self.api_mode = api_mode
@@ -837,6 +836,26 @@ class OpenAIPlanner:
         role: str,
     ) -> dict[str, object]:
         client, model_name, api_mode = self._client_for_role(role)
+        if api_mode == "opencode":
+            current_prompt = prompt
+            for attempt in range(3):
+                try:
+                    content = self._opencode_json_completion(
+                        role=role,
+                        model_name=model_name,
+                        prompt=current_prompt,
+                        schema=schema,
+                    )
+                    return self._parse_json_response(content)
+                except Exception:
+                    if attempt < 2:
+                        current_prompt = (
+                            "Return a minimal valid JSON payload only. "
+                            "Do not include explanations.\n\n"
+                            f"{prompt}"
+                        )
+                        continue
+                    return self._fallback_json_payload(name=name)
         if api_mode == "chat":
             max_tokens = int(os.getenv("AUTOHAR_CHAT_MAX_TOKENS", "2048"))
             response_format_mode = (
@@ -921,6 +940,74 @@ class OpenAIPlanner:
             },
         )
         return json.loads(response.output_text)
+
+    def _opencode_json_completion(
+        self,
+        *,
+        role: str,
+        model_name: str,
+        prompt: str,
+        schema: dict[str, object],
+    ) -> str:
+        role_key = self.ROLE_KEYS.get(role, role.upper())
+        binary = os.getenv(
+            f"AUTOHAR_OPENCODE_{role_key}_BIN",
+            os.getenv(
+                "AUTOHAR_OPENCODE_BIN", os.path.expanduser("~/.opencode/bin/opencode")
+            ),
+        )
+        full_prompt = (
+            "Return only valid JSON. Do not use markdown fences.\n"
+            "Follow this JSON schema exactly:\n"
+            f"{json.dumps(schema, indent=2)}\n\n"
+            f"{prompt}"
+        )
+        command = [
+            binary,
+            "run",
+            "--format",
+            "json",
+            "--dir",
+            str(Path.cwd()),
+            "--model",
+            model_name,
+        ]
+        variant = os.getenv(
+            f"AUTOHAR_OPENCODE_{role_key}_VARIANT",
+            os.getenv("AUTOHAR_OPENCODE_VARIANT", ""),
+        ).strip()
+        if variant:
+            command.extend(["--variant", variant])
+        if os.getenv("AUTOHAR_OPENCODE_PURE", "true").strip().lower() == "true":
+            command.append("--pure")
+        command.append(full_prompt)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = "\n".join(
+            chunk for chunk in (result.stdout.strip(), result.stderr.strip()) if chunk
+        )
+        if result.returncode != 0:
+            raise RuntimeError(output or "opencode command failed")
+        text_events: list[str] = []
+        for line in output.splitlines():
+            line = line.strip()
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("type") == "text":
+                part = event.get("part", {})
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    text_events.append(part["text"])
+        if not text_events:
+            raise RuntimeError("No text response found in opencode output")
+        return "\n".join(text_events)
 
     def _parse_json_response(self, content: str) -> dict[str, object]:
         content = content.strip()
@@ -1007,7 +1094,7 @@ class OpenAIPlanner:
             }
         return {}
 
-    def _client_for_role(self, role: str) -> tuple[OpenAI, str, str]:
+    def _client_for_role(self, role: str) -> tuple[object | None, str, str]:
         role_key = self.ROLE_KEYS.get(role, role.upper())
         backend = (
             os.getenv(
@@ -1017,6 +1104,15 @@ class OpenAIPlanner:
             .strip()
             .lower()
         )
+        if backend == "opencode":
+            model_name = os.getenv(
+                f"AUTOHAR_OPENCODE_{role_key}_MODEL",
+                os.getenv(
+                    f"AUTOHAR_{role_key}_MODEL",
+                    os.getenv("AUTOHAR_OPENCODE_MODEL", self.model),
+                ),
+            )
+            return None, model_name, "opencode"
         if backend == "lmstudio":
             model_name = os.getenv(
                 f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
@@ -1080,6 +1176,8 @@ class OpenAIPlanner:
                 .lower()
             )
 
+        if OpenAI is None:
+            raise RuntimeError("openai package is not installed")
         cache_key = (backend, base_url, api_key, api_mode)
         client = self._client_cache.get(cache_key)
         if client is None:
@@ -1110,7 +1208,23 @@ class OpenAIPlanner:
                 .strip()
                 .lower()
             )
-            if backend == "lmstudio":
+            if backend == "opencode":
+                model_name = os.getenv(
+                    f"AUTOHAR_OPENCODE_{role_key}_MODEL",
+                    os.getenv(
+                        f"AUTOHAR_{role_key}_MODEL",
+                        os.getenv("AUTOHAR_OPENCODE_MODEL", self.model),
+                    ),
+                )
+                base_url = os.getenv(
+                    f"AUTOHAR_OPENCODE_{role_key}_BIN",
+                    os.getenv(
+                        "AUTOHAR_OPENCODE_BIN",
+                        os.path.expanduser("~/.opencode/bin/opencode"),
+                    ),
+                )
+                api_mode = "run"
+            elif backend == "lmstudio":
                 model_name = os.getenv(
                     f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
                     os.getenv(
@@ -1991,6 +2105,16 @@ def build_planner(
     allow_fallback = (
         os.getenv("AUTOHAR_ALLOW_LLM_FALLBACK", "true").strip().lower() == "true"
     )
+
+    if backend == "opencode":
+        model = os.getenv("AUTOHAR_OPENCODE_MODEL", "opencode/gpt-5-nano")
+        return OpenAIPlanner(
+            model=model,
+            planner_name="opencode_multiagent",
+            api_mode="opencode",
+            mission_brief=mission_brief,
+            mission_source=mission_source,
+        )
 
     if backend == "lmstudio":
         base_url = os.getenv("AUTOHAR_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
