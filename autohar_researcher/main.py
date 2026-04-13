@@ -24,12 +24,101 @@ def format_result_line(
     )
 
 
+def _parse_bool(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _coerce_mission_value(value: str) -> object:
+    raw = value.strip()
+    lowered = raw.lower()
+    if lowered in {"true", "false", "yes", "no", "on", "off", "1", "0"}:
+        return _parse_bool(raw)
+    try:
+        if "." in raw:
+            return float(raw)
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+def _parse_mission_file(path: Path) -> tuple[dict[str, object], str]:
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return {}, text
+    lines = text.splitlines()
+    end_index = None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            end_index = idx
+            break
+    if end_index is None:
+        return {}, text
+    settings: dict[str, object] = {}
+    for line in lines[1:end_index]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        settings[key.strip()] = _coerce_mission_value(value)
+    body = "\n".join(lines[end_index + 1 :]).lstrip()
+    return settings, body
+
+
+def _resolve_mission_path(raw_path: str | None) -> Path | None:
+    if not raw_path:
+        return None
+    mission_file = Path(raw_path).expanduser()
+    if not mission_file.is_absolute():
+        mission_file = Path.cwd() / mission_file
+    return mission_file.resolve()
+
+
+def _mission_default(
+    settings: dict[str, object],
+    key: str,
+    fallback: object,
+) -> object:
+    return settings.get(key, fallback)
+
+
+def _choose_backend_from_mission(settings: dict[str, object]) -> str | None:
+    backend = str(settings.get("backend", "")).strip().lower()
+    if not backend:
+        return None
+    if backend in {"openai", "lmstudio", "heuristic"}:
+        return backend
+    if backend != "auto":
+        return None
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    if os.getenv("AUTOHAR_LLM_BASE_URL") or os.getenv("AUTOHAR_LMSTUDIO_MODEL"):
+        return "lmstudio"
+    return "heuristic"
+
+
 def main() -> None:
+    preload_parser = argparse.ArgumentParser(add_help=False)
+    preload_parser.add_argument("--mission-file", type=str, default=None)
+    preload_args, _ = preload_parser.parse_known_args()
+
+    mission_path = _resolve_mission_path(
+        preload_args.mission_file or os.getenv("AUTOHAR_MISSION_FILE")
+    )
+    mission_settings: dict[str, object] = {}
+    mission_brief = None
+    mission_source = None
+    if mission_path is not None and mission_path.exists():
+        mission_settings, mission_brief = _parse_mission_file(mission_path)
+        mission_source = str(mission_path)
+
     parser = argparse.ArgumentParser(
         description="Minimal multi-agent HAR auto-research demo."
     )
     parser.add_argument(
-        "--rounds", type=int, default=3, help="How many orchestrator rounds to run."
+        "--rounds",
+        type=int,
+        default=int(_mission_default(mission_settings, "rounds", 3)),
+        help="How many orchestrator rounds to run.",
     )
     parser.add_argument(
         "--show-git-plan",
@@ -39,59 +128,66 @@ def main() -> None:
     parser.add_argument(
         "--materialize-git",
         action="store_true",
+        default=bool(_mission_default(mission_settings, "materialize_git", False)),
         help="Actually create/update agent worktrees, write files, and commit round changes.",
     )
     parser.add_argument(
         "--auto-push-non-main",
         action="store_true",
+        default=bool(
+            _mission_default(mission_settings, "auto_push_non_main", False)
+        ),
         help="Push agent branches and orchestrator-main to origin after commit, but never push main.",
     )
     parser.add_argument(
         "--resume",
         action="store_true",
+        default=bool(_mission_default(mission_settings, "resume", False)),
         help="Resume from the latest completed round on disk and continue with additional rounds.",
     )
     parser.add_argument(
         "--never-stop",
         action="store_true",
+        default=bool(_mission_default(mission_settings, "never_stop", False)),
         help="Run indefinitely until manually stopped. Ignores --rounds.",
     )
     parser.add_argument(
         "--max-rounds-without-improvement",
         type=int,
-        default=10,
+        default=int(
+            _mission_default(mission_settings, "max_rounds_without_improvement", 10)
+        ),
         help="Stop never-stop mode after this many rounds without improvement.",
     )
     parser.add_argument(
         "--results-path",
         type=str,
-        default=None,
+        default=_mission_default(mission_settings, "results_path", None),
         help="Path for results.tsv tracking file (autoresearch mode).",
     )
     parser.add_argument(
         "--time-budget",
         type=float,
-        default=None,
+        default=_mission_default(mission_settings, "time_budget", None),
         help="Time budget per experiment in seconds (like karpathy/autoresearch).",
     )
     parser.add_argument(
         "--mission-file",
         type=str,
-        default=None,
+        default=mission_source,
         help="Optional markdown brief that is passed to the planner and carried across rounds.",
     )
     args = parser.parse_args()
-
-    mission_path = args.mission_file or os.getenv("AUTOHAR_MISSION_FILE")
-    mission_brief = None
-    mission_source = None
-    if mission_path is not None:
-        mission_file = Path(mission_path).expanduser()
-        if not mission_file.is_absolute():
-            mission_file = Path.cwd() / mission_file
-        mission_file = mission_file.resolve()
-        mission_brief = mission_file.read_text(encoding="utf-8")
+    if args.mission_file:
+        mission_file = _resolve_mission_path(args.mission_file)
+        if mission_file is None or not mission_file.exists():
+            raise FileNotFoundError(f"Mission file not found: {args.mission_file}")
+        mission_settings, mission_brief = _parse_mission_file(mission_file)
         mission_source = str(mission_file)
+
+    selected_backend = _choose_backend_from_mission(mission_settings)
+    if selected_backend:
+        os.environ["AUTOHAR_LLM_BACKEND"] = selected_backend
 
     autoresearch_config = load_autoresearch_config()
     if args.never_stop:
@@ -119,6 +215,7 @@ def main() -> None:
         time_budget_config=time_budget_config,
         mission_brief=mission_brief,
         mission_source=mission_source,
+        mission_settings=mission_settings,
     )
 
     if args.never_stop or autoresearch_config.never_stop:

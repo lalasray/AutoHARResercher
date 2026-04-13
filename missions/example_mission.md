@@ -1,3 +1,12 @@
+---
+backend: auto
+rounds: 20
+resume: false
+materialize_git: true
+auto_push_non_main: false
+never_stop: false
+---
+
 # AutoHAR Mission Brief
 
 ## Goal

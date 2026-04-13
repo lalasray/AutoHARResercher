@@ -444,6 +444,7 @@ class HierarchicalOrchestrator:
         time_budget_config: TimeBudgetConfig | None = None,
         mission_brief: str | None = None,
         mission_source: str | None = None,
+        mission_settings: dict[str, object] | None = None,
     ) -> None:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
@@ -464,6 +465,7 @@ class HierarchicalOrchestrator:
         self.time_budget_config = time_budget_config or load_time_budget_config()
         self.mission_brief = mission_brief
         self.mission_source = mission_source
+        self.mission_settings = dict(mission_settings or {})
         self.active_mission_brief = mission_brief
         self.repair_loop = CrashRepairLoop(
             planner=self.planner,
@@ -2080,6 +2082,12 @@ class HierarchicalOrchestrator:
         if not base and not history and not accepted_history:
             return None
         lines: list[str] = []
+        frontmatter = self._active_mission_frontmatter(history, accepted_history)
+        if frontmatter:
+            lines.append("---")
+            lines.extend(frontmatter)
+            lines.append("---")
+            lines.append("")
         if base:
             lines.append(base)
             lines.append("")
@@ -2140,6 +2148,39 @@ class HierarchicalOrchestrator:
                 "  - Preserve what is already working and mutate only where there is concrete evidence."
             )
         return "\n".join(lines).strip() + "\n"
+
+    def _active_mission_frontmatter(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> list[str]:
+        payload = dict(self.mission_settings)
+        if self.mission_source:
+            payload["source_mission"] = self.mission_source
+        payload["resume"] = bool(history or accepted_history)
+        lines: list[str] = []
+        preferred_keys = [
+            "backend",
+            "rounds",
+            "resume",
+            "materialize_git",
+            "auto_push_non_main",
+            "never_stop",
+            "time_budget",
+            "max_rounds_without_improvement",
+            "results_path",
+            "source_mission",
+        ]
+        for key in preferred_keys:
+            if key not in payload or payload[key] is None:
+                continue
+            value = payload[key]
+            if isinstance(value, bool):
+                rendered = "true" if value else "false"
+            else:
+                rendered = str(value)
+            lines.append(f"{key}: {rendered}")
+        return lines
 
     def _write_active_mission(
         self,

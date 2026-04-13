@@ -18,6 +18,7 @@ cp .autohar.env.example .autohar.env
 
 | Script | Description |
 |--------|-------------|
+| `./run_mission.sh missions/your_mission.md` | Start directly from a mission markdown file |
 | `./run_autohar_lmstudio.sh` | Use local LM Studio (no API key) |
 | `./run_autohar_openai.sh` | Use OpenAI API |
 | `./run_autoresearch.sh` | Simple single-script loop |
@@ -44,6 +45,7 @@ Max time per experiment in seconds. If exceeded, experiment is marked as timeout
 
 ### `--mission-file PATH.md`
 Load a markdown brief and pass it into the planner every round. Use this when you want the run to follow a persistent research brief instead of only the built-in guides.
+The mission file can also include frontmatter to define runtime settings such as backend, rounds, resume, materialize_git, and time_budget.
 
 ### `--max-rounds-without-improvement N`
 In never-stop mode, stop after N rounds without improvement. Default: 10.
@@ -75,7 +77,7 @@ AUTOHAR_TIME_BUDGET_SECONDS=300
 AUTOHAR_MISSION_FILE=missions/example_mission.md
 ```
 
-The OpenAI and LM Studio wrapper scripts force their matching backend. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic`.
+The OpenAI and LM Studio wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
 
 ## Architecture
 
@@ -139,7 +141,7 @@ artifacts/
 ```
 
 `score_history.csv` is trial history. `accepted_history.csv` is the kept baseline history.
-`active_mission.md` is the evolving markdown brief written after each round; it keeps your original mission and adds current best baseline, recent evidence, and tighter guidance for the next rounds.
+`active_mission.md` is the evolving markdown brief written after each round; it keeps your original mission, preserves mission frontmatter, and adds current best baseline, recent evidence, and tighter guidance for the next rounds.
 
 The simple `run_autoresearch.sh` loop writes `results.tsv`:
 
@@ -162,6 +164,9 @@ b2c3d4e  0.8612    keep    better_augmentation
 
 # Run with a markdown mission brief
 ./run_autohar_lmstudio.sh --rounds 10 --mission-file missions/example_mission.md
+
+# Let the mission file decide backend and runtime settings
+./run_mission.sh missions/example_mission.md
 
 # Never-stop with git
 ./run_autohar_lmstudio.sh --never-stop --materialize-git
