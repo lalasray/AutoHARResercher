@@ -36,6 +36,40 @@ class DummyHARHarness:
             return "PyTorch available; CUDA GPU detected and will be used when training device is auto."
         return "PyTorch available; no GPU found, using CPU."
 
+    def _copy_window(self, window: list[list[float]]) -> list[list[float]]:
+        return [row[:] for row in window]
+
+    def _safe_custom_params(
+        self,
+        params: dict[str, float | int | str | bool],
+    ) -> dict[str, float | int | str | bool]:
+        return {key: value for key, value in params.items() if key != "custom_code"}
+
+    def _cached_custom_callable(
+        self,
+        cache: dict[str, object | None],
+        custom_code: str,
+        function_name: str,
+    ) -> object | None:
+        if custom_code not in cache:
+            namespace = sandboxed_namespace(custom_code) or {}
+            candidate = namespace.get(function_name)
+            cache[custom_code] = candidate if callable(candidate) else None
+        return cache[custom_code]
+
+    def _candidate_summary(
+        self,
+        agent_name: str,
+        config: CandidateConfig,
+    ) -> str:
+        return (
+            f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
+            f"{config.augmentation}:{config.augmentation_strength}, "
+            f"lr={config.learning_rate}, window={config.window_size}, "
+            f"model_params={config.model_params}, data_params={config.data_params}, "
+            f"aug_params={config.augmentation_params}"
+        )
+
     def evaluate(
         self,
         round_id: int,
@@ -135,13 +169,7 @@ class DummyHARHarness:
                 },
             }
         cached = self._evaluation_cache[cache_key]
-        summary = (
-            f"{agent_name} proposed {config.model_name} with {config.preprocessing}, "
-            f"{config.augmentation}:{config.augmentation_strength}, "
-            f"lr={config.learning_rate}, window={config.window_size}, "
-            f"model_params={config.model_params}, data_params={config.data_params}, "
-            f"aug_params={config.augmentation_params}"
-        )
+        summary = self._candidate_summary(agent_name=agent_name, config=config)
         details = dict(cached["details"])
         score_breakdown = {
             key: value for key, value in cached.items() if isinstance(value, float)
@@ -267,7 +295,7 @@ class DummyHARHarness:
         params: dict[str, float | int | str | bool],
     ) -> list[list[float]]:
         if len(window) == target_size:
-            return [row[:] for row in window]
+            return self._copy_window(window)
         resample_mode = str(params.get("resample_mode", "nearest"))
         resampled = []
         for idx in range(target_size):
@@ -336,27 +364,25 @@ class DummyHARHarness:
     ) -> list[list[float]]:
         custom_code = str(params.get("custom_code", "")).strip()
         if not custom_code:
-            return [row[:] for row in window]
+            return self._copy_window(window)
         prepare_fn = self._custom_data_callable(custom_code)
         if not callable(prepare_fn):
-            return [row[:] for row in window]
-        safe_params = {
-            key: value for key, value in params.items() if key != "custom_code"
-        }
+            return self._copy_window(window)
         try:
-            result = prepare_fn([row[:] for row in window], dict(safe_params))
+            result = prepare_fn(
+                self._copy_window(window),
+                dict(self._safe_custom_params(params)),
+            )
         except Exception:  # noqa: BLE001
-            return [row[:] for row in window]
+            return self._copy_window(window)
         return self._validated_custom_window(result, window)
 
     def _custom_data_callable(self, custom_code: str) -> object | None:
-        if custom_code not in self._custom_data_cache:
-            namespace = sandboxed_namespace(custom_code) or {}
-            candidate = namespace.get("custom_prepare_window")
-            self._custom_data_cache[custom_code] = (
-                candidate if callable(candidate) else None
-            )
-        return self._custom_data_cache[custom_code]
+        return self._cached_custom_callable(
+            cache=self._custom_data_cache,
+            custom_code=custom_code,
+            function_name="custom_prepare_window",
+        )
 
     def _normalize(self, window: list[list[float]]) -> list[list[float]]:
         channels = len(window[0])
@@ -378,7 +404,7 @@ class DummyHARHarness:
         params: dict[str, float | int | str],
         rng: random.Random,
     ) -> list[list[float]]:
-        augmented = [row[:] for row in window]
+        augmented = self._copy_window(window)
         strength_scale = {
             "weak": 0.5,
             "medium": 1.0,
@@ -507,32 +533,27 @@ class DummyHARHarness:
     ) -> list[list[float]]:
         custom_code = str(params.get("custom_code", "")).strip()
         if not custom_code:
-            return [row[:] for row in window]
+            return self._copy_window(window)
         augment_fn = self._custom_augmentation_callable(custom_code)
         if not callable(augment_fn):
-            return [row[:] for row in window]
-        safe_params = {
-            key: value for key, value in params.items() if key != "custom_code"
-        }
+            return self._copy_window(window)
         try:
             result = augment_fn(
-                [row[:] for row in window],
+                self._copy_window(window),
                 str(strength),
-                dict(safe_params),
+                dict(self._safe_custom_params(params)),
                 rng,
             )
         except Exception:  # noqa: BLE001
-            return [row[:] for row in window]
+            return self._copy_window(window)
         return self._validated_custom_window(result, window)
 
     def _custom_augmentation_callable(self, custom_code: str) -> object | None:
-        if custom_code not in self._custom_augmentation_cache:
-            namespace = sandboxed_namespace(custom_code) or {}
-            candidate = namespace.get("custom_augment_window")
-            self._custom_augmentation_cache[custom_code] = (
-                candidate if callable(candidate) else None
-            )
-        return self._custom_augmentation_cache[custom_code]
+        return self._cached_custom_callable(
+            cache=self._custom_augmentation_cache,
+            custom_code=custom_code,
+            function_name="custom_augment_window",
+        )
 
     def _validated_custom_window(
         self,
@@ -540,16 +561,16 @@ class DummyHARHarness:
         fallback: list[list[float]],
     ) -> list[list[float]]:
         if not isinstance(candidate, list) or len(candidate) != len(fallback):
-            return [row[:] for row in fallback]
+            return self._copy_window(fallback)
         channel_count = len(fallback[0]) if fallback else 0
         validated: list[list[float]] = []
         for row in candidate:
             if not isinstance(row, list) or len(row) != channel_count:
-                return [fallback_row[:] for fallback_row in fallback]
+                return self._copy_window(fallback)
             clean_row: list[float] = []
             for value in row:
                 if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-                    return [fallback_row[:] for fallback_row in fallback]
+                    return self._copy_window(fallback)
                 clean_row.append(float(value))
             validated.append(clean_row)
         return validated
@@ -670,27 +691,22 @@ class DummyHARHarness:
         feature_fn = self._custom_model_feature_callable(custom_code)
         if not callable(feature_fn):
             return list(base_features)
-        safe_params = {
-            key: value for key, value in params.items() if key != "custom_code"
-        }
         try:
             result = feature_fn(
-                [row[:] for row in window],
+                self._copy_window(window),
                 list(base_features),
-                dict(safe_params),
+                dict(self._safe_custom_params(params)),
             )
         except Exception:  # noqa: BLE001
             return list(base_features)
         return self._validated_custom_features(result, base_features)
 
     def _custom_model_feature_callable(self, custom_code: str) -> object | None:
-        if custom_code not in self._custom_model_feature_cache:
-            namespace = sandboxed_namespace(custom_code) or {}
-            candidate = namespace.get("custom_model_features")
-            self._custom_model_feature_cache[custom_code] = (
-                candidate if callable(candidate) else None
-            )
-        return self._custom_model_feature_cache[custom_code]
+        return self._cached_custom_callable(
+            cache=self._custom_model_feature_cache,
+            custom_code=custom_code,
+            function_name="custom_model_features",
+        )
 
     def _validated_custom_features(
         self,
