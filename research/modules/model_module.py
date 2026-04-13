@@ -11,7 +11,7 @@ MODEL_NAME = "deepconvlstm"
 # Architecture parameters
 HIDDEN_DIM = 64
 DEPTH = 2
-ATTENTION_MIX = 0.8
+ATTENTION_MIX = 0.9
 
 # Optimizer
 LEARNING_RATE = 0.001

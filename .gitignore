@@ -8,3 +8,4 @@ data/
 /artifacts_online
 /tests/__pycache__
 /artifacts_openai
+*.json
