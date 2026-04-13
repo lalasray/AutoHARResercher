@@ -267,7 +267,11 @@ class OpenAIPlanner:
         }
 
     def _prompt_context(self, context: dict[str, object]) -> dict[str, object]:
-        if not self._uses_chat_backend():
+        compact_mode = (
+            os.getenv("AUTOHAR_COMPACT_PROMPT_CONTEXT", "false").strip().lower()
+            == "true"
+        )
+        if not compact_mode:
             return context
         best_result = context.get("best_result")
         return {
@@ -293,14 +297,6 @@ class OpenAIPlanner:
                 dict(context.get("agent_memories", {}))
             ),
         }
-
-    def _uses_chat_backend(self) -> bool:
-        for role_name in self.ROLE_KEYS:
-            backend = str(self._role_backend(role_name)).strip().lower()
-            api_mode = str(self._role_api_mode(role_name, backend)).strip().lower()
-            if backend == "lmstudio" or api_mode == "chat":
-                return True
-        return False
 
     def _role_backend(self, role: str) -> str:
         role_key = self.ROLE_KEYS.get(role, role.upper())
