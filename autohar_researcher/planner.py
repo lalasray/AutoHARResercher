@@ -2199,7 +2199,7 @@ def build_planner(
                 "[AutoHAR] Warning: No OpenAI API key found. Using heuristic fallback planner."
             )
             print(
-                "[AutoHAR] Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=lmstudio"
+                "[AutoHAR] Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=opencode"
             )
             return HeuristicPlanner(
                 mission_brief=mission_brief,
@@ -2207,7 +2207,7 @@ def build_planner(
             )
         raise RuntimeError(
             "OPENAI_API_KEY is required for the default OpenAI planner. "
-            "Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=lmstudio (local LLM)."
+            "Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=opencode (local CLI planner)."
         )
 
     if OpenAI is None:

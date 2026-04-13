@@ -159,9 +159,6 @@ b2c3d4e  0.8612    keep    better_augmentation
 ## Examples
 
 ```bash
-# Basic multi-agent loop
-./run_autohar_opencode.sh --rounds 10
-
 # Local opencode backend
 ./run_autohar_opencode.sh --rounds 10
 
