@@ -42,6 +42,9 @@ Continue from last completed round in `artifacts/`.
 ### `--time-budget SECONDS`
 Max time per experiment in seconds. If exceeded, experiment is marked as timeout.
 
+### `--mission-file PATH.md`
+Load a markdown brief and pass it into the planner every round. Use this when you want the run to follow a persistent research brief instead of only the built-in guides.
+
 ### `--max-rounds-without-improvement N`
 In never-stop mode, stop after N rounds without improvement. Default: 10.
 
@@ -67,6 +70,9 @@ AUTOHAR_NEVER_STOP=true
 
 # Time budget per experiment
 AUTOHAR_TIME_BUDGET_SECONDS=300
+
+# Optional persistent markdown research brief
+AUTOHAR_MISSION_FILE=missions/example_mission.md
 ```
 
 The OpenAI and LM Studio wrapper scripts force their matching backend. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic`.
@@ -152,6 +158,9 @@ b2c3d4e  0.8612    keep    better_augmentation
 ```bash
 # Basic multi-agent loop
 ./run_autohar_lmstudio.sh --rounds 10
+
+# Run with a markdown mission brief
+./run_autohar_lmstudio.sh --rounds 10 --mission-file missions/example_mission.md
 
 # Never-stop with git
 ./run_autohar_lmstudio.sh --never-stop --materialize-git

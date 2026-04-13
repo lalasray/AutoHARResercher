@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 
 from autohar_researcher.agents import HierarchicalOrchestrator
 from autohar_researcher.config import load_autoresearch_config, load_time_budget_config
@@ -72,7 +74,24 @@ def main() -> None:
         default=None,
         help="Time budget per experiment in seconds (like karpathy/autoresearch).",
     )
+    parser.add_argument(
+        "--mission-file",
+        type=str,
+        default=None,
+        help="Optional markdown brief that is passed to the planner and carried across rounds.",
+    )
     args = parser.parse_args()
+
+    mission_path = args.mission_file or os.getenv("AUTOHAR_MISSION_FILE")
+    mission_brief = None
+    mission_source = None
+    if mission_path is not None:
+        mission_file = Path(mission_path).expanduser()
+        if not mission_file.is_absolute():
+            mission_file = Path.cwd() / mission_file
+        mission_file = mission_file.resolve()
+        mission_brief = mission_file.read_text(encoding="utf-8")
+        mission_source = str(mission_file)
 
     autoresearch_config = load_autoresearch_config()
     if args.never_stop:
@@ -98,6 +117,8 @@ def main() -> None:
         harness=harness,
         autoresearch_config=autoresearch_config,
         time_budget_config=time_budget_config,
+        mission_brief=mission_brief,
+        mission_source=mission_source,
     )
 
     if args.never_stop or autoresearch_config.never_stop:
@@ -134,6 +155,8 @@ def main() -> None:
     print(f"Auto-push non-main: {args.auto_push_non_main}")
     print(f"Resume mode: {args.resume}")
     print(f"Planner: {planner_name}")
+    if mission_source:
+        print(f"Mission file: {mission_source}")
     if args.never_stop or autoresearch_config.never_stop:
         experiment_count = results.get("experiment_count", 0)
         print(f"Experiments completed: {experiment_count}")

@@ -442,10 +442,15 @@ class HierarchicalOrchestrator:
         repair_config: RepairConfig | None = None,
         autoresearch_config: AutoresearchConfig | None = None,
         time_budget_config: TimeBudgetConfig | None = None,
+        mission_brief: str | None = None,
+        mission_source: str | None = None,
     ) -> None:
         self.harness = harness
         self.agents = [ModelAgent(), AugmentationAgent(), DataAgent()]
-        self.planner = build_planner()
+        self.planner = build_planner(
+            mission_brief=mission_brief,
+            mission_source=mission_source,
+        )
         self.workspaces = self._build_workspaces()
         self.git_runtime = GitRuntime()
         self.orchestrator_workspace = AgentWorkspace(
@@ -457,6 +462,9 @@ class HierarchicalOrchestrator:
         self.repair_config = repair_config or load_repair_config()
         self.autoresearch_config = autoresearch_config or load_autoresearch_config()
         self.time_budget_config = time_budget_config or load_time_budget_config()
+        self.mission_brief = mission_brief
+        self.mission_source = mission_source
+        self.active_mission_brief = mission_brief
         self.repair_loop = CrashRepairLoop(
             planner=self.planner,
             config=self.repair_config,
@@ -487,6 +495,7 @@ class HierarchicalOrchestrator:
             best_result = None
             best_by_agent = {}
             start_round = 1
+        self._refresh_active_mission(history, accepted_history)
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
         run_outputs = self._write_run_outputs(history, accepted_history)
@@ -538,6 +547,7 @@ class HierarchicalOrchestrator:
                 accepted_history.append(self._clone_result(accepted_candidate))
 
             history.extend(round_results)
+            self._refresh_active_mission(history, accepted_history)
             round_state.promotion_artifact = self._write_promotion_artifact(
                 round_id=round_id,
                 round_results=round_results,
@@ -596,6 +606,7 @@ class HierarchicalOrchestrator:
 
         best_by_agent = self._best_by_agent_from_history(history)
         start_round = max((result.round_id for result in history), default=0) + 1
+        self._refresh_active_mission(history, accepted_history)
         actions: list[GitAction] = self.bootstrap_actions()
         round_states: list[RoundState] = []
 
@@ -718,6 +729,7 @@ class HierarchicalOrchestrator:
             results_tracker.add(experiment_result)
 
             history.extend(round_results)
+            self._refresh_active_mission(history, accepted_history)
             round_state.promotion_artifact = self._write_promotion_artifact(
                 round_id=round_id,
                 round_results=round_results,

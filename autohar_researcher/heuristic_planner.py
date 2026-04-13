@@ -60,9 +60,16 @@ WINDOW_SIZES = [64, 96, 128, 192, 256]
 class HeuristicPlanner:
     name = "heuristic_fallback"
 
-    def __init__(self, dataset: UCIHARDataset | None = None) -> None:
+    def __init__(
+        self,
+        dataset: UCIHARDataset | None = None,
+        mission_brief: str | None = None,
+        mission_source: str | None = None,
+    ) -> None:
         self.dataset = dataset
         self._rng = random.Random()
+        self.mission_brief = (mission_brief or "").strip()
+        self.mission_source = mission_source
 
     def plan_round(
         self,
@@ -81,6 +88,7 @@ class HeuristicPlanner:
         return {
             "planner": self.name,
             "summary": "First round: probe with diverse strong defaults.",
+            "mission_brief": self._mission_payload(),
             "hints": {
                 "model_agent": ModelPlanHint(
                     model_name="deepconvlstm",
@@ -144,6 +152,7 @@ class HeuristicPlanner:
         return {
             "planner": self.name,
             "summary": f"Heuristic round {round_id}: {exploration_mode} mode.",
+            "mission_brief": self._mission_payload(),
             "hints": {
                 "model_agent": model_hint,
                 "augmentation_agent": aug_hint,
@@ -162,6 +171,14 @@ class HeuristicPlanner:
                 for agent in ["model_agent", "augmentation_agent", "data_agent"]
             },
             "combination_memory": {},
+        }
+
+    def _mission_payload(self) -> dict[str, object] | None:
+        if not self.mission_brief:
+            return None
+        return {
+            "source": self.mission_source,
+            "content": self.mission_brief,
         }
 
     def _heuristic_model_hint(

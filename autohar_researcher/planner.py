@@ -93,6 +93,8 @@ class OpenAIPlanner:
         api_key: str | None = None,
         planner_name: str | None = None,
         api_mode: str = "responses",
+        mission_brief: str | None = None,
+        mission_source: str | None = None,
     ) -> None:
         if OpenAI is None:
             raise RuntimeError("openai package is not installed")
@@ -103,6 +105,8 @@ class OpenAIPlanner:
         self.default_api_key = api_key
         self._client_cache: dict[tuple[str, str, str, str], OpenAI] = {}
         self.guides = self._load_guides()
+        self.mission_brief = (mission_brief or "").strip()
+        self.mission_source = mission_source
 
     def plan_round(
         self,
@@ -243,6 +247,7 @@ class OpenAIPlanner:
         return {
             "round_id": round_id,
             "best_result": best_payload,
+            "mission_brief": self._mission_payload(),
             "dataset_metadata": self._dataset_metadata(best_result),
             "trend_summary": trend_summary,
             "recent_trials": recent_trials,
@@ -277,6 +282,9 @@ class OpenAIPlanner:
         return {
             "round_id": context.get("round_id"),
             "best_result": self._compact_result(best_result),
+            "mission_brief": self._compact_mission_payload(
+                context.get("mission_brief")
+            ),
             "dataset_metadata": self._compact_dataset_metadata(
                 dict(context.get("dataset_metadata", {}))
             ),
@@ -330,6 +338,29 @@ class OpenAIPlanner:
             "agent_name": item.get("agent_name"),
             "score": item.get("score"),
             "config": config,
+        }
+
+    def _mission_payload(self) -> dict[str, object] | None:
+        if not self.mission_brief:
+            return None
+        return {
+            "source": self.mission_source,
+            "content": self.mission_brief,
+        }
+
+    def _compact_mission_payload(
+        self, payload: object, max_chars: int = 2400
+    ) -> dict[str, object] | None:
+        if not isinstance(payload, dict):
+            return None
+        content = str(payload.get("content", "")).strip()
+        if not content:
+            return None
+        if len(content) > max_chars:
+            content = content[: max_chars - 15].rstrip() + "\n...[truncated]"
+        return {
+            "source": payload.get("source"),
+            "content": content,
         }
 
     def _compact_params(self, params: dict[str, object]) -> dict[str, object]:
@@ -1951,7 +1982,10 @@ class OpenAIPlanner:
         return " " + " ".join(unique_tags)
 
 
-def build_planner() -> OpenAIPlanner | HeuristicPlanner:
+def build_planner(
+    mission_brief: str | None = None,
+    mission_source: str | None = None,
+) -> OpenAIPlanner | HeuristicPlanner:
     load_local_env()
     backend = os.getenv("AUTOHAR_LLM_BACKEND", "openai").strip().lower()
     allow_fallback = (
@@ -1968,6 +2002,8 @@ def build_planner() -> OpenAIPlanner | HeuristicPlanner:
             api_key=api_key,
             planner_name="lmstudio_chat_multiagent",
             api_mode="chat",
+            mission_brief=mission_brief,
+            mission_source=mission_source,
         )
 
     if not os.getenv("OPENAI_API_KEY"):
@@ -1980,7 +2016,10 @@ def build_planner() -> OpenAIPlanner | HeuristicPlanner:
             print(
                 "[AutoHAR] Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=lmstudio"
             )
-            return HeuristicPlanner()
+            return HeuristicPlanner(
+                mission_brief=mission_brief,
+                mission_source=mission_source,
+            )
         raise RuntimeError(
             "OPENAI_API_KEY is required for the default OpenAI planner. "
             "Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=lmstudio (local LLM)."
@@ -1993,10 +2032,16 @@ def build_planner() -> OpenAIPlanner | HeuristicPlanner:
             print(
                 "[AutoHAR] Warning: openai package not installed. Using heuristic fallback planner."
             )
-            return HeuristicPlanner()
+            return HeuristicPlanner(
+                mission_brief=mission_brief,
+                mission_source=mission_source,
+            )
         raise RuntimeError(
             "The openai Python package is required for planning. "
             "Install project dependencies or set AUTOHAR_ALLOW_LLM_FALLBACK=true for heuristic fallback."
         )
 
-    return OpenAIPlanner()
+    return OpenAIPlanner(
+        mission_brief=mission_brief,
+        mission_source=mission_source,
+    )

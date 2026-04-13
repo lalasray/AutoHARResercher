@@ -95,6 +95,7 @@ class RunOutputs:
     trial_history_svg: str
     accepted_history_csv: str
     accepted_history_svg: str
+    active_mission_md: str = ""
     latest_promotion_artifact: str = ""
 
 

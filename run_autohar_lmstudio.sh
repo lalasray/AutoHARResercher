@@ -24,13 +24,17 @@ MATERIALIZE_GIT="${AUTOHAR_MATERIALIZE_GIT:-1}"
 AUTO_PUSH_NON_MAIN="${AUTOHAR_AUTO_PUSH_NON_MAIN:-0}"
 NEVER_STOP="${AUTOHAR_NEVER_STOP:-false}"
 TIME_BUDGET="${AUTOHAR_TIME_BUDGET_SECONDS:-}"
+MISSION_FILE="${AUTOHAR_MISSION_FILE:-}"
 
 ARGS=()
 HAS_ROUNDS_ARG=0
+HAS_MISSION_ARG=0
 for arg in "$@"; do
   if [[ "$arg" == "--rounds" ]]; then
     HAS_ROUNDS_ARG=1
-    break
+  fi
+  if [[ "$arg" == "--mission-file" ]]; then
+    HAS_MISSION_ARG=1
   fi
 done
 
@@ -52,6 +56,10 @@ if [[ -n "$TIME_BUDGET" ]]; then
   ARGS+=(--time-budget "$TIME_BUDGET")
 fi
 
+if [[ -n "$MISSION_FILE" && "$HAS_MISSION_ARG" == "0" ]]; then
+  ARGS+=(--mission-file "$MISSION_FILE")
+fi
+
 ARGS+=("$@")
 
 echo "Running AutoHARResearcher from $ROOT_DIR"
@@ -59,6 +67,7 @@ echo "Backend: lmstudio"
 echo "Never-stop: $NEVER_STOP"
 echo "Time budget: ${TIME_BUDGET:-none}"
 echo "Materialize git: $MATERIALIZE_GIT"
+echo "Mission file: ${MISSION_FILE:-none}"
 echo "Command: python -m autohar_researcher.main ${ARGS[*]}"
 
 python -m autohar_researcher.main "${ARGS[@]}"
