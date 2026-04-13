@@ -1212,7 +1212,7 @@ class OpenAIPlanner:
                     ),
                 ),
                 "api_key": "",
-                "api_mode": "run",
+                "api_mode": "opencode",
             }
         if backend == "lmstudio":
             return {
