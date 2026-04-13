@@ -11,7 +11,7 @@ cp .autohar.env.example .autohar.env
 # Edit .autohar.env with your backend (see below)
 
 # Run the main multi-agent loop
-./run_autohar_lmstudio.sh --never-stop --materialize-git
+./run_autohar_opencode.sh --never-stop --materialize-git
 ```
 
 ## Shell Scripts
@@ -20,7 +20,7 @@ cp .autohar.env.example .autohar.env
 |--------|-------------|
 | `./run_mission.sh missions/your_mission.md` | Start directly from a mission markdown file |
 | `./run_autohar_opencode.sh` | Use local opencode CLI |
-| `./run_autohar_lmstudio.sh` | Use local LM Studio (no API key) |
+| `./run_autohar_lmstudio.sh` | Deprecated shim that forwards to `run_autohar_opencode.sh` |
 | `./run_autohar_openai.sh` | Use OpenAI API |
 | `./run_autoresearch.sh` | Simple single-script loop |
 
@@ -63,10 +63,9 @@ Edit `.autohar.env`:
 OPENAI_API_KEY=sk-...
 AUTOHAR_OPENAI_MODEL=gpt-4o-mini
 
-# LM Studio
-AUTOHAR_LLM_BASE_URL=http://127.0.0.1:1234/v1
-AUTOHAR_LLM_API_KEY=lm-studio
-AUTOHAR_LMSTUDIO_MODEL=local-model-id
+# OpenCode local
+AUTOHAR_OPENCODE_BIN=/home/your-user/.opencode/bin/opencode
+AUTOHAR_OPENCODE_MODEL=lmstudio/qwen/qwen3-30b-a3b-2507
 
 # Never-stop mode
 AUTOHAR_NEVER_STOP=true
@@ -78,7 +77,7 @@ AUTOHAR_TIME_BUDGET_SECONDS=300
 AUTOHAR_MISSION_FILE=missions/example_mission.md
 ```
 
-The OpenAI, OpenCode, and LM Studio wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
+The OpenAI and OpenCode wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. `run_autohar_lmstudio.sh` is kept only as a compatibility shim and now forwards to OpenCode. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
 
 ## Architecture
 
@@ -161,28 +160,28 @@ b2c3d4e  0.8612    keep    better_augmentation
 
 ```bash
 # Basic multi-agent loop
-./run_autohar_lmstudio.sh --rounds 10
+./run_autohar_opencode.sh --rounds 10
 
 # Local opencode backend
 ./run_autohar_opencode.sh --rounds 10
 
 # Run with a markdown mission brief
-./run_autohar_lmstudio.sh --rounds 10 --mission-file missions/example_mission.md
+./run_autohar_opencode.sh --rounds 10 --mission-file missions/example_mission.md
 
 # Let the mission file decide backend and runtime settings
 ./run_mission.sh missions/example_mission.md
 
 # Never-stop with git
-./run_autohar_lmstudio.sh --never-stop --materialize-git
+./run_autohar_opencode.sh --never-stop --materialize-git
 
 # With time budget (5 min per experiment)
-./run_autohar_lmstudio.sh --never-stop --time-budget 300
+./run_autohar_opencode.sh --never-stop --time-budget 300
 
 # Simple loop (karpathy style)
 ./run_autoresearch.sh --max-experiments 100
 
 # Resume previous run
-./run_autohar_lmstudio.sh --resume --rounds 10
+./run_autohar_opencode.sh --resume --rounds 10
 ```
 
 ## Testing

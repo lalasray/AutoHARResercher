@@ -24,6 +24,6 @@ set +a
 
 echo "Running AutoHARResearcher mission from $ROOT_DIR"
 echo "Mission file: $MISSION_FILE"
-echo "Command: python -m autohar_researcher.main --mission-file $MISSION_FILE $*"
+echo "Command: python3 -m autohar_researcher.main --mission-file $MISSION_FILE $*"
 
-python -m autohar_researcher.main --mission-file "$MISSION_FILE" "$@"
+python3 -m autohar_researcher.main --mission-file "$MISSION_FILE" "$@"

@@ -195,8 +195,6 @@ def main() -> None:
 
     autoresearch_config = load_autoresearch_config()
     if args.never_stop:
-        import os
-
         os.environ["AUTOHAR_NEVER_STOP"] = "true"
         autoresearch_config = load_autoresearch_config()
 

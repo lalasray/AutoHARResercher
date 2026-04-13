@@ -29,7 +29,7 @@ fi
 
 ARGS+=("$@")
 
-echo "Command: python -m autohar_researcher.autoresearch_loop ${ARGS[*]}"
+echo "Command: python3 -m autohar_researcher.autoresearch_loop ${ARGS[*]}"
 echo ""
 
-python -m autohar_researcher.autoresearch_loop "${ARGS[@]}"
+python3 -m autohar_researcher.autoresearch_loop "${ARGS[@]}"

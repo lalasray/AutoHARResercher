@@ -68,6 +68,6 @@ echo "Never-stop: $NEVER_STOP"
 echo "Time budget: ${TIME_BUDGET:-none}"
 echo "Materialize git: $MATERIALIZE_GIT"
 echo "Mission file: ${MISSION_FILE:-none}"
-echo "Command: python -m autohar_researcher.main ${ARGS[*]}"
+echo "Command: python3 -m autohar_researcher.main ${ARGS[*]}"
 
-python -m autohar_researcher.main "${ARGS[@]}"
+python3 -m autohar_researcher.main "${ARGS[@]}"

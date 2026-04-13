@@ -97,12 +97,16 @@ class OpenAIPlanner:
         mission_brief: str | None = None,
         mission_source: str | None = None,
     ) -> None:
-        self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "gpt-5-mini")
+        if api_mode == "opencode":
+            self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "")
+        else:
+            self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "gpt-5-mini")
         self.base_url = base_url
         self.api_mode = api_mode
         self.name = planner_name or self.name
         self.default_api_key = api_key
         self._client_cache: dict[tuple[str, str, str, str], OpenAI] = {}
+        self._opencode_model_cache: list[str] | None = None
         self.guides = self._load_guides()
         self.mission_brief = (mission_brief or "").strip()
         self.mission_source = mission_source
@@ -1009,6 +1013,59 @@ class OpenAIPlanner:
             raise RuntimeError("No text response found in opencode output")
         return "\n".join(text_events)
 
+    def _default_opencode_model(self) -> str:
+        configured = os.getenv("AUTOHAR_OPENCODE_MODEL", "").strip()
+        if configured:
+            return configured
+        preferred_local = [
+            "lmstudio/qwen/qwen3-30b-a3b-2507",
+            "lmstudio/qwen/qwen3-coder-30b",
+            "lmstudio/openai/gpt-oss-20b",
+        ]
+        models = self._opencode_models()
+        local_models = [model for model in models if model.startswith("lmstudio/")]
+        for preferred in preferred_local:
+            if preferred in local_models:
+                return preferred
+        if local_models:
+            return local_models[0]
+        for preferred in preferred_local:
+            return preferred
+        preferred_remote = [
+            "opencode/gpt-5-nano",
+            "opencode/big-pickle",
+            "opencode/nemotron-3-super-free",
+        ]
+        for preferred in preferred_remote:
+            if preferred in models:
+                return preferred
+        return self.model or "opencode/gpt-5-nano"
+
+    def _opencode_models(self) -> list[str]:
+        if self._opencode_model_cache is not None:
+            return self._opencode_model_cache
+        binary = os.getenv(
+            "AUTOHAR_OPENCODE_BIN", os.path.expanduser("~/.opencode/bin/opencode")
+        )
+        try:
+            result = subprocess.run(
+                [binary, "models"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                self._opencode_model_cache = []
+                return self._opencode_model_cache
+            self._opencode_model_cache = [
+                line.strip()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            ]
+        except Exception:
+            self._opencode_model_cache = []
+        return self._opencode_model_cache
+
     def _parse_json_response(self, content: str) -> dict[str, object]:
         content = content.strip()
         try:
@@ -1109,7 +1166,7 @@ class OpenAIPlanner:
                 f"AUTOHAR_OPENCODE_{role_key}_MODEL",
                 os.getenv(
                     f"AUTOHAR_{role_key}_MODEL",
-                    os.getenv("AUTOHAR_OPENCODE_MODEL", self.model),
+                    os.getenv("AUTOHAR_OPENCODE_MODEL", self._default_opencode_model()),
                 ),
             )
             return None, model_name, "opencode"
@@ -1213,7 +1270,9 @@ class OpenAIPlanner:
                     f"AUTOHAR_OPENCODE_{role_key}_MODEL",
                     os.getenv(
                         f"AUTOHAR_{role_key}_MODEL",
-                        os.getenv("AUTOHAR_OPENCODE_MODEL", self.model),
+                        os.getenv(
+                            "AUTOHAR_OPENCODE_MODEL", self._default_opencode_model()
+                        ),
                     ),
                 )
                 base_url = os.getenv(
@@ -2107,14 +2166,16 @@ def build_planner(
     )
 
     if backend == "opencode":
-        model = os.getenv("AUTOHAR_OPENCODE_MODEL", "opencode/gpt-5-nano")
-        return OpenAIPlanner(
-            model=model,
+        planner = OpenAIPlanner(
+            model=os.getenv("AUTOHAR_OPENCODE_MODEL", ""),
             planner_name="opencode_multiagent",
             api_mode="opencode",
             mission_brief=mission_brief,
             mission_source=mission_source,
         )
+        if not planner.model:
+            planner.model = planner._default_opencode_model()
+        return planner
 
     if backend == "lmstudio":
         base_url = os.getenv("AUTOHAR_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
