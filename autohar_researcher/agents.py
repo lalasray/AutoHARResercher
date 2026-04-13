@@ -2036,11 +2036,17 @@ class HierarchicalOrchestrator:
             output_dir / "accepted_history.svg",
             title="Accepted Baseline Macro-F1 By Round",
         )
+        active_mission_path = self._write_active_mission(
+            output_dir=output_dir,
+            history=history,
+            accepted_history=accepted_history,
+        )
         return RunOutputs(
             trial_history_csv=trial_csv_path,
             trial_history_svg=trial_svg_path,
             accepted_history_csv=accepted_csv_path,
             accepted_history_svg=accepted_svg_path,
+            active_mission_md=active_mission_path,
             latest_promotion_artifact=(
                 str(
                     Path.cwd()
@@ -2052,6 +2058,102 @@ class HierarchicalOrchestrator:
                 else ""
             ),
         )
+
+    def _refresh_active_mission(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> None:
+        self.active_mission_brief = self._build_active_mission_brief(
+            history=history,
+            accepted_history=accepted_history,
+        )
+        if hasattr(self.planner, "mission_brief"):
+            self.planner.mission_brief = self.active_mission_brief
+
+    def _build_active_mission_brief(
+        self,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> str | None:
+        base = (self.mission_brief or "").strip()
+        if not base and not history and not accepted_history:
+            return None
+        lines: list[str] = []
+        if base:
+            lines.append(base)
+            lines.append("")
+        lines.append("## Active Precision Update")
+        if accepted_history:
+            best = accepted_history[-1]
+            lines.append(
+                f"- Current accepted baseline: round {best.round_id}, {best.agent_name}, macro_f1={best.val_score:.4f}"
+            )
+            lines.append(f"- Current kept config summary: {best.summary}")
+        elif history:
+            provisional = max(history, key=lambda item: item.val_score)
+            lines.append(
+                f"- No accepted carry yet; provisional best is round {provisional.round_id}, {provisional.agent_name}, macro_f1={provisional.val_score:.4f}"
+            )
+        latest_round = max((result.round_id for result in history), default=0)
+        last_accept_round = max(
+            (result.round_id for result in accepted_history), default=0
+        )
+        stagnation_rounds = max(0, latest_round - last_accept_round)
+        lines.append(
+            f"- Stagnation rounds since last accepted improvement: {stagnation_rounds}"
+        )
+        if history:
+            lines.append("- Recent trial highlights:")
+            for result in history[-6:]:
+                lines.append(
+                    f"  - round {result.round_id}: {result.agent_name} scored {result.val_score:.4f}"
+                )
+            best_by_agent: dict[str, CandidateResult] = {}
+            for result in history:
+                previous = best_by_agent.get(result.agent_name)
+                if previous is None or result.val_score > previous.val_score:
+                    best_by_agent[result.agent_name] = result
+            lines.append("- Best evidence by agent:")
+            for agent_name in (
+                "model_agent",
+                "augmentation_agent",
+                "data_agent",
+                "orchestrator",
+            ):
+                result = best_by_agent.get(agent_name)
+                if result is None:
+                    continue
+                lines.append(
+                    f"  - {agent_name}: round {result.round_id}, score {result.val_score:.4f}, summary: {result.summary}"
+                )
+        lines.append("- Guidance:")
+        if stagnation_rounds >= 3:
+            lines.append(
+                "  - Be more precise and bolder: avoid near-duplicate proposals that only restate the kept baseline."
+            )
+            lines.append(
+                "  - Reuse proven specialist slices when current round proposals are weaker than historical bests."
+            )
+        else:
+            lines.append(
+                "  - Preserve what is already working and mutate only where there is concrete evidence."
+            )
+        return "\n".join(lines).strip() + "\n"
+
+    def _write_active_mission(
+        self,
+        output_dir: Path,
+        history: list[CandidateResult],
+        accepted_history: list[CandidateResult],
+    ) -> str:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        mission_path = output_dir / "active_mission.md"
+        mission_text = (
+            self._build_active_mission_brief(history, accepted_history) or ""
+        )
+        mission_path.write_text(mission_text, encoding="utf-8")
+        return str(mission_path)
 
     def _write_promotion_artifact(
         self,

@@ -139,6 +139,7 @@ artifacts/
 ```
 
 `score_history.csv` is trial history. `accepted_history.csv` is the kept baseline history.
+`active_mission.md` is the evolving markdown brief written after each round; it keeps your original mission and adds current best baseline, recent evidence, and tighter guidance for the next rounds.
 
 The simple `run_autoresearch.sh` loop writes `results.tsv`:
 
