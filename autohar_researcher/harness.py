@@ -618,6 +618,13 @@ class DummyHARHarness:
             return (
                 means + diffs + [window[-1][i] - window[0][i] for i in range(channels)]
             )
+        if config.model_name in {"bilstm", "bilstmattention"}:
+            forward_delta = [window[-1][i] - window[0][i] for i in range(channels)]
+            backward_delta = [window[0][i] - window[-1][i] for i in range(channels)]
+            features = means + stds + diffs + temporal + forward_delta + backward_delta
+            if config.model_name == "bilstmattention":
+                features += attention + spectral[:channels]
+            return features
         if config.model_name == "tiny_transformer":
             midpoint = len(window) // 2
             first_half = [
@@ -757,6 +764,8 @@ class DummyHARHarness:
             "deepconvlstm",
             "deepconvlstmattention",
             "hart",
+            "bilstm",
+            "bilstmattention",
             "tinierhar",
             "tinyhar",
             "spectra",
@@ -767,6 +776,7 @@ class DummyHARHarness:
                     "hidden_dim",
                     48
                     if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"}
+                    or model_name in {"bilstm", "bilstmattention"}
                     else 24,
                 )
             )
@@ -1038,6 +1048,8 @@ class DummyHARHarness:
             "deepconvlstm",
             "deepconvlstmattention",
             "hart",
+            "bilstm",
+            "bilstmattention",
             "tinierhar",
             "tinyhar",
             "spectra",
@@ -1048,6 +1060,7 @@ class DummyHARHarness:
                     "hidden_dim",
                     64
                     if model_name in {"deepconvlstm", "deepconvlstmattention", "hart"}
+                    or model_name in {"bilstm", "bilstmattention"}
                     else 32,
                 )
             )
@@ -1061,6 +1074,21 @@ class DummyHARHarness:
                     depth=depth,
                     num_classes=num_classes,
                     attention_mix=float(model_params.get("attention_mix", 0.8)),
+                )
+            elif model_name in {"bilstm", "bilstmattention"}:
+                module = self._build_torch_attention_mlp(
+                    feature_dim=feature_dim,
+                    hidden_dim=hidden_dim * 2
+                    if bool(model_params.get("bidirectional", True))
+                    else hidden_dim,
+                    depth=depth,
+                    num_classes=num_classes,
+                    attention_mix=float(
+                        model_params.get(
+                            "attention_mix",
+                            0.7 if model_name == "bilstmattention" else 0.35,
+                        )
+                    ),
                 )
             elif model_name in {
                 "deepconvlstm",
@@ -1081,10 +1109,12 @@ class DummyHARHarness:
         else:
             module = self._torch.nn.Linear(feature_dim, num_classes)
         module = module.to(device)
-        optimizer = self._torch.optim.Adam(
-            module.parameters(), lr=max(learning_rate, 1e-4)
+        optimizer = self._build_torch_optimizer(
+            module=module,
+            model_params=model_params,
+            learning_rate=learning_rate,
         )
-        criterion = self._torch.nn.CrossEntropyLoss()
+        criterion = self._build_torch_criterion(model_params)
         train_x = self._torch.tensor(
             train_features, dtype=self._torch.float32, device=device
         )
@@ -1141,6 +1171,52 @@ class DummyHARHarness:
                 "stopped_early": stale_epochs >= patience,
             },
         )
+
+    def _build_torch_optimizer(
+        self,
+        module: object,
+        model_params: dict[str, float | int | str | bool],
+        learning_rate: float,
+    ) -> object:
+        assert self._torch is not None
+        optimizer_name = str(model_params.get("optimizer", "adam")).lower()
+        weight_decay = max(0.0, float(model_params.get("weight_decay", 0.0)))
+        lr = max(learning_rate, 1e-4)
+        if optimizer_name == "sgd":
+            return self._torch.optim.SGD(
+                module.parameters(),
+                lr=lr,
+                momentum=float(model_params.get("momentum", 0.9)),
+                weight_decay=weight_decay,
+            )
+        if optimizer_name == "adamw":
+            return self._torch.optim.AdamW(
+                module.parameters(), lr=lr, weight_decay=weight_decay
+            )
+        return self._torch.optim.Adam(
+            module.parameters(), lr=lr, weight_decay=weight_decay
+        )
+
+    def _build_torch_criterion(
+        self,
+        model_params: dict[str, float | int | str | bool],
+    ) -> object:
+        assert self._torch is not None
+        loss_name = str(model_params.get("loss", "cross_entropy")).lower()
+        label_smoothing = max(
+            0.0, min(0.2, float(model_params.get("label_smoothing", 0.0)))
+        )
+        if loss_name in {"cross_entropy", "weighted_cross_entropy"}:
+            try:
+                return self._torch.nn.CrossEntropyLoss(
+                    label_smoothing=label_smoothing
+                )
+            except TypeError:
+                return self._torch.nn.CrossEntropyLoss()
+        try:
+            return self._torch.nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        except TypeError:
+            return self._torch.nn.CrossEntropyLoss()
 
     def _predict(self, model: dict[str, object], features: list[float]) -> int:
         if model["kind"] == "linear":

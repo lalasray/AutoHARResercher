@@ -21,6 +21,7 @@ from autohar_researcher.experiment import (
     apply_data_proposal,
     apply_module_python,
     apply_model_proposal,
+    available_model_architectures,
     base_experiment_config,
     clone_experiment,
     compose_experiment_from_workspace,
@@ -71,19 +72,7 @@ def _dedupe_preserve_order(items: list[object]) -> list[object]:
 
 class ModelAgent:
     name = "model_agent"
-    MODEL_CANDIDATES = [
-        "deepconvlstm",
-        "deepconvlstmattention",
-        "hart",
-        "tinierhar",
-        "tinyhar",
-        "spectra",
-        "cnn_gru",
-        "cnn",
-        "tiny_transformer",
-        "gru",
-        "custom",
-    ]
+    MODEL_CANDIDATES = available_model_architectures()
 
     def propose(
         self,

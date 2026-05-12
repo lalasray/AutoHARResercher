@@ -9,10 +9,13 @@ from pathlib import Path
 import pytest
 
 from autohar_researcher.experiment import (
+    MODEL_HYPERPARAMETERS,
+    available_model_architectures,
     base_experiment_config,
     default_model_params,
     default_augmentation_params,
     default_data_params,
+    model_architecture_catalog,
     module_owned_fields,
     experiment_to_candidate_config,
     clone_experiment,
@@ -27,6 +30,21 @@ from autohar_researcher.types import ModelProposal, AugmentationProposal, DataPr
 
 
 class TestDefaultParams:
+    def test_available_model_architectures_include_custom(self):
+        architectures = available_model_architectures()
+        assert architectures[0] == "deepconvlstm"
+        assert "deepconvlstmattention" in architectures
+        assert "bilstm" in architectures
+        assert "bilstmattention" in architectures
+        assert "custom" in architectures
+
+    def test_model_architecture_catalog_has_defaults(self):
+        catalog = model_architecture_catalog()
+        names = [item["name"] for item in catalog]
+        assert names == available_model_architectures()
+        assert all("default_params" in item for item in catalog)
+        assert "learning_rate" in MODEL_HYPERPARAMETERS
+
     def test_default_model_params_deepconvlstm(self):
         params = default_model_params("deepconvlstm")
         assert params["hidden_dim"] == 64
@@ -46,6 +64,18 @@ class TestDefaultParams:
         params = default_model_params("gru")
         assert params["hidden_dim"] == 40
         assert params["temporal_pool"] == "last"
+
+    def test_default_model_params_bilstm(self):
+        params = default_model_params("bilstm")
+        assert params["bidirectional"] is True
+        assert params["optimizer"] == "adam"
+        assert params["loss"] == "cross_entropy"
+
+    def test_default_model_params_bilstmattention(self):
+        params = default_model_params("bilstmattention")
+        assert params["bidirectional"] is True
+        assert params["temporal_pool"] == "attention"
+        assert params["attention_mix"] == 0.7
 
     def test_default_model_params_tiny_transformer(self):
         params = default_model_params("tiny_transformer")
@@ -229,6 +259,11 @@ class TestModuleFilenames:
         assert MODULE_FILENAMES["augmentation_agent"] == "augmentation_module.py"
         assert MODULE_FILENAMES["data_agent"] == "data_module.py"
 
+    def test_architecture_specs_exist(self):
+        architecture_dir = Path("research/modules/architectures")
+        for architecture in available_model_architectures():
+            assert (architecture_dir / f"{architecture}.py").exists()
+
 
 class TestWriteAndLoadModule:
     def test_write_and_load_model_module(self, tmp_path):
@@ -258,6 +293,9 @@ class TestWriteAndLoadModule:
         loaded = load_module_python(module_path)
         assert loaded["agent_name"] == "model_agent"
         assert loaded["config"]["name"] == "deepconvlstm"
+        namespace: dict[str, object] = {}
+        exec(module_path.read_text(encoding="utf-8"), namespace)
+        assert namespace["stable_model_families"]() == available_model_architectures()
 
     def test_write_and_load_augmentation_module(self, tmp_path):
         payload = {

@@ -2,12 +2,12 @@
 
 ## Mission
 
-You are responsible for the model-side mutation in the current round.
+You are responsible for the model and architecture-side mutation in the current round.
 Your goal is to improve validation macro-F1 by changing only:
 
-- model family
+- model architecture from the available architecture list
 - learning rate
-- model-side params inside `model_module.py`
+- model-side hyperparameters inside `model_module.py`
 
 You are not allowed to change data processing or augmentation decisions.
 
@@ -67,12 +67,14 @@ That function must return only:
 
 From round 2 onward, prefer `model_params_override(...)` whenever your main model mutation is really a compatibility rule rather than just a one-off static parameter choice.
 
-## Allowed Search Space
+## Allowed Architecture List
 
-Stable model-family anchors:
+Available architecture anchors:
 
 - `deepconvlstm`
 - `deepconvlstmattention`
+- `bilstm`
+- `bilstmattention`
 - `hart`
 - `tinierhar`
 - `tinyhar`
@@ -83,7 +85,7 @@ Stable model-family anchors:
 - `gru`
 - `custom`
 
-Those anchors are not the whole point of the search. If the best move is a model-side heuristic, compatibility rule, or local strategy, express that through owned-module code rather than treating family names like a dropdown.
+Those anchors are not the whole point of the search. If the best move is a model-side heuristic, compatibility rule, hyperparameter-tuning strategy, or local architecture strategy, express that through owned-module code rather than treating architecture names like a dropdown.
 
 Use `custom` only when a new bounded model-side representation is more appropriate than tuning an existing family. For `custom`, define this function inside `function_rewrite`:
 
@@ -94,7 +96,7 @@ def custom_model_features(window, base_features, params):
 
 It may include small helper functions in the same code block. It must return a finite numeric feature list, should be deterministic, and should be shape-stable across windows. The harness validates the returned features and falls back to the standard feature vector if the function errors or returns invalid values.
 
-You may also change model-side parameters such as:
+You may also tune model-side hyperparameters such as:
 
 - `hidden_dim`
 - `depth`
@@ -103,8 +105,17 @@ You may also change model-side parameters such as:
 - `attention_mix`
 - `use_interactions`
 - `use_multiscale`
+- `dropout`
+- `bidirectional`
+- `optimizer`
+- `weight_decay`
+- `loss`
+- `label_smoothing`
 - learning rate
 - `custom_code` when using the `custom` family
+
+The architecture implementations/specs live in separate files under `research/modules/architectures/`.
+Keep `model_module.py` as the controller that chooses an architecture, tunes it, and records mutations such as adding/removing/widening layers.
 
 ## What To Optimize
 

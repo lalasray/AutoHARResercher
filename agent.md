@@ -17,7 +17,7 @@ Multiple agents work together, each with specific responsibilities:
 
 | Agent | Owns | Modifies |
 |-------|------|----------|
-| **ModelAgent** | `model_module.py` | Model architecture, learning rate |
+| **ModelAgent** | `model_module.py`, `architectures/*.py` | Model architecture, layers, optimizer, loss, hyperparameters, learning rate |
 | **AugmentationAgent** | `augmentation_module.py` | Augmentation strategy |
 | **DataAgent** | `data_module.py` | Preprocessing, window size |
 | **Orchestrator** | `train.py` | Combines everything |

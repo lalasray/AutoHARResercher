@@ -6,6 +6,10 @@ import random
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
+from autohar_researcher.experiment import (
+    available_model_architectures,
+    default_model_params,
+)
 from autohar_researcher.types import (
     AugmentationPlanHint,
     CandidateResult,
@@ -18,19 +22,7 @@ if TYPE_CHECKING:
     from autohar_researcher.datasets import UCIHARDataset
 
 
-MODEL_FAMILIES = [
-    "deepconvlstm",
-    "deepconvlstmattention",
-    "hart",
-    "tinierhar",
-    "tinyhar",
-    "spectra",
-    "cnn_gru",
-    "cnn",
-    "tiny_transformer",
-    "gru",
-    "custom",
-]
+MODEL_FAMILIES = available_model_architectures()
 
 AUGMENTATIONS = [
     "none",
@@ -93,15 +85,7 @@ class HeuristicPlanner:
                 "model_agent": ModelPlanHint(
                     model_name="deepconvlstm",
                     learning_rate=0.0003,
-                    model_params={
-                        "hidden_dim": 64,
-                        "depth": 2,
-                        "temporal_pool": "avg",
-                        "spectral_bins": 6,
-                        "use_interactions": True,
-                        "use_multiscale": True,
-                        "attention_mix": 0.5,
-                    },
+                    model_params=default_model_params("deepconvlstm"),
                     rationale="Start with proven deepconvlstm architecture.",
                 ),
                 "augmentation_agent": AugmentationPlanHint(
@@ -202,30 +186,14 @@ class HeuristicPlanner:
                 return ModelPlanHint(
                     model_name=next_model,
                     learning_rate=0.0003,
-                    model_params={
-                        "hidden_dim": 64,
-                        "depth": 2,
-                        "temporal_pool": "avg",
-                        "spectral_bins": 6,
-                        "use_interactions": True,
-                        "use_multiscale": True,
-                        "attention_mix": 0.5,
-                    },
+                    model_params=default_model_params(next_model),
                     rationale=f"Try next model family: {next_model}.",
                 )
 
         return ModelPlanHint(
             model_name="deepconvlstm",
             learning_rate=0.0003,
-            model_params={
-                "hidden_dim": 64,
-                "depth": 2,
-                "temporal_pool": "avg",
-                "spectral_bins": 6,
-                "use_interactions": True,
-                "use_multiscale": True,
-                "attention_mix": 0.5,
-            },
+            model_params=default_model_params("deepconvlstm"),
             rationale="Use proven architecture.",
         )
 

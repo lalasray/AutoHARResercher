@@ -32,16 +32,26 @@ try:
         HIDDEN_DIM,
         DEPTH,
         ATTENTION_MIX,
+        DROPOUT,
+        BIDIRECTIONAL,
+        OPTIMIZER,
         LEARNING_RATE,
         WEIGHT_DECAY,
+        LOSS,
+        LABEL_SMOOTHING,
     )
 except ImportError:
     MODEL_NAME = "deepconvlstm"
     HIDDEN_DIM = 64
     DEPTH = 2
     ATTENTION_MIX = 0.8
+    DROPOUT = 0.0
+    BIDIRECTIONAL = False
+    OPTIMIZER = "adam"
     LEARNING_RATE = 0.001
     WEIGHT_DECAY = 0.0001
+    LOSS = "cross_entropy"
+    LABEL_SMOOTHING = 0.0
 
 # AugmentationAgent owns augmentation_module.py
 try:
@@ -83,6 +93,12 @@ CONFIG = {
         "hidden_dim": HIDDEN_DIM,
         "depth": DEPTH,
         "attention_mix": ATTENTION_MIX,
+        "dropout": DROPOUT,
+        "bidirectional": BIDIRECTIONAL,
+        "optimizer": OPTIMIZER,
+        "weight_decay": WEIGHT_DECAY,
+        "loss": LOSS,
+        "label_smoothing": LABEL_SMOOTHING,
     },
     "learning_rate": LEARNING_RATE,
     "weight_decay": WEIGHT_DECAY,

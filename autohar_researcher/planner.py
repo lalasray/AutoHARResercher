@@ -22,6 +22,10 @@ from autohar_researcher.types import (
     ProposalJudgment,
 )
 from autohar_researcher.datasets import UCIHARDataset
+from autohar_researcher.experiment import (
+    MODEL_HYPERPARAMETERS,
+    model_architecture_catalog,
+)
 
 if TYPE_CHECKING:
     from autohar_researcher.heuristic_planner import HeuristicPlanner
@@ -51,19 +55,7 @@ class OpenAIPlanner:
         "data_agent": "DATA_AGENT",
         "judge": "JUDGE",
     }
-    MODEL_FAMILIES = [
-        "deepconvlstm",
-        "deepconvlstmattention",
-        "hart",
-        "tinierhar",
-        "tinyhar",
-        "spectra",
-        "cnn_gru",
-        "cnn",
-        "tiny_transformer",
-        "gru",
-        "custom",
-    ]
+    MODEL_FAMILIES = [item["name"] for item in model_architecture_catalog()]
     AUGMENTATIONS = [
         "none",
         "rotation",
@@ -520,12 +512,14 @@ class OpenAIPlanner:
         orchestrator_plan: dict[str, object],
     ) -> str:
         rewrite_preference = self._rewrite_preference_note(int(context["round_id"]))
+        architecture_catalog = json.dumps(model_architecture_catalog(), indent=2)
+        hyperparameters = ", ".join(MODEL_HYPERPARAMETERS)
         return (
             self._agent_prompt_prefix(
-                agent_label="ModelAgent",
+                agent_label="ModelAgent / ArchitectureAgent",
                 controls_text=(
-                    "You only control model_name, learning_rate, and model-side params.\n"
-                    "Propose one model-side mutation for this round.\n"
+                    "You control model architecture, learning_rate, and model-side hyperparameters.\n"
+                    "Propose one model-side mutation for this round. It may be an architecture change, a hyperparameter tuning step, or both.\n"
                     "Do not change augmentation or data settings."
                 ),
                 guide_key="model_agent",
@@ -533,10 +527,10 @@ class OpenAIPlanner:
                 context=context,
                 orchestrator_plan=orchestrator_plan,
             )
-            + "Common available model families include {deepconvlstm, deepconvlstmattention, hart, tinierhar, tinyhar, spectra, cnn_gru, cnn, tiny_transformer, gru, custom}.\n"
-            + "Treat those families as stable anchors, not as the whole point of the search. "
-            + "Use them when they fit, but put most of your expertise into model-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
-            + "You may also set model_params such as hidden_dim, depth, temporal_pool, spectral_bins, use_interactions, use_multiscale, and attention_mix.\n"
+            + f"Available model architectures and defaults:\n{architecture_catalog}\n"
+            + "Treat those architectures as stable anchors, not as the whole point of the search. "
+            + "Use them when they fit, but put most of your expertise into model-side hyperparameter tuning, helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
+            + f"You may tune these model-side hyperparameters: {hyperparameters}.\n"
             + "Keep the rationale short and trend-aware.\n"
             + "Use `logic_expression` only for trivial direct overrides.\n"
             + "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
@@ -546,7 +540,8 @@ class OpenAIPlanner:
             + "When the main mutation is family-dependent parameter compatibility, prefer defining "
             + "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
             + "In particular, use `model_params_override(...)` when hidden_dim, depth, temporal_pool, spectral_bins, "
-            + "use_interactions, use_multiscale, or attention_mix should depend on the current baseline context.\n"
+            + "use_interactions, use_multiscale, attention_mix, dropout, bidirectional, optimizer, weight_decay, loss, "
+            + "or label_smoothing should depend on the current baseline context.\n"
             + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             + "`bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`. "
             + "Use this when you want to rewrite model learning-rate bounding logic itself inside the owned module. "
@@ -711,6 +706,12 @@ class OpenAIPlanner:
                         "use_interactions": {"type": "boolean"},
                         "use_multiscale": {"type": "boolean"},
                         "attention_mix": {"type": "number"},
+                        "dropout": {"type": "number"},
+                        "bidirectional": {"type": "boolean"},
+                        "optimizer": {"type": "string"},
+                        "weight_decay": {"type": "number"},
+                        "loss": {"type": "string"},
+                        "label_smoothing": {"type": "number"},
                     },
                     "required": [
                         "hidden_dim",
@@ -720,6 +721,12 @@ class OpenAIPlanner:
                         "use_interactions",
                         "use_multiscale",
                         "attention_mix",
+                        "dropout",
+                        "bidirectional",
+                        "optimizer",
+                        "weight_decay",
+                        "loss",
+                        "label_smoothing",
                     ],
                 },
                 "rationale": {"type": "string"},
@@ -1128,6 +1135,12 @@ class OpenAIPlanner:
                     "use_interactions": True,
                     "use_multiscale": True,
                     "attention_mix": 0.55,
+                    "dropout": 0.0,
+                    "bidirectional": False,
+                    "optimizer": "adam",
+                    "weight_decay": 0.0,
+                    "loss": "cross_entropy",
+                    "label_smoothing": 0.0,
                 },
                 "rationale": "Fallback model proposal after malformed local LLM JSON.",
                 "logic_expression": "",

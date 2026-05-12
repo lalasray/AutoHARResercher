@@ -83,7 +83,7 @@ The OpenAI and OpenCode wrapper scripts force their matching backend. `run_missi
 
 ```
 research/modules/
-  model_module.py          # ModelAgent edits this
+  model_module.py          # ModelAgent edits architecture and model hyperparameters
   augmentation_module.py   # AugmentationAgent edits this
   data_module.py          # DataAgent edits this
 
@@ -95,6 +95,24 @@ agent_guides/            # Agent instructions
 ```
 
 Each agent owns one module file. Orchestrator combines them.
+
+ModelAgent keeps the file name `model_module.py`, but its scope is broad: it can choose from the available architecture list, mutate architecture settings, and tune model-side hyperparameters such as learning rate, hidden size, depth, temporal pooling, spectral bins, interaction features, multiscale features, attention mix, dropout, optimizer, weight decay, loss, and label smoothing. Architecture specs live in `research/modules/architectures/`.
+
+Available model architectures:
+
+- `deepconvlstm`
+- `deepconvlstmattention`
+- `bilstm`
+- `bilstmattention`
+- `hart`
+- `tinierhar`
+- `tinyhar`
+- `spectra`
+- `cnn_gru`
+- `cnn`
+- `tiny_transformer`
+- `gru`
+- `custom`
 
 AugmentationAgent can also define a bounded custom augmentation algorithm in its owned module by targeting `custom` and providing:
 

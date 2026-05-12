@@ -17,6 +17,70 @@ MODULE_FILENAMES = {
     "data_agent": "data_module.py",
 }
 
+MODEL_ARCHITECTURES: tuple[str, ...] = (
+    "deepconvlstm",
+    "deepconvlstmattention",
+    "bilstm",
+    "bilstmattention",
+    "hart",
+    "tinierhar",
+    "tinyhar",
+    "spectra",
+    "cnn_gru",
+    "cnn",
+    "tiny_transformer",
+    "gru",
+    "custom",
+)
+
+MODEL_HYPERPARAMETERS: tuple[str, ...] = (
+    "hidden_dim",
+    "depth",
+    "temporal_pool",
+    "spectral_bins",
+    "use_interactions",
+    "use_multiscale",
+    "attention_mix",
+    "dropout",
+    "bidirectional",
+    "optimizer",
+    "weight_decay",
+    "loss",
+    "label_smoothing",
+    "learning_rate",
+)
+
+MODEL_ARCHITECTURE_DESCRIPTIONS: dict[str, str] = {
+    "deepconvlstm": "Balanced convolutional temporal baseline.",
+    "deepconvlstmattention": "DeepConvLSTM variant with attention pooling.",
+    "bilstm": "Bidirectional LSTM temporal baseline.",
+    "bilstmattention": "Bidirectional LSTM variant with attention pooling.",
+    "hart": "HAR transformer-style architecture anchor.",
+    "tinierhar": "Very small low-capacity HAR model.",
+    "tinyhar": "Compact HAR model with modest spectral features.",
+    "spectra": "Spectral-feature-heavy architecture.",
+    "cnn_gru": "Convolutional feature extractor with recurrent pooling.",
+    "cnn": "Small convolutional baseline.",
+    "tiny_transformer": "Small transformer-like temporal model.",
+    "gru": "Recurrent GRU temporal baseline.",
+    "custom": "Bounded custom model-side feature representation.",
+}
+
+
+def available_model_architectures() -> list[str]:
+    return list(MODEL_ARCHITECTURES)
+
+
+def model_architecture_catalog() -> list[dict[str, object]]:
+    return [
+        {
+            "name": name,
+            "description": MODEL_ARCHITECTURE_DESCRIPTIONS[name],
+            "default_params": default_model_params(name),
+        }
+        for name in MODEL_ARCHITECTURES
+    ]
+
 
 def default_model_params(name: str) -> dict[str, float | int | str | bool]:
     params: dict[str, float | int | str | bool] = {
@@ -27,11 +91,38 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
         "use_interactions": True,
         "use_multiscale": True,
         "attention_mix": 0.5,
+        "dropout": 0.0,
+        "bidirectional": False,
+        "optimizer": "adam",
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
     }
     if name == "cnn":
         params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})
     elif name == "gru":
         params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "last"})
+    elif name == "bilstm":
+        params.update(
+            {
+                "hidden_dim": 64,
+                "depth": 2,
+                "temporal_pool": "last",
+                "bidirectional": True,
+                "dropout": 0.1,
+            }
+        )
+    elif name == "bilstmattention":
+        params.update(
+            {
+                "hidden_dim": 72,
+                "depth": 2,
+                "temporal_pool": "attention",
+                "bidirectional": True,
+                "attention_mix": 0.7,
+                "dropout": 0.1,
+            }
+        )
     elif name == "tiny_transformer":
         params.update({"hidden_dim": 48, "depth": 2, "temporal_pool": "concat"})
     elif name == "hart":
@@ -278,13 +369,14 @@ def write_module_python(path: Path, payload: dict[str, object]) -> None:
 
 def _module_patch_builder(agent_name: str) -> str:
     if agent_name == "model_agent":
+        architecture_list = repr(list(MODEL_ARCHITECTURES))
         return (
             "def current_model(base_experiment: dict[str, object]) -> dict[str, object]:\n"
             '    """Return the current baseline model section."""\n'
             '    return dict(base_experiment.get("model", {}))\n\n'
             "def stable_model_families() -> list[str]:\n"
-            '    """Return model families that are usually safe early choices."""\n'
-            '    return ["deepconvlstm", "deepconvlstmattention", "cnn_gru", "gru", "cnn", "hart", "tinierhar", "tinyhar", "spectra", "tiny_transformer", "custom"]\n\n'
+            '    """Return the supported architecture choices for model_module.py."""\n'
+            f"    return {architecture_list}\n\n"
             "def choose_target_name(requested_name: str, baseline_name: str) -> str:\n"
             '    """Prefer valid, stable model families and fall back safely."""\n'
             "    valid = stable_model_families()\n"
@@ -320,11 +412,21 @@ def _module_patch_builder(agent_name: str) -> str:
             '        "use_interactions": True,\n'
             '        "use_multiscale": True,\n'
             '        "attention_mix": 0.5,\n'
+            '        "dropout": 0.0,\n'
+            '        "bidirectional": False,\n'
+            '        "optimizer": "adam",\n'
+            '        "weight_decay": 0.0,\n'
+            '        "loss": "cross_entropy",\n'
+            '        "label_smoothing": 0.0,\n'
             "    }\n"
             '    if target_name == "cnn":\n'
             '        params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})\n'
             '    elif target_name == "gru":\n'
             '        params.update({"hidden_dim": 40, "depth": 1, "temporal_pool": "last"})\n'
+            '    elif target_name == "bilstm":\n'
+            '        params.update({"hidden_dim": 64, "depth": 2, "temporal_pool": "last", "bidirectional": True, "dropout": 0.1})\n'
+            '    elif target_name == "bilstmattention":\n'
+            '        params.update({"hidden_dim": 72, "depth": 2, "temporal_pool": "attention", "bidirectional": True, "attention_mix": 0.7, "dropout": 0.1})\n'
             '    elif target_name == "tiny_transformer":\n'
             '        params.update({"hidden_dim": 48, "depth": 2, "temporal_pool": "concat"})\n'
             '    elif target_name == "hart":\n'
