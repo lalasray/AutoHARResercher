@@ -61,6 +61,17 @@ Use the augmentation-params override when you want to adjust compatibility logic
 - drift magnitude
 - magnitude-warp span
 - mixup blend
+- variation count
+- variation amount
+- variation kind
+- sentence input or prompt style for text-to-IMU placeholders
+- video condition for video-to-IMU placeholders
+- noise injection policy
+- IMU-to-IMU method composition
+- synthetic source
+- synthetic target class
+- synthetic ratio or count
+- class balance policy
 
 That function must return only:
 
@@ -82,6 +93,12 @@ Stable augmentation-family anchors:
 - `drift`
 - `permutation`
 - `magnitude_warp`
+- `channel_dropout`
+- `sensor_bias`
+- `frequency_mask`
+- `imu_to_imu`
+- `text_to_imu`
+- `video_to_imu`
 - `custom`
 
 Stable strength anchors:
@@ -91,6 +108,25 @@ Stable strength anchors:
 - `strong`
 
 Those anchors are not the whole point of the search. If the best move is a robustness heuristic, context-sensitive parameter policy, or compatibility rule, express that through owned-module code rather than behaving like a menu picker.
+
+Generative placeholders:
+
+- `imu_to_imu` composes bounded IMU-domain transforms such as noise, warp, bias, dropout, and masking.
+- `text_to_imu` is a placeholder for T2M-GPT-style text-conditioned IMU generation. Control it with `sentence_input`, `prompt_style`, `variation_count`, `variation_amount`, and `noise_injection`.
+- `video_to_imu` is a placeholder for video-conditioned IMU generation. Control it with `video_condition`, `variation_count`, `variation_amount`, and `noise_injection`.
+
+Until real generators are integrated, text/video paths must fall back to bounded IMU-to-IMU proxy transforms that preserve shape and label semantics.
+You may invent new augmentation types through `custom`, but they must be explicit, bounded, same-shape, and sensor-realistic.
+
+Synthetic data controls:
+
+- `synthetic_source`: where synthetic samples come from, such as `same_window`, `imu_to_imu`, `text_to_imu`, `video_to_imu`, or `custom`.
+- `synthetic_class`: which class to target, such as `same_as_source`, `minority_classes`, or an explicit activity label.
+- `synthetic_ratio`: approximate synthetic-to-real ratio to try.
+- `synthetic_count`: per-window/sample count for placeholder generation.
+- `class_balance_policy`: `preserve`, `boost_minority`, or `class_targeted`.
+
+If these controls are set but the runtime cannot yet create extra dataset rows, they still document the intended policy and should shape the bounded per-window proxy transform.
 
 Use `custom` only when a new bounded augmentation algorithm is more appropriate than tuning an existing family. For `custom`, define this function inside `function_rewrite`:
 

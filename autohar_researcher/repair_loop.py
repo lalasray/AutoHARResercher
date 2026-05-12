@@ -391,6 +391,8 @@ class CrashRepairLoop:
                         "weight_decay": {"type": "number"},
                         "loss": {"type": "string"},
                         "label_smoothing": {"type": "number"},
+                        "parent_architectures": {"type": "string"},
+                        "merge_strategy": {"type": "string"},
                     },
                     "required": [
                         "hidden_dim",
@@ -406,6 +408,8 @@ class CrashRepairLoop:
                         "weight_decay",
                         "loss",
                         "label_smoothing",
+                        "parent_architectures",
+                        "merge_strategy",
                     ],
                 },
                 "rationale": {"type": "string"},

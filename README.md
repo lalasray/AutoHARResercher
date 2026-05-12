@@ -96,7 +96,8 @@ agent_guides/            # Agent instructions
 
 Each agent owns one module file. Orchestrator combines them.
 
-ModelAgent keeps the file name `model_module.py`, but its scope is broad: it can choose from the available architecture list, mutate architecture settings, and tune model-side hyperparameters such as learning rate, hidden size, depth, temporal pooling, spectral bins, interaction features, multiscale features, attention mix, dropout, optimizer, weight decay, loss, and label smoothing. Architecture specs live in `research/modules/architectures/`.
+ModelAgent keeps the file name `model_module.py`, but its scope is broad: it can choose from the available architecture list, mutate architecture settings, and tune model-side hyperparameters such as learning rate, hidden size, depth, temporal pooling, spectral bins, interaction features, multiscale features, attention mix, dropout, optimizer, weight decay, loss, and label smoothing. Buildable architecture modules live in `research/modules/architectures/`; each exposes `build_model(input_dim, num_classes, params)`.
+It should modify a strong current architecture when tuning is the likely bottleneck, switch architecture after plateau or mismatch, and merge architectures only when two families have complementary strengths worth testing.
 
 Available model architectures:
 

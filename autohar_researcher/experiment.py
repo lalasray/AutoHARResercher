@@ -47,6 +47,8 @@ MODEL_HYPERPARAMETERS: tuple[str, ...] = (
     "weight_decay",
     "loss",
     "label_smoothing",
+    "parent_architectures",
+    "merge_strategy",
     "learning_rate",
 )
 
@@ -82,6 +84,30 @@ def model_architecture_catalog() -> list[dict[str, object]]:
     ]
 
 
+AVAILABLE_AUGMENTATIONS: tuple[str, ...] = (
+    "none",
+    "rotation",
+    "time_warp",
+    "jitter",
+    "mixup",
+    "scaling",
+    "drift",
+    "permutation",
+    "magnitude_warp",
+    "channel_dropout",
+    "sensor_bias",
+    "frequency_mask",
+    "imu_to_imu",
+    "text_to_imu",
+    "video_to_imu",
+    "custom",
+)
+
+
+def available_augmentations() -> list[str]:
+    return list(AVAILABLE_AUGMENTATIONS)
+
+
 def default_model_params(name: str) -> dict[str, float | int | str | bool]:
     params: dict[str, float | int | str | bool] = {
         "hidden_dim": 64,
@@ -97,6 +123,8 @@ def default_model_params(name: str) -> dict[str, float | int | str | bool]:
         "weight_decay": 0.0,
         "loss": "cross_entropy",
         "label_smoothing": 0.0,
+        "parent_architectures": "",
+        "merge_strategy": "",
     }
     if name == "cnn":
         params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})
@@ -197,8 +225,63 @@ def default_augmentation_params(name: str, strength: str) -> dict[str, float | i
         return {"warp_span": round(0.15 * strength_scale, 5)}
     if name == "mixup":
         return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}
+    if name == "channel_dropout":
+        return {"drop_probability": round(min(0.35, 0.08 * strength_scale), 5)}
+    if name == "sensor_bias":
+        return {"bias_radius": round(0.02 * strength_scale, 5)}
+    if name == "frequency_mask":
+        return {"mask_ratio": round(min(0.4, 0.12 * strength_scale), 5)}
+    if name == "imu_to_imu":
+        return {
+            "variation_count": int(max(1, round(strength_scale))),
+            "variation_amount": round(0.12 * strength_scale, 5),
+            "variation_kind": "noise+warp+bias",
+            "noise_injection": "gaussian",
+            "synthetic_source": "imu_to_imu",
+            "synthetic_class": "same_as_source",
+            "synthetic_ratio": round(0.25 * strength_scale, 5),
+            "synthetic_count": int(max(1, round(strength_scale))),
+            "method": "placeholder_composed_imu_transform",
+            "invented_method": "",
+        }
+    if name == "text_to_imu":
+        return {
+            "variation_count": int(max(1, round(strength_scale))),
+            "variation_amount": round(0.10 * strength_scale, 5),
+            "sentence_input": "person performs the labeled activity with natural phone motion",
+            "prompt_style": "activity-conditioned",
+            "generator": "t2mgpt_placeholder",
+            "noise_injection": "sensor_jitter",
+            "synthetic_source": "text_to_imu",
+            "synthetic_class": "same_as_prompt_activity",
+            "synthetic_ratio": round(0.20 * strength_scale, 5),
+            "synthetic_count": int(max(1, round(strength_scale))),
+            "placeholder": "returns bounded IMU-to-IMU proxy until T2M-GPT is integrated",
+        }
+    if name == "video_to_imu":
+        return {
+            "variation_count": int(max(1, round(strength_scale))),
+            "variation_amount": round(0.10 * strength_scale, 5),
+            "video_condition": "activity video motion summary placeholder",
+            "generator": "video_to_imu_placeholder",
+            "noise_injection": "camera_motion_to_sensor_jitter",
+            "synthetic_source": "video_to_imu",
+            "synthetic_class": "same_as_video_activity",
+            "synthetic_ratio": round(0.20 * strength_scale, 5),
+            "synthetic_count": int(max(1, round(strength_scale))),
+            "placeholder": "returns bounded IMU-to-IMU proxy until video-to-IMU is integrated",
+        }
     if name == "custom":
-        return {"custom_code": ""}
+        return {
+            "custom_code": "",
+            "variation_count": int(max(1, round(strength_scale))),
+            "variation_amount": round(0.10 * strength_scale, 5),
+            "synthetic_source": "custom",
+            "synthetic_class": "same_as_source",
+            "synthetic_ratio": round(0.20 * strength_scale, 5),
+            "synthetic_count": int(max(1, round(strength_scale))),
+            "invented_method": "",
+        }
     return {}
 
 
@@ -418,6 +501,8 @@ def _module_patch_builder(agent_name: str) -> str:
             '        "weight_decay": 0.0,\n'
             '        "loss": "cross_entropy",\n'
             '        "label_smoothing": 0.0,\n'
+            '        "parent_architectures": "",\n'
+            '        "merge_strategy": "",\n'
             "    }\n"
             '    if target_name == "cnn":\n'
             '        params.update({"hidden_dim": 32, "depth": 1, "use_interactions": False})\n'
@@ -561,7 +646,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    return dict(base_experiment.get("augmentation", {}))\n\n'
             "def valid_augmentations() -> list[str]:\n"
             '    """Return supported augmentation families."""\n'
-            '    return ["none", "rotation", "time_warp", "jitter", "mixup", "scaling", "drift", "permutation", "magnitude_warp", "custom"]\n\n'
+            '    return ["none", "rotation", "time_warp", "jitter", "mixup", "scaling", "drift", "permutation", "magnitude_warp", "channel_dropout", "sensor_bias", "frequency_mask", "imu_to_imu", "text_to_imu", "video_to_imu", "custom"]\n\n'
             "def choose_augmentation_name(base_experiment: dict[str, object], requested_name: str) -> str:\n"
             '    """Apply simple compatibility heuristics for augmentation selection."""\n'
             "    valid = valid_augmentations()\n"
@@ -598,8 +683,20 @@ def _module_patch_builder(agent_name: str) -> str:
             '        return {"warp_span": round(0.15 * strength_scale, 5)}\n'
             '    if target_name == "mixup":\n'
             '        return {"blend": round(min(0.45, 0.15 + (0.15 * strength_scale)), 5)}\n'
+            '    if target_name == "channel_dropout":\n'
+            '        return {"drop_probability": round(min(0.35, 0.08 * strength_scale), 5)}\n'
+            '    if target_name == "sensor_bias":\n'
+            '        return {"bias_radius": round(0.02 * strength_scale, 5)}\n'
+            '    if target_name == "frequency_mask":\n'
+            '        return {"mask_ratio": round(min(0.4, 0.12 * strength_scale), 5)}\n'
+            '    if target_name == "imu_to_imu":\n'
+            '        return {"variation_count": int(max(1, round(strength_scale))), "variation_amount": round(0.12 * strength_scale, 5), "variation_kind": "noise+warp+bias", "noise_injection": "gaussian", "synthetic_source": "imu_to_imu", "synthetic_class": "same_as_source", "synthetic_ratio": round(0.25 * strength_scale, 5), "synthetic_count": int(max(1, round(strength_scale))), "method": "placeholder_composed_imu_transform", "invented_method": ""}\n'
+            '    if target_name == "text_to_imu":\n'
+            '        return {"variation_count": int(max(1, round(strength_scale))), "variation_amount": round(0.10 * strength_scale, 5), "sentence_input": "person performs the labeled activity with natural phone motion", "prompt_style": "activity-conditioned", "generator": "t2mgpt_placeholder", "noise_injection": "sensor_jitter", "synthetic_source": "text_to_imu", "synthetic_class": "same_as_prompt_activity", "synthetic_ratio": round(0.20 * strength_scale, 5), "synthetic_count": int(max(1, round(strength_scale))), "placeholder": "returns bounded IMU-to-IMU proxy until T2M-GPT is integrated"}\n'
+            '    if target_name == "video_to_imu":\n'
+            '        return {"variation_count": int(max(1, round(strength_scale))), "variation_amount": round(0.10 * strength_scale, 5), "video_condition": "activity video motion summary placeholder", "generator": "video_to_imu_placeholder", "noise_injection": "camera_motion_to_sensor_jitter", "synthetic_source": "video_to_imu", "synthetic_class": "same_as_video_activity", "synthetic_ratio": round(0.20 * strength_scale, 5), "synthetic_count": int(max(1, round(strength_scale))), "placeholder": "returns bounded IMU-to-IMU proxy until video-to-IMU is integrated"}\n'
             '    if target_name == "custom":\n'
-            '        return {"custom_code": LLM_FUNCTION_REWRITE}\n'
+            '        return {"custom_code": LLM_FUNCTION_REWRITE, "variation_count": int(max(1, round(strength_scale))), "variation_amount": round(0.10 * strength_scale, 5), "synthetic_source": "custom", "synthetic_class": "same_as_source", "synthetic_ratio": round(0.20 * strength_scale, 5), "synthetic_count": int(max(1, round(strength_scale))), "invented_method": ""}\n'
             "    return {}\n\n"
             "def compatibility_strength(base_experiment: dict[str, object], target_name: str, requested_strength: str) -> str:\n"
             '    """Downshift aggressive augmentation when the baseline context is fragile."""\n'

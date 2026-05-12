@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import importlib
 import tempfile
 from pathlib import Path
 
@@ -10,6 +11,7 @@ import pytest
 
 from autohar_researcher.experiment import (
     MODEL_HYPERPARAMETERS,
+    available_augmentations,
     available_model_architectures,
     base_experiment_config,
     default_model_params,
@@ -70,6 +72,8 @@ class TestDefaultParams:
         assert params["bidirectional"] is True
         assert params["optimizer"] == "adam"
         assert params["loss"] == "cross_entropy"
+        assert "parent_architectures" in params
+        assert "merge_strategy" in params
 
     def test_default_model_params_bilstmattention(self):
         params = default_model_params("bilstmattention")
@@ -97,6 +101,34 @@ class TestDefaultParams:
     def test_default_augmentation_params_jitter(self):
         params = default_augmentation_params("jitter", "medium")
         assert "jitter_std" in params
+
+    def test_available_augmentations_include_generative_placeholders(self):
+        augmentations = available_augmentations()
+        assert "imu_to_imu" in augmentations
+        assert "text_to_imu" in augmentations
+        assert "video_to_imu" in augmentations
+
+    def test_default_augmentation_params_text_to_imu(self):
+        params = default_augmentation_params("text_to_imu", "medium")
+        assert params["generator"] == "t2mgpt_placeholder"
+        assert "sentence_input" in params
+        assert "variation_amount" in params
+        assert params["synthetic_source"] == "text_to_imu"
+        assert "synthetic_class" in params
+        assert "synthetic_ratio" in params
+
+    def test_augmentation_modules_exist(self):
+        augmentation_dir = Path("research/modules/augmentations")
+        for augmentation in available_augmentations():
+            assert (augmentation_dir / f"{augmentation}.py").exists()
+
+    def test_augmentation_files_are_callable_modules(self):
+        for augmentation in available_augmentations():
+            module = importlib.import_module(
+                f"research.modules.augmentations.{augmentation}"
+            )
+            assert callable(getattr(module, "augment_window", None))
+            assert getattr(module, "NAME") == augmentation
 
     def test_default_augmentation_params_none(self):
         params = default_augmentation_params("none", "medium")
@@ -263,6 +295,26 @@ class TestModuleFilenames:
         architecture_dir = Path("research/modules/architectures")
         for architecture in available_model_architectures():
             assert (architecture_dir / f"{architecture}.py").exists()
+
+    def test_architecture_files_are_buildable_modules(self):
+        for architecture in available_model_architectures():
+            module = importlib.import_module(
+                f"research.modules.architectures.{architecture}"
+            )
+            assert callable(getattr(module, "build_model", None))
+            assert getattr(module, "ARCHITECTURE_NAME") == architecture
+
+    def test_architecture_files_accept_raw_sequences(self):
+        torch = pytest.importorskip("torch")
+        for architecture in available_model_architectures():
+            module = importlib.import_module(
+                f"research.modules.architectures.{architecture}"
+            )
+            params = default_model_params(architecture)
+            params["input_channels"] = 6
+            model = module.build_model(input_dim=6, num_classes=6, params=params)
+            output = model(torch.randn(2, 32, 6))
+            assert tuple(output.shape) == (2, 6)
 
 
 class TestWriteAndLoadModule:

@@ -66,6 +66,12 @@ class OpenAIPlanner:
         "drift",
         "permutation",
         "magnitude_warp",
+        "channel_dropout",
+        "sensor_bias",
+        "frequency_mask",
+        "imu_to_imu",
+        "text_to_imu",
+        "video_to_imu",
         "custom",
     ]
     AUGMENTATION_STRENGTHS = ["weak", "medium", "strong"]
@@ -362,6 +368,10 @@ class OpenAIPlanner:
         compact = dict(params)
         if "custom_code" in compact:
             compact["custom_code"] = "[omitted]"
+        for key in ("sentence_input", "video_condition"):
+            if key in compact:
+                value = str(compact[key])
+                compact[key] = value[:160] + ("..." if len(value) > 160 else "")
         return compact
 
     def _compact_dataset_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
@@ -531,6 +541,10 @@ class OpenAIPlanner:
             + "Treat those architectures as stable anchors, not as the whole point of the search. "
             + "Use them when they fit, but put most of your expertise into model-side hyperparameter tuning, helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             + f"You may tune these model-side hyperparameters: {hyperparameters}.\n"
+            + "Decision policy:\n"
+            + "- Modify the current architecture when recent results are competitive and the likely issue is capacity, pooling, regularization, optimizer, loss, or learning-rate fit.\n"
+            + "- Switch architecture when the current family has plateaued, repeatedly underperforms, or the data/window/augmentation context suggests a different temporal bias.\n"
+            + "- Merge two architectures only when there is evidence that their strengths are complementary, such as spectral performance from `spectra` plus temporal stability from `bilstm`, or attention benefits from one family plus compactness from another. Record the parents in `parent_architectures` and the merge logic in `merge_strategy`.\n"
             + "Keep the rationale short and trend-aware.\n"
             + "Use `logic_expression` only for trivial direct overrides.\n"
             + "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
@@ -541,7 +555,7 @@ class OpenAIPlanner:
             + "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
             + "In particular, use `model_params_override(...)` when hidden_dim, depth, temporal_pool, spectral_bins, "
             + "use_interactions, use_multiscale, attention_mix, dropout, bidirectional, optimizer, weight_decay, loss, "
-            + "or label_smoothing should depend on the current baseline context.\n"
+            + "label_smoothing, parent_architectures, or merge_strategy should depend on the current baseline context.\n"
             + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             + "`bounded_learning_rate_override(base_experiment, target_name, baseline_name, baseline_lr, proposed_lr, config)`. "
             + "Use this when you want to rewrite model learning-rate bounding logic itself inside the owned module. "
@@ -586,8 +600,9 @@ class OpenAIPlanner:
                 context=context,
                 orchestrator_plan=orchestrator_plan,
             )
-            + "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp, custom}.\n"
+            + "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp, channel_dropout, sensor_bias, frequency_mask, imu_to_imu, text_to_imu, video_to_imu, custom}.\n"
             + "Common strengths include {weak, medium, strong}.\n"
+            + "`text_to_imu` is a T2M-GPT-style placeholder and `video_to_imu` is a video-conditioned IMU placeholder; until real generators are integrated, they must behave as bounded IMU-to-IMU proxy transforms.\n"
             + "Treat those labels as anchors for the runtime, not as the main source of expertise. "
             + "Put the interesting reasoning into augmentation-side parameter logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             + "Keep the rationale short and trend-aware.\n"
@@ -599,7 +614,9 @@ class OpenAIPlanner:
             + "When the main mutation is augmentation-family or strength-dependent parameter compatibility, prefer defining "
             + "`augmentation_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
             + "Use `augmentation_params_override(...)` when rotation angle, jitter std, time-warp compression, scaling span, "
-            + "drift magnitude, permutation segments, magnitude-warp span, or mixup blend should depend on the current baseline context.\n"
+            + "drift magnitude, permutation segments, magnitude-warp span, mixup blend, variation_count, variation_amount, "
+            + "variation_kind, sentence_input, prompt_style, video_condition, noise_injection, synthetic_source, synthetic_class, "
+            + "synthetic_ratio, synthetic_count, class_balance_policy, or invented_method should depend on the current baseline context.\n"
             + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             + "`compatibility_strength_override(base_experiment, target_name, requested_strength, config)`. "
             + "Use this when you want to rewrite augmentation strength compatibility logic itself inside the owned module. "
@@ -712,6 +729,8 @@ class OpenAIPlanner:
                         "weight_decay": {"type": "number"},
                         "loss": {"type": "string"},
                         "label_smoothing": {"type": "number"},
+                        "parent_architectures": {"type": "string"},
+                        "merge_strategy": {"type": "string"},
                     },
                     "required": [
                         "hidden_dim",
@@ -727,6 +746,8 @@ class OpenAIPlanner:
                         "weight_decay",
                         "loss",
                         "label_smoothing",
+                        "parent_architectures",
+                        "merge_strategy",
                     ],
                 },
                 "rationale": {"type": "string"},
@@ -1141,6 +1162,8 @@ class OpenAIPlanner:
                     "weight_decay": 0.0,
                     "loss": "cross_entropy",
                     "label_smoothing": 0.0,
+                    "parent_architectures": "",
+                    "merge_strategy": "",
                 },
                 "rationale": "Fallback model proposal after malformed local LLM JSON.",
                 "logic_expression": "",

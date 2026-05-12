@@ -34,6 +34,12 @@ AUGMENTATIONS = [
     "drift",
     "permutation",
     "magnitude_warp",
+    "channel_dropout",
+    "sensor_bias",
+    "frequency_mask",
+    "imu_to_imu",
+    "text_to_imu",
+    "video_to_imu",
 ]
 
 AUGMENTATION_STRENGTHS = ["weak", "medium", "strong"]

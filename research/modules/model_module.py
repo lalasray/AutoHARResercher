@@ -49,4 +49,24 @@ MUTATION_SPACE = {
     ],
     "optimizers": ["adam", "adamw", "sgd"],
     "losses": ["cross_entropy", "weighted_cross_entropy"],
+    "merge_strategies": [
+        "temporal_plus_spectral",
+        "attention_plus_compact",
+        "recurrent_plus_convolutional",
+    ],
+}
+
+DECISION_POLICY = {
+    "modify": (
+        "Use when the current architecture is competitive and the likely bottleneck "
+        "is capacity, pooling, regularization, optimizer, loss, or learning rate."
+    ),
+    "switch": (
+        "Use when the current architecture has plateaued or the context suggests "
+        "a different temporal, spectral, convolutional, or attention bias."
+    ),
+    "merge": (
+        "Use only when two architectures have complementary strengths. Record "
+        "parents in parent_architectures and describe the merge in merge_strategy."
+    ),
 }

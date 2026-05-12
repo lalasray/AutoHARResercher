@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import math
 import random
@@ -419,6 +420,15 @@ class DummyHARHarness:
                 params=params,
                 rng=rng,
             )
+        module_augmented = self._augment_from_module(
+            augmented,
+            mode=mode,
+            strength=strength,
+            params=params,
+            rng=rng,
+        )
+        if module_augmented is not None:
+            return module_augmented
         if mode == "jitter":
             radius = float(params.get("jitter_std", 0.02 * strength_scale))
             return [
@@ -522,7 +532,108 @@ class DummyHARHarness:
                     [((1.0 - blend) * a) + (blend * b) for a, b in zip(left, right)]
                 )
             return mixed
+        if mode == "channel_dropout":
+            probability = float(params.get("drop_probability", 0.08 * strength_scale))
+            channel_count = len(augmented[0]) if augmented else 0
+            dropped = {
+                channel
+                for channel in range(channel_count)
+                if rng.uniform(0.0, 1.0) < probability
+            }
+            if not dropped and channel_count:
+                dropped.add(int(rng.uniform(0, channel_count)))
+            return [
+                [
+                    0.0 if channel in dropped else value
+                    for channel, value in enumerate(row)
+                ]
+                for row in augmented
+            ]
+        if mode == "sensor_bias":
+            radius = float(params.get("bias_radius", 0.02 * strength_scale))
+            biases = [rng.uniform(-radius, radius) for _ in range(len(augmented[0]))]
+            return [
+                [value + biases[channel] for channel, value in enumerate(row)]
+                for row in augmented
+            ]
+        if mode == "frequency_mask":
+            ratio = max(0.0, min(0.6, float(params.get("mask_ratio", 0.12 * strength_scale))))
+            if len(augmented) < 4:
+                return augmented
+            span = max(1, int(len(augmented) * ratio))
+            start = int(rng.uniform(0, max(1, len(augmented) - span)))
+            masked = self._copy_window(augmented)
+            channel_means = [
+                sum(row[channel] for row in augmented) / len(augmented)
+                for channel in range(len(augmented[0]))
+            ]
+            for idx in range(start, min(len(masked), start + span)):
+                masked[idx] = channel_means[:]
+            return masked
+        if mode in {"imu_to_imu", "text_to_imu", "video_to_imu"}:
+            return self._placeholder_generative_augment(
+                augmented,
+                mode=mode,
+                strength_scale=strength_scale,
+                params=params,
+                rng=rng,
+            )
         return augmented
+
+    def _augment_from_module(
+        self,
+        window: list[list[float]],
+        mode: str,
+        strength: str,
+        params: dict[str, float | int | str],
+        rng: random.Random,
+    ) -> list[list[float]] | None:
+        safe_name = mode.replace("-", "_")
+        try:
+            module = importlib.import_module(
+                f"research.modules.augmentations.{safe_name}"
+            )
+        except Exception:
+            return None
+        augment_fn = getattr(module, "augment_window", None)
+        if not callable(augment_fn):
+            return None
+        try:
+            candidate = augment_fn(self._copy_window(window), strength, dict(params), rng)
+        except Exception:
+            return None
+        return self._validated_custom_window(candidate, window)
+
+    def _placeholder_generative_augment(
+        self,
+        window: list[list[float]],
+        mode: str,
+        strength_scale: float,
+        params: dict[str, float | int | str],
+        rng: random.Random,
+    ) -> list[list[float]]:
+        del mode
+        amount = max(
+            0.0,
+            min(0.5, float(params.get("variation_amount", 0.10 * strength_scale))),
+        )
+        noise_radius = amount * 0.05
+        bias_radius = amount * 0.03
+        biases = [rng.uniform(-bias_radius, bias_radius) for _ in range(len(window[0]))]
+        generated: list[list[float]] = []
+        for step, row in enumerate(window):
+            alpha = step / max(len(window) - 1, 1)
+            slow_wave = math.sin(alpha * math.pi * 2.0) * amount * 0.02
+            generated.append(
+                [
+                    value
+                    + biases[channel]
+                    + slow_wave
+                    + rng.uniform(-noise_radius, noise_radius)
+                    for channel, value in enumerate(row)
+                ]
+            )
+        return generated
 
     def _custom_augment(
         self,
@@ -1044,6 +1155,33 @@ class DummyHARHarness:
         feature_dim = len(train_features[0])
         num_classes = len(self.LABELS)
         device = self._resolve_device(device_preference)
+        module = self._build_architecture_from_file(
+            model_name=model_name,
+            feature_dim=feature_dim,
+            num_classes=num_classes,
+            model_params=model_params,
+        )
+        if module is not None:
+            module = module.to(device)
+            optimizer = self._build_torch_optimizer(
+                module=module,
+                model_params=model_params,
+                learning_rate=learning_rate,
+            )
+            criterion = self._build_torch_criterion(model_params)
+            return self._fit_torch_module(
+                module=module,
+                optimizer=optimizer,
+                criterion=criterion,
+                train_features=train_features,
+                train_labels=train_labels,
+                stop_features=stop_features,
+                stop_labels=stop_labels,
+                epochs=epochs,
+                patience=patience,
+                min_epochs=min_epochs,
+                device=device,
+            )
         if model_name in {
             "deepconvlstm",
             "deepconvlstmattention",
@@ -1115,6 +1253,63 @@ class DummyHARHarness:
             learning_rate=learning_rate,
         )
         criterion = self._build_torch_criterion(model_params)
+        return self._fit_torch_module(
+            module=module,
+            optimizer=optimizer,
+            criterion=criterion,
+            train_features=train_features,
+            train_labels=train_labels,
+            stop_features=stop_features,
+            stop_labels=stop_labels,
+            epochs=epochs,
+            patience=patience,
+            min_epochs=min_epochs,
+            device=device,
+        )
+
+    def _build_architecture_from_file(
+        self,
+        model_name: str,
+        feature_dim: int,
+        num_classes: int,
+        model_params: dict[str, float | int | str | bool],
+    ) -> object | None:
+        assert self._torch is not None
+        safe_name = model_name.replace("-", "_")
+        try:
+            module = importlib.import_module(
+                f"research.modules.architectures.{safe_name}"
+            )
+        except Exception:
+            return None
+        builder = getattr(module, "build_model", None)
+        if not callable(builder):
+            return None
+        try:
+            candidate = builder(
+                input_dim=feature_dim,
+                num_classes=num_classes,
+                params=dict(model_params),
+            )
+        except Exception:
+            return None
+        return candidate if isinstance(candidate, self._torch.nn.Module) else None
+
+    def _fit_torch_module(
+        self,
+        module: object,
+        optimizer: object,
+        criterion: object,
+        train_features: list[list[float]],
+        train_labels: list[int],
+        stop_features: list[list[float]],
+        stop_labels: list[int],
+        epochs: int,
+        patience: int,
+        min_epochs: int,
+        device: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        assert self._torch is not None
         train_x = self._torch.tensor(
             train_features, dtype=self._torch.float32, device=device
         )

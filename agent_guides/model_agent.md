@@ -114,7 +114,8 @@ You may also tune model-side hyperparameters such as:
 - learning rate
 - `custom_code` when using the `custom` family
 
-The architecture implementations/specs live in separate files under `research/modules/architectures/`.
+The buildable architecture implementations live in separate files under `research/modules/architectures/`.
+Each architecture file must expose `build_model(input_dim, num_classes, params)`.
 Keep `model_module.py` as the controller that chooses an architecture, tunes it, and records mutations such as adding/removing/widening layers.
 
 ## What To Optimize
@@ -130,6 +131,27 @@ Focus on:
 You should reason relative to the accepted baseline, not in isolation.
 
 ## Decision Style
+
+Modify the current architecture when:
+
+- the current family is near the best result
+- failures look like capacity, regularization, pooling, optimizer, loss, or LR issues
+- a smaller local change would isolate the cause better than switching families
+
+Switch architecture when:
+
+- the current family has plateaued or repeatedly lost
+- recent tuning did not improve the score
+- the current data/window/augmentation context fits a different bias, such as recurrent, attention, spectral, compact, or convolutional modeling
+
+Merge two architectures only when:
+
+- their strengths are plausibly complementary
+- recent history gives a reason to combine them rather than randomly inventing a hybrid
+- the merged idea can be represented through owned `model_params`, `function_rewrite`, or `custom`
+
+When merging, set `parent_architectures` and `merge_strategy` in `model_params`.
+Examples: `spectra+bilstm` with `temporal_plus_spectral`, or `tinyhar+bilstmattention` with `attention_plus_compact`.
 
 Prefer exploitative mutations when:
 
