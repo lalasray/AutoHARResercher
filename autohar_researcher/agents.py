@@ -341,6 +341,7 @@ class DataAgent:
             return DataProposal(
                 preprocessing=planner_hint.preprocessing,
                 window_size=planner_hint.window_size,
+                data_params=dict(planner_hint.data_params),
                 notes=f"LLM planner hint: {planner_hint.rationale}",
                 logic_expression=planner_hint.logic_expression,
                 helper_code=planner_hint.helper_code,

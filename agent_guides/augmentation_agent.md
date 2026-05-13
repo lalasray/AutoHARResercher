@@ -154,6 +154,32 @@ Focus on:
 
 ## Decision Style
 
+Choose an existing augmentation when:
+
+- the robustness goal maps cleanly to a known family
+- orientation, timing, amplitude, sensor dropout, bias, or masking is the main concern
+- you need a low-risk comparison against recent history
+
+Mutate an existing augmentation when:
+
+- the family is plausible or recently promising
+- the main uncertainty is strength, synthetic amount, target class, source, prompt, or noise shape
+- you can improve the policy by changing parameters rather than jumping families
+
+Use synthetic placeholders when:
+
+- the goal is explicitly more data diversity
+- you can state how much synthetic data to use through `synthetic_ratio` or `synthetic_count`
+- you can state the source through `synthetic_source`
+- you can state the class target through `synthetic_class` and `class_balance_policy`
+
+Create a new method only when:
+
+- none of the listed families can express the intended perturbation
+- the method is bounded and same-shape
+- it documents `invented_method`
+- it preserves label semantics
+
 Prefer weak or medium strength by default.
 Only move to strong when there is evidence that:
 

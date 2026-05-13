@@ -9,3 +9,5 @@ data/
 /tests/__pycache__
 /artifacts_openai
 *.json
+/research/modules/__pycache__
+/research/modules/preprocessing/__pycache__

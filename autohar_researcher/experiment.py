@@ -108,6 +108,19 @@ def available_augmentations() -> list[str]:
     return list(AVAILABLE_AUGMENTATIONS)
 
 
+AVAILABLE_PREPROCESSING: tuple[str, ...] = (
+    "raw",
+    "normalized",
+    "normalized+gravity_filter",
+    "normalized+magnitude_channels",
+    "custom",
+)
+
+
+def available_preprocessing_modes() -> list[str]:
+    return list(AVAILABLE_PREPROCESSING)
+
+
 def default_model_params(name: str) -> dict[str, float | int | str | bool]:
     params: dict[str, float | int | str | bool] = {
         "hidden_dim": 64,
@@ -295,6 +308,20 @@ def default_data_params(
         in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"},
         "gravity_scale": 1.0,
         "append_magnitude": preprocessing == "normalized+magnitude_channels",
+        "stride": max(16, window_size // 2),
+        "dataset_policy": "single_dataset",
+        "dataset_sources": "uci_har",
+        "primary_dataset": "uci_har",
+        "available_real_datasets": "uci_har,pamap2,mhealth,opportunity,motionsense",
+        "secondary_datasets": "",
+        "real_ratio": 1.0,
+        "synthetic_ratio": 0.0,
+        "synthetic_sources": "",
+        "class_sampling_policy": "preserve",
+        "target_classes": "all",
+        "per_class_real_ratio": "",
+        "per_class_synthetic_ratio": "",
+        "dataset_mix_notes": "loaders implemented for uci_har,pamap2,mhealth,opportunity,motionsense",
     }
     if preprocessing == "normalized+gravity_filter":
         params["channel_layout"] = "body_acc+gyro"
@@ -850,6 +877,20 @@ def _module_patch_builder(agent_name: str) -> str:
         '        "normalize": target_preprocessing in {"normalized", "normalized+gravity_filter", "normalized+magnitude_channels"},\n'
         '        "gravity_scale": 1.0,\n'
         '        "append_magnitude": target_preprocessing == "normalized+magnitude_channels",\n'
+        '        "stride": max(16, target_window // 2),\n'
+        '        "dataset_policy": "single_dataset",\n'
+        '        "dataset_sources": "uci_har",\n'
+        '        "primary_dataset": "uci_har",\n'
+        '        "available_real_datasets": "uci_har,pamap2,mhealth,opportunity,motionsense",\n'
+        '        "secondary_datasets": "",\n'
+        '        "real_ratio": 1.0,\n'
+        '        "synthetic_ratio": 0.0,\n'
+        '        "synthetic_sources": "",\n'
+        '        "class_sampling_policy": "preserve",\n'
+        '        "target_classes": "all",\n'
+        '        "per_class_real_ratio": "",\n'
+        '        "per_class_synthetic_ratio": "",\n'
+        '        "dataset_mix_notes": "loaders implemented for uci_har,pamap2,mhealth,opportunity,motionsense",\n'
         "    }\n"
         '    if target_preprocessing == "normalized+gravity_filter":\n'
         '        params["channel_layout"] = "body_acc+gyro"\n'
@@ -1113,6 +1154,7 @@ def apply_data_proposal(
         proposal.preprocessing,
         proposal.window_size,
     )
+    params.update(dict(proposal.data_params))
     if proposal.preprocessing == "custom" and proposal.function_rewrite:
         params["custom_code"] = proposal.function_rewrite
     updated["data"]["params"] = params

@@ -69,6 +69,7 @@ class AugmentationProposal:
 class DataProposal:
     preprocessing: str
     window_size: int
+    data_params: dict[str, float | int | str | bool] = field(default_factory=dict)
     notes: str = ""
     logic_expression: str = ""
     helper_code: str = ""
@@ -126,6 +127,7 @@ class AugmentationPlanHint:
 class DataPlanHint:
     preprocessing: str
     window_size: int
+    data_params: dict[str, float | int | str | bool] = field(default_factory=dict)
     rationale: str = ""
     logic_expression: str = ""
     helper_code: str = ""

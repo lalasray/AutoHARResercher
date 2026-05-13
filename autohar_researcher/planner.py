@@ -21,7 +21,7 @@ from autohar_researcher.types import (
     ModelPlanHint,
     ProposalJudgment,
 )
-from autohar_researcher.datasets import UCIHARDataset
+from autohar_researcher.datasets import create_har_dataset
 from autohar_researcher.experiment import (
     MODEL_HYPERPARAMETERS,
     model_architecture_catalog,
@@ -433,9 +433,10 @@ class OpenAIPlanner:
         if best_result is not None:
             # Future-proofing for multi-dataset support if config later carries dataset name differently.
             dataset_name = "uci_har"
-        if dataset_name == "uci_har":
-            return UCIHARDataset().metadata()
-        return {"dataset_name": dataset_name}
+        try:
+            return create_har_dataset(dataset_name).metadata()
+        except ValueError:
+            return {"dataset_name": dataset_name}
 
     def _plan_orchestrator(self, context: dict[str, object]) -> dict[str, object]:
         prompt = (
@@ -603,6 +604,7 @@ class OpenAIPlanner:
             + "Common stable augmentation families include {none, rotation, time_warp, jitter, mixup, scaling, drift, permutation, magnitude_warp, channel_dropout, sensor_bias, frequency_mask, imu_to_imu, text_to_imu, video_to_imu, custom}.\n"
             + "Common strengths include {weak, medium, strong}.\n"
             + "`text_to_imu` is a T2M-GPT-style placeholder and `video_to_imu` is a video-conditioned IMU placeholder; until real generators are integrated, they must behave as bounded IMU-to-IMU proxy transforms.\n"
+            + "Decision policy: choose an existing family when the robustness goal maps cleanly to orientation/timing/amplitude/dropout/bias/masking; mutate an existing family when only strength, amount, source, target class, prompt, or noise shape needs tuning; use synthetic placeholders when testing synthetic-data diversity and always specify synthetic_source, synthetic_class, synthetic_ratio, synthetic_count, and class_balance_policy; create `custom` only when no listed family expresses the idea and the method is bounded, same-shape, and label-preserving.\n"
             + "Treat those labels as anchors for the runtime, not as the main source of expertise. "
             + "Put the interesting reasoning into augmentation-side parameter logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             + "Keep the rationale short and trend-aware.\n"
@@ -652,7 +654,7 @@ class OpenAIPlanner:
             self._agent_prompt_prefix(
                 agent_label="DataAgent",
                 controls_text=(
-                    "You only control preprocessing and window_size.\n"
+                    "You control data source policy, real/synthetic source mix, preprocessing, window_size, stride, and data-side params.\n"
                     "Propose one data-side mutation for this round.\n"
                     "Do not change model or augmentation settings."
                 ),
@@ -663,6 +665,10 @@ class OpenAIPlanner:
             )
             + "Common stable preprocessing regimes include {raw, normalized, normalized+gravity_filter, normalized+magnitude_channels, custom}.\n"
             + "Common stable window sizes include {64, 96, 128, 192, 256}.\n"
+            + "Common real dataset sources include {uci_har, pamap2, mhealth, opportunity, motionsense}; all five have dataset loaders.\n"
+            + "Common dataset policies include {single_dataset, multi_dataset, real_synthetic_mix}; common source controls include primary_dataset, secondary_datasets, dataset_sources, real_ratio, synthetic_ratio, synthetic_sources, target_classes, per_class_real_ratio, per_class_synthetic_ratio, class_sampling_policy, and stride.\n"
+            + "Synthetic-source controls are explicit policy placeholders until generators are integrated. Still specify them when the research hypothesis is source/class/ratio driven.\n"
+            + "Decision policy: choose existing preprocessing when the representation goal maps cleanly to a listed module; mutate preprocessing when stride, window, channel layout, normalization, gravity, resampling, or magnitude settings need tuning; swap dataset policy when testing one real dataset versus multiple datasets or real/synthetic mixtures; mutate source/class mix when amount or target class is the key question; create `custom` only for bounded, same-shape, label-safe transforms.\n"
             + "Treat those settings as anchors for the runtime, not as the whole search space. "
             + "Put the interesting reasoning into data-side helper logic, compatibility rules, and bounded rewrites inside the owned module.\n"
             + "Keep the rationale short and trend-aware.\n"
@@ -673,7 +679,7 @@ class OpenAIPlanner:
             + rewrite_preference
             + "When the main mutation is preprocessing/window-dependent data parameter compatibility, prefer defining "
             + "`data_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
-            + "Use `data_params_override(...)` when channel layout, resampling mode, gravity scale, or magnitude toggles "
+            + "Use `data_params_override(...)` when channel layout, resampling mode, gravity scale, magnitude toggles, stride, dataset_policy, primary_dataset, secondary_datasets, dataset_sources, real_ratio, synthetic_ratio, synthetic_sources, target_classes, per_class ratios, or class_sampling_policy "
             + "should depend on the current baseline context.\n"
             + "For deeper code evolution, you may also provide `function_rewrite` as a full Python function definition for "
             + "`choose_window_override(base_experiment, requested_window, config)`. "
@@ -850,6 +856,10 @@ class OpenAIPlanner:
             "properties": {
                 "preprocessing": {"type": "string"},
                 "window_size": {"type": "integer"},
+                "data_params": {
+                    "type": "object",
+                    "additionalProperties": True,
+                },
                 "rationale": {"type": "string"},
                 "logic_expression": {"type": "string"},
                 "helper_code": {"type": "string"},
@@ -859,6 +869,7 @@ class OpenAIPlanner:
             "required": [
                 "preprocessing",
                 "window_size",
+                "data_params",
                 "rationale",
                 "logic_expression",
                 "helper_code",
@@ -1183,6 +1194,7 @@ class OpenAIPlanner:
             return {
                 "preprocessing": "raw",
                 "window_size": 128,
+                "data_params": {},
                 "rationale": "Fallback data proposal after malformed local LLM JSON.",
                 "logic_expression": "",
                 "helper_code": "",
@@ -1382,6 +1394,7 @@ class OpenAIPlanner:
             return {
                 "preprocessing": proposal.preprocessing,
                 "window_size": proposal.window_size,
+                "data_params": dict(proposal.data_params),
                 "rationale": proposal.rationale,
                 "logic_expression": proposal.logic_expression,
                 "helper_code": proposal.helper_code,
@@ -1649,6 +1662,11 @@ class OpenAIPlanner:
             return payload
         preprocessing = str(payload.get("preprocessing", "raw"))
         window_size = int(payload.get("window_size", 128))
+        data_params = payload.get("data_params")
+        if isinstance(data_params, dict):
+            payload["data_params"] = data_params
+        else:
+            payload["data_params"] = {}
         body = (
             "def data_params_override(base_experiment, target_preprocessing, target_window, proposed_params, config):\n"
             "    del base_experiment\n"

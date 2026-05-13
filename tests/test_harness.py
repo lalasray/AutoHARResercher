@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from autohar_researcher.harness import DummyHARHarness
+from autohar_researcher.datasets import create_har_dataset, readily_downloadable_imu_datasets
 from autohar_researcher.types import CandidateConfig
 
 
@@ -12,7 +13,14 @@ class TestDummyHARHarness:
     def test_initialization(self):
         harness = DummyHARHarness()
         assert harness._dataset is None
-        assert harness._torch is None or harness._torch is not None
+
+    def test_dataset_factory_supports_public_imu_datasets(self):
+        names = ["uci_har", "pamap2", "mhealth", "opportunity", "motionsense"]
+        statuses = readily_downloadable_imu_datasets()
+        for name in names:
+            dataset = create_har_dataset(name)
+            assert dataset.metadata()["dataset_name"] == name
+            assert statuses[name]["loader_status"] == "implemented"
 
     def test_runtime_backend_summary(self):
         harness = DummyHARHarness()

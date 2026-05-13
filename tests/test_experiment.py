@@ -13,6 +13,7 @@ from autohar_researcher.experiment import (
     MODEL_HYPERPARAMETERS,
     available_augmentations,
     available_model_architectures,
+    available_preprocessing_modes,
     base_experiment_config,
     default_model_params,
     default_augmentation_params,
@@ -139,6 +140,11 @@ class TestDefaultParams:
         assert params["channel_layout"] == "total_acc+gyro"
         assert params["normalize"] is False
         assert params["resample_mode"] == "nearest"
+        assert params["stride"] == 64
+        assert params["dataset_policy"] == "single_dataset"
+        assert "pamap2" in params["available_real_datasets"]
+        assert params["real_ratio"] == 1.0
+        assert params["synthetic_ratio"] == 0.0
 
     def test_default_data_params_normalized(self):
         params = default_data_params("normalized", 128)
@@ -156,6 +162,27 @@ class TestDefaultParams:
     def test_default_data_params_magnitude_channels(self):
         params = default_data_params("normalized+magnitude_channels", 128)
         assert params["append_magnitude"] is True
+
+    def test_available_preprocessing_modes_include_custom(self):
+        modes = available_preprocessing_modes()
+        assert "raw" in modes
+        assert "normalized+gravity_filter" in modes
+        assert "custom" in modes
+
+    def test_preprocessing_modules_exist(self):
+        preprocessing_dir = Path("research/modules/preprocessing")
+        for mode in available_preprocessing_modes():
+            module_name = mode.replace("+", "_").replace("-", "_")
+            assert (preprocessing_dir / f"{module_name}.py").exists()
+
+    def test_preprocessing_files_are_callable_modules(self):
+        for mode in available_preprocessing_modes():
+            module_name = mode.replace("+", "_").replace("-", "_")
+            module = importlib.import_module(
+                f"research.modules.preprocessing.{module_name}"
+            )
+            assert callable(getattr(module, "prepare_window", None))
+            assert getattr(module, "NAME") == mode
 
 
 class TestBaseExperimentConfig:
@@ -279,10 +306,13 @@ class TestApplyProposals:
         proposal = DataProposal(
             preprocessing="normalized",
             window_size=192,
+            data_params={"stride": 48, "dataset_policy": "real_synthetic_mix"},
         )
         updated = apply_data_proposal(experiment, proposal)
         assert updated["data"]["preprocessing"] == "normalized"
         assert updated["data"]["window_size"] == 192
+        assert updated["data"]["params"]["stride"] == 48
+        assert updated["data"]["params"]["dataset_policy"] == "real_synthetic_mix"
 
 
 class TestModuleFilenames:

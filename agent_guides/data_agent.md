@@ -5,8 +5,12 @@
 You are responsible for representation quality on the data side.
 Your goal is to improve validation macro-F1 by changing only:
 
+- data source policy
+- real/synthetic dataset mix
+- class sampling policy
 - preprocessing
 - window size
+- stride
 - data parameterization inside `data_module.py`
 
 You are not allowed to change the model family, learning rate, augmentation type, or augmentation strength.
@@ -56,6 +60,13 @@ Use the data-params override when you want to adjust compatibility logic for:
 - gravity scale
 - magnitude toggles
 - normalization-related guardrails
+- stride
+- dataset policy
+- primary and secondary datasets
+- real/synthetic ratios
+- synthetic sources
+- target classes and per-class ratios
+- class sampling policy
 
 That function must return only:
 
@@ -82,7 +93,45 @@ Stable window-size anchors:
 - `192`
 - `256`
 
+Stable dataset-policy anchors:
+
+- `single_dataset`
+- `multi_dataset`
+- `real_synthetic_mix`
+
+Stable source anchors:
+
+- `uci_har`
+- `pamap2`
+- `mhealth`
+- `opportunity`
+- `motionsense`
+- `synthetic_imu_to_imu`
+- `synthetic_text_to_imu`
+- `synthetic_video_to_imu`
+
+Readily downloadable real IMU datasets:
+
+- `uci_har`: smartphone accelerometer and gyroscope.
+- `pamap2`: UCI download; hand/chest/ankle IMUs plus heart rate.
+- `mhealth`: UCI download; chest/wrist/ankle IMUs plus ECG.
+- `opportunity`: UCI download; body IMUs plus object and ambient sensors.
+- `motionsense`: GitHub download; smartphone accelerometer and gyroscope.
+
+Data mix controls:
+
+- `real_ratio`
+- `synthetic_ratio`
+- `synthetic_sources`
+- `target_classes`
+- `per_class_real_ratio`
+- `per_class_synthetic_ratio`
+- `class_sampling_policy`
+- `stride`
+
 Those anchors are not the whole point of the search. If the best move is a representation heuristic, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
+
+The current runtime has loaders for these five real datasets. Synthetic-source controls remain policy placeholders unless matching generators are integrated.
 
 Use `custom` only when a new bounded preprocessing transform is more appropriate than tuning an existing regime. For `custom`, define this function inside `function_rewrite`:
 
@@ -107,6 +156,31 @@ You should think about:
 - whether a bounded custom transform can preserve sensor semantics while improving representation quality
 
 ## Decision Style
+
+Choose an existing preprocessing module when:
+
+- the representation goal maps cleanly to raw, normalized, gravity-filtered, or magnitude-channel preprocessing
+- you want a low-risk comparison against recent history
+
+Mutate preprocessing when:
+
+- the selected mode is plausible but stride, window size, channel layout, gravity scale, normalization, or resampling needs tuning
+
+Swap dataset policy when:
+
+- the hypothesis is about one real dataset versus multiple datasets
+- the hypothesis is about real-only versus real/synthetic mixtures
+
+Mutate source/class mix when:
+
+- the source family is plausible but amount or target class is the key question
+- class imbalance or per-class weakness is suspected
+- you need to adjust `real_ratio`, `synthetic_ratio`, `synthetic_sources`, `target_classes`, or per-class ratios
+
+Create new preprocessing only when:
+
+- no listed preprocessing module expresses the representation idea
+- the transform is bounded, finite, same-shape, and label-safe
 
 Prefer local moves first:
 

@@ -87,3 +87,47 @@ MUTATION_SPACE = {
         "custom",
     ],
 }
+
+SYNTHETIC_DATA_POLICY = {
+    "amount": (
+        "Use SYNTHETIC_RATIO for dataset-level intent and SYNTHETIC_COUNT for "
+        "per-window placeholder generation. Keep ratios conservative unless "
+        "recent trials show augmentation helps."
+    ),
+    "source": (
+        "Use same_window or imu_to_imu for normal robustness. Use text_to_imu "
+        "when language prompts are the main hypothesis. Use video_to_imu when "
+        "motion/video conditioning is the main hypothesis. Use custom only for "
+        "a bounded invented method."
+    ),
+    "class": (
+        "Use same_as_source by default. Use minority_classes with "
+        "boost_minority when class imbalance is suspected. Use an explicit "
+        "activity label only for class-targeted error repair."
+    ),
+}
+
+DECISION_POLICY = {
+    "choose_existing": (
+        "Choose an existing augmentation family when the desired robustness "
+        "matches a known transform: orientation -> rotation, sensor noise -> "
+        "jitter, amplitude shifts -> scaling or magnitude_warp, timing shifts -> "
+        "time_warp or permutation, sensor faults -> channel_dropout or "
+        "sensor_bias, partial corruption -> frequency_mask."
+    ),
+    "mutate_existing": (
+        "Mutate an existing method when recent results are close or promising "
+        "and the main question is strength, amount, class target, source, "
+        "noise injection, or parameter shape."
+    ),
+    "use_synthetic_placeholder": (
+        "Use imu_to_imu, text_to_imu, or video_to_imu when the hypothesis is "
+        "synthetic-data diversity. Always set synthetic_source, synthetic_class, "
+        "synthetic_ratio, synthetic_count, and class_balance_policy."
+    ),
+    "create_new": (
+        "Create a new custom method only when no listed family expresses the "
+        "idea. The method must preserve shape, keep label semantics, bound all "
+        "noise/warping, and document invented_method."
+    ),
+}

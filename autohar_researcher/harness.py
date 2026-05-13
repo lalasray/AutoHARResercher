@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover - optional dependency path
     torch = None
 
 from autohar_researcher.artifacts import ensure_round_dir, write_json_artifact
-from autohar_researcher.datasets import UCIHARDataset
+from autohar_researcher.datasets import WindowedHARDataset, create_har_dataset
 from autohar_researcher.sandbox import sandboxed_namespace
 from autohar_researcher.types import CandidateConfig, CandidateResult
 
@@ -23,7 +23,8 @@ class DummyHARHarness:
     LABELS = ["walk", "walk_upstairs", "walk_downstairs", "sit", "stand", "lay"]
 
     def __init__(self) -> None:
-        self._dataset: UCIHARDataset | None = None
+        self._dataset: WindowedHARDataset | None = None
+        self._dataset_name: str | None = None
         self._evaluation_cache: dict[tuple[object, ...], dict[str, object]] = {}
         self._custom_augmentation_cache: dict[str, object | None] = {}
         self._custom_model_feature_cache: dict[str, object | None] = {}
@@ -227,14 +228,13 @@ class DummyHARHarness:
             return payload["experiment"]
         return payload
 
-    def _load_dataset(self, experiment: dict[str, object]) -> UCIHARDataset:
+    def _load_dataset(self, experiment: dict[str, object]) -> WindowedHARDataset:
         dataset_name = str(experiment["dataset"]["name"])
         if dataset_name == "dummy_imu_har":
             dataset_name = "uci_har"
-        if dataset_name != "uci_har":
-            raise ValueError(f"Unsupported dataset {dataset_name!r}")
-        if self._dataset is None:
-            self._dataset = UCIHARDataset()
+        if self._dataset is None or self._dataset_name != dataset_name:
+            self._dataset = create_har_dataset(dataset_name)
+            self._dataset_name = dataset_name
             self._dataset.ensure_downloaded()
         return self._dataset
 
@@ -326,6 +326,9 @@ class DummyHARHarness:
         processed = [row[:] for row in window]
         if mode == "custom":
             return self._custom_prepare_window(processed, params)
+        module_processed = self._preprocess_from_module(processed, mode, params)
+        if module_processed is not None:
+            return module_processed
         if bool(
             params.get(
                 "normalize",
@@ -357,6 +360,28 @@ class DummyHARHarness:
                 extended.append(row + [accel_mag, gyro_mag])
             processed = extended
         return processed
+
+    def _preprocess_from_module(
+        self,
+        window: list[list[float]],
+        mode: str,
+        params: dict[str, float | int | str | bool],
+    ) -> list[list[float]] | None:
+        module_name = mode.replace("+", "_").replace("-", "_")
+        try:
+            module = importlib.import_module(
+                f"research.modules.preprocessing.{module_name}"
+            )
+        except Exception:
+            return None
+        prepare_fn = getattr(module, "prepare_window", None)
+        if not callable(prepare_fn):
+            return None
+        try:
+            candidate = prepare_fn(self._copy_window(window), dict(params))
+        except Exception:
+            return None
+        return self._validated_custom_window(candidate, window)
 
     def _custom_prepare_window(
         self,
