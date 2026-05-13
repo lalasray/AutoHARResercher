@@ -11,3 +11,4 @@ data/
 *.json
 /research/modules/__pycache__
 /research/modules/preprocessing/__pycache__
+/research/__pycache__

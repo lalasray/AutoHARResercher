@@ -101,11 +101,22 @@ class DownloadableWindowDataset:
             with urllib.request.urlopen(self.DOWNLOAD_URL, context=context) as response:
                 self.zip_path.write_bytes(response.read())
         marker = self.root_dir / ".extracted"
-        if marker.exists():
-            return
-        with zipfile.ZipFile(self.zip_path) as archive:
-            archive.extractall(self.root_dir)
-        marker.write_text("ok\n", encoding="utf-8")
+        if not marker.exists():
+            with zipfile.ZipFile(self.zip_path) as archive:
+                archive.extractall(self.root_dir)
+            marker.write_text("ok\n", encoding="utf-8")
+        self._extract_nested_archives()
+
+    def _extract_nested_archives(self) -> None:
+        for archive_path in sorted(self.root_dir.rglob("*.zip")):
+            if archive_path == self.zip_path:
+                continue
+            marker = archive_path.with_name(f"{archive_path.name}.extracted")
+            if marker.exists():
+                continue
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(archive_path.parent)
+            marker.write_text("ok\n", encoding="utf-8")
 
     def _window_stream(
         self,
@@ -355,7 +366,7 @@ class PAMAP2Dataset(DownloadableWindowDataset):
         selected = [
             path
             for path in files
-            if (self._subject_id(path) <= 7 if split == "train" else self._subject_id(path) > 7)
+            if self._matches_split(path, split)
         ]
         rows: list[tuple[list[float], str]] = []
         previous: list[float] | None = None
@@ -377,6 +388,12 @@ class PAMAP2Dataset(DownloadableWindowDataset):
     def _subject_id(self, path: Path) -> int:
         digits = "".join(ch for ch in path.stem if ch.isdigit())
         return int(digits or 0)
+
+    def _matches_split(self, path: Path, split: str) -> bool:
+        subject_id = self._subject_id(path)
+        train_subjects = {101, 102, 103, 104, 105, 106, 107}
+        is_train = subject_id in train_subjects or (0 < subject_id <= 7)
+        return is_train if split == "train" else not is_train
 
     def metadata(self) -> dict[str, object]:
         return {
