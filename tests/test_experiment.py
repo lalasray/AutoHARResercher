@@ -142,7 +142,9 @@ class TestDefaultParams:
         assert params["resample_mode"] == "nearest"
         assert params["stride"] == 64
         assert params["dataset_policy"] == "single_dataset"
-        assert "pamap2" in params["available_real_datasets"]
+        assert params["evaluation_dataset"] == ""
+        assert "utd_mhad" in params["available_real_datasets"]
+        assert "capture_24" in params["available_real_datasets"]
         assert params["real_ratio"] == 1.0
         assert params["synthetic_ratio"] == 0.0
 

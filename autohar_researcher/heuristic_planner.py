@@ -19,7 +19,7 @@ from autohar_researcher.types import (
 )
 
 if TYPE_CHECKING:
-    from autohar_researcher.datasets import UCIHARDataset
+    from autohar_researcher.datasets import WindowedHARDataset
 
 
 MODEL_FAMILIES = available_model_architectures()
@@ -60,7 +60,7 @@ class HeuristicPlanner:
 
     def __init__(
         self,
-        dataset: UCIHARDataset | None = None,
+        dataset: WindowedHARDataset | None = None,
         mission_brief: str | None = None,
         mission_source: str | None = None,
     ) -> None:

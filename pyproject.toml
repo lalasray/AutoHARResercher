@@ -17,6 +17,9 @@ dev = [
 torch = [
     "torch>=2.0.0",
 ]
+whar = [
+    "whar-datasets @ git+https://github.com/teco-kit/whar-datasets.git",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

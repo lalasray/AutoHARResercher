@@ -171,8 +171,7 @@ class TestGitOperations:
     def test_run_git(self, tmp_path):
         bridge = GitAgentBridge(repo_root=tmp_path)
 
-        git_dir = tmp_path / ".git"
-        git_dir.mkdir()
+        bridge.run_git(["init"], cwd=tmp_path)
 
         result = bridge.run_git(["status"], cwd=tmp_path, check=False)
         assert result.returncode == 0
@@ -184,6 +183,9 @@ class TestGitOperations:
 
     def test_git_add_commit(self, tmp_path):
         bridge = GitAgentBridge(repo_root=tmp_path)
+        bridge.run_git(["init"], cwd=tmp_path)
+        bridge.run_git(["config", "user.email", "test@example.com"], cwd=tmp_path)
+        bridge.run_git(["config", "user.name", "Test User"], cwd=tmp_path)
 
         test_file = tmp_path / "test.txt"
         test_file.write_text("test content")

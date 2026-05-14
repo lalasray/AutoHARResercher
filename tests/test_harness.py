@@ -15,12 +15,203 @@ class TestDummyHARHarness:
         assert harness._dataset is None
 
     def test_dataset_factory_supports_public_imu_datasets(self):
-        names = ["uci_har", "pamap2", "mhealth", "opportunity", "motionsense"]
+        names = [
+            "wisdm",
+            "uci_har",
+            "utd_mhad",
+            "hapt",
+            "usc_had",
+            "unimib_shar",
+            "motion_sense",
+            "real_life_har",
+            "wisdm_19_phone",
+            "wisdm_19_watch",
+            "ku_har",
+            "hang_time",
+            "capture_24",
+        ]
         statuses = readily_downloadable_imu_datasets()
         for name in names:
             dataset = create_har_dataset(name)
             assert dataset.metadata()["dataset_name"] == name
-            assert statuses[name]["loader_status"] == "implemented"
+            assert statuses[name]["loader_status"] == "whar"
+
+    def test_dataset_factory_supports_whar_display_aliases(self):
+        aliases = {
+            "UCI-HAR": "uci_har",
+            "UTD-MHAD": "utd_mhad",
+            "UniMiB-SHAR": "unimib_shar",
+            "MotionSense": "motion_sense",
+            "RealLifeHAR": "real_life_har",
+            "WISDM-19-PHONE": "wisdm_19_phone",
+            "WISDM-19-WATCH": "wisdm_19_watch",
+            "KU-HAR": "ku_har",
+            "Hang-Time": "hang_time",
+            "CAPTURE-24": "capture_24",
+        }
+        for alias, expected in aliases.items():
+            assert create_har_dataset(alias).metadata()["dataset_name"] == expected
+
+    def test_cross_dataset_class_alignment_uses_common_classes(self):
+        harness = DummyHARHarness()
+        train_samples = [
+            ([[1.0]], "Walking"),
+            ([[2.0]], "Sitting"),
+            ([[3.0]], "Cycling"),
+        ]
+        val_samples = [
+            ([[4.0]], "walk"),
+            ([[5.0]], "sit"),
+            ([[6.0]], "stand"),
+        ]
+
+        aligned_train, aligned_val, labels = harness._align_dataset_classes(
+            train_samples=train_samples,
+            val_samples=val_samples,
+            data_params={"target_classes": "all"},
+        )
+
+        assert labels == ["walk", "sit"]
+        assert [label for _, label in aligned_train] == ["walk", "sit"]
+        assert [label for _, label in aligned_val] == ["walk", "sit"]
+
+    def test_cross_dataset_class_alignment_honors_target_classes(self):
+        harness = DummyHARHarness()
+        train_samples = [([[1.0]], "Walking"), ([[2.0]], "Sitting")]
+        val_samples = [([[3.0]], "walk"), ([[4.0]], "sit")]
+
+        aligned_train, aligned_val, labels = harness._align_dataset_classes(
+            train_samples=train_samples,
+            val_samples=val_samples,
+            data_params={"target_classes": "Walking"},
+        )
+
+        assert labels == ["walk"]
+        assert [label for _, label in aligned_train] == ["walk"]
+        assert [label for _, label in aligned_val] == ["walk"]
+
+    def test_resolve_dataset_pair_uses_evaluation_dataset(self):
+        harness = DummyHARHarness()
+        train_name, eval_name = harness._resolve_dataset_pair(
+            {"dataset": {"name": "uci_har"}},
+            {
+                "dataset_policy": "cross_dataset",
+                "primary_dataset": "wisdm",
+                "evaluation_dataset": "hapt",
+            },
+        )
+
+        assert train_name == "wisdm"
+        assert eval_name == "hapt"
+
+    def test_resolve_dataset_plan_supports_multi_real_and_synthetic_sources(self):
+        harness = DummyHARHarness()
+        train_names, eval_name, synthetic_sources = harness._resolve_dataset_plan(
+            {"dataset": {"name": "uci_har"}},
+            {
+                "dataset_policy": "real_synthetic_mix",
+                "primary_dataset": "wisdm",
+                "dataset_sources": "wisdm,uci_har,synthetic_imu_to_imu",
+                "secondary_datasets": "hapt",
+                "evaluation_dataset": "motion_sense",
+                "synthetic_sources": "synthetic_text_to_imu,synthetic_imu_to_imu",
+            },
+        )
+
+        assert train_names == ["wisdm", "uci_har", "hapt"]
+        assert eval_name == "motion_sense"
+        assert synthetic_sources == ["synthetic_text_to_imu", "synthetic_imu_to_imu"]
+
+    def test_synthetic_training_samples_add_rows(self):
+        harness = DummyHARHarness()
+        train_samples = [
+            ([[1.0, 2.0, 3.0]], "walk"),
+            ([[4.0, 5.0, 6.0]], "sit"),
+        ]
+        config = CandidateConfig(
+            model_name="cnn",
+            preprocessing="raw",
+            augmentation="none",
+            augmentation_strength="medium",
+            learning_rate=0.001,
+            window_size=64,
+            data_params={"synthetic_ratio": 0.5},
+            augmentation_params={"variation_amount": 0.1},
+        )
+
+        expanded = harness._add_synthetic_training_samples(
+            train_samples,
+            ["synthetic_imu_to_imu"],
+            config,
+        )
+
+        assert len(expanded) == 3
+        assert expanded[-1][1] in {"walk", "sit"}
+
+    def test_synthetic_training_samples_honor_source_class_targets(self):
+        harness = DummyHARHarness()
+        train_samples = [
+            ([[1.0, 2.0, 3.0]], "walk"),
+            ([[4.0, 5.0, 6.0]], "sit"),
+            ([[7.0, 8.0, 9.0]], "stand"),
+        ]
+        config = CandidateConfig(
+            model_name="cnn",
+            preprocessing="raw",
+            augmentation="none",
+            augmentation_strength="medium",
+            learning_rate=0.001,
+            window_size=64,
+            data_params={
+                "synthetic_ratio": 1.0,
+                "synthetic_source_targets": {
+                    "synthetic_text_to_imu": "sit",
+                    "synthetic_video_to_imu": "walk",
+                },
+                "per_source_synthetic_ratio": {
+                    "synthetic_text_to_imu": 1.0,
+                    "synthetic_video_to_imu": 1.0,
+                },
+            },
+            augmentation_params={"variation_amount": 0.1},
+        )
+
+        expanded = harness._add_synthetic_training_samples(
+            train_samples,
+            ["synthetic_text_to_imu", "synthetic_video_to_imu"],
+            config,
+        )
+
+        synthetic_labels = [label for _, label in expanded[len(train_samples) :]]
+        assert synthetic_labels == ["sit", "walk"]
+
+    def test_synthetic_target_classes_apply_to_all_sources(self):
+        harness = DummyHARHarness()
+        train_samples = [
+            ([[1.0, 2.0, 3.0]], "walk"),
+            ([[4.0, 5.0, 6.0]], "sit"),
+        ]
+        config = CandidateConfig(
+            model_name="cnn",
+            preprocessing="raw",
+            augmentation="none",
+            augmentation_strength="medium",
+            learning_rate=0.001,
+            window_size=64,
+            data_params={
+                "synthetic_ratio": 1.0,
+                "synthetic_target_classes": "sit",
+            },
+            augmentation_params={"variation_amount": 0.1},
+        )
+
+        expanded = harness._add_synthetic_training_samples(
+            train_samples,
+            ["synthetic_imu_to_imu"],
+            config,
+        )
+
+        assert [label for _, label in expanded[len(train_samples) :]] == ["sit"]
 
     def test_runtime_backend_summary(self):
         harness = DummyHARHarness()
@@ -69,8 +260,8 @@ class TestDummyHARHarness:
         assert len(matrix) == len(harness.LABELS)
         assert matrix[0][0] == 2
         assert matrix[1][1] == 1
-        assert matrix[2][2] == 2
-        assert matrix[1][2] == 1
+        assert matrix[2][2] == 1
+        assert matrix[2][1] == 1
 
     def test_per_class_f1(self):
         harness = DummyHARHarness()

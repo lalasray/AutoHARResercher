@@ -4,6 +4,7 @@ import importlib
 import json
 import math
 import random
+import re
 from pathlib import Path
 
 try:
@@ -25,6 +26,7 @@ class DummyHARHarness:
     def __init__(self) -> None:
         self._dataset: WindowedHARDataset | None = None
         self._dataset_name: str | None = None
+        self._dataset_cache: dict[str, WindowedHARDataset] = {}
         self._evaluation_cache: dict[tuple[object, ...], dict[str, object]] = {}
         self._custom_augmentation_cache: dict[str, object | None] = {}
         self._custom_model_feature_cache: dict[str, object | None] = {}
@@ -85,7 +87,14 @@ class DummyHARHarness:
         evaluation_tag: str = "",
     ) -> CandidateResult:
         experiment = experiment or self._load_experiment(Path(worktree_path))
+        train_dataset_names, eval_dataset_name, synthetic_sources = self._resolve_dataset_plan(
+            experiment,
+            config.data_params,
+        )
         cache_key = (
+            tuple(train_dataset_names),
+            eval_dataset_name,
+            tuple(synthetic_sources),
             config.model_name,
             json.dumps(config.model_params, sort_keys=True),
             config.preprocessing,
@@ -98,25 +107,47 @@ class DummyHARHarness:
             str(evaluation_tag),
         )
         if cache_key not in self._evaluation_cache:
-            dataset = self._load_dataset(experiment)
+            eval_dataset = self._load_dataset_by_name(eval_dataset_name)
             training = self._training_config(experiment)
+            raw_train_samples = self._load_training_samples(
+                train_dataset_names,
+                config.data_params,
+            )
+            raw_val_samples = eval_dataset.load_split("test")
+            train_samples, val_samples, common_labels = self._align_dataset_classes(
+                train_samples=raw_train_samples,
+                val_samples=raw_val_samples,
+                data_params=config.data_params,
+            )
+            if not train_samples or not val_samples:
+                raise RuntimeError(
+                    "No overlapping classes remained after dataset/class filtering "
+                    f"for train={train_dataset_names!r}, eval={eval_dataset_name!r}."
+                )
+            self.LABELS = list(common_labels)
+            label_to_index = {label: index for index, label in enumerate(self.LABELS)}
             train_samples = [
                 (self._prepare_window(window, config, split="train"), label)
-                for window, label in dataset.load_split("train")
+                for window, label in train_samples
             ]
             val_samples = [
                 (self._prepare_window(window, config, split="test"), label)
-                for window, label in dataset.load_split("test")
+                for window, label in val_samples
             ]
+            train_samples = self._add_synthetic_training_samples(
+                train_samples,
+                synthetic_sources,
+                config,
+            )
 
             train_features = [
                 self._extract_features(window, config) for window, _ in train_samples
             ]
-            train_labels = [self.LABELS.index(label) for _, label in train_samples]
+            train_labels = [label_to_index[label] for _, label in train_samples]
             val_features = [
                 self._extract_features(window, config) for window, _ in val_samples
             ]
-            val_labels = [self.LABELS.index(label) for _, label in val_samples]
+            val_labels = [label_to_index[label] for _, label in val_samples]
             inner_train_features, inner_train_labels, stop_features, stop_labels = (
                 self._split_inner_validation(
                     train_features,
@@ -165,6 +196,24 @@ class DummyHARHarness:
                 ),
                 "details": {
                     "labels": list(self.LABELS),
+                    "dataset_alignment": {
+                        "train_datasets": list(train_dataset_names),
+                        "eval_dataset": eval_dataset_name,
+                        "common_classes": list(common_labels),
+                        "class_policy": str(
+                            config.data_params.get("class_sampling_policy", "preserve")
+                        ),
+                        "target_classes": config.data_params.get(
+                            "target_classes", "all"
+                        ),
+                        "synthetic_sources": list(synthetic_sources),
+                        "synthetic_target_classes": config.data_params.get(
+                            "synthetic_target_classes", "all"
+                        ),
+                        "synthetic_source_targets": config.data_params.get(
+                            "synthetic_source_targets", ""
+                        ),
+                    },
                     "confusion_matrix": confusion_matrix,
                     "per_class_f1": per_class_f1,
                     "training_report": training_report,
@@ -208,6 +257,90 @@ class DummyHARHarness:
             artifact_paths=merged_artifacts,
         )
 
+    def _resolve_dataset_pair(
+        self,
+        experiment: dict[str, object],
+        data_params: dict[str, float | int | str | bool],
+    ) -> tuple[str, str]:
+        train_datasets, eval_dataset, _ = self._resolve_dataset_plan(
+            experiment,
+            data_params,
+        )
+        return train_datasets[0], eval_dataset
+
+    def _resolve_dataset_plan(
+        self,
+        experiment: dict[str, object],
+        data_params: dict[str, float | int | str | bool],
+    ) -> tuple[list[str], str, list[str]]:
+        experiment_dataset = str(experiment.get("dataset", {}).get("name", "uci_har"))
+        primary = str(data_params.get("primary_dataset", experiment_dataset)).strip()
+        primary = primary or experiment_dataset
+        policy = str(data_params.get("dataset_policy", "single_dataset")).strip().lower()
+        source_names = self._split_config_list(data_params.get("dataset_sources", ""))
+        secondary = self._split_config_list(data_params.get("secondary_datasets", ""))
+        synthetic_sources = [
+            source for source in self._split_config_list(data_params.get("synthetic_sources", ""))
+            if source.startswith("synthetic_")
+        ]
+        synthetic_sources.extend(
+            source for source in source_names if source.startswith("synthetic_")
+        )
+        synthetic_sources = list(dict.fromkeys(synthetic_sources))
+        real_sources = [source for source in source_names if not source.startswith("synthetic_")]
+        train_datasets = [primary]
+        if policy in {"multi_dataset", "cross_dataset", "cross_dataset_eval", "real_synthetic_mix"}:
+            train_datasets.extend(real_sources)
+            train_datasets.extend(secondary)
+        train_datasets = list(dict.fromkeys(name for name in train_datasets if name))
+        eval_dataset = str(
+            data_params.get("evaluation_dataset")
+            or data_params.get("eval_dataset")
+            or data_params.get("test_dataset")
+            or ""
+        ).strip()
+        if not eval_dataset and policy in {"cross_dataset", "cross_dataset_eval"}:
+            candidates = [name for name in [*secondary, *real_sources] if name != primary]
+            if candidates:
+                eval_dataset = candidates[0]
+        if not eval_dataset:
+            eval_dataset = primary
+        return train_datasets, eval_dataset, synthetic_sources
+
+    def _load_training_samples(
+        self,
+        dataset_names: list[str],
+        data_params: dict[str, float | int | str | bool],
+    ) -> list[tuple[list[list[float]], str]]:
+        samples: list[tuple[list[list[float]], str]] = []
+        for dataset_name in dataset_names:
+            dataset = self._load_dataset_by_name(dataset_name)
+            samples.extend(dataset.load_split("train"))
+        return self._limit_samples_by_ratio(samples, data_params.get("real_ratio", 1.0))
+
+    def _limit_samples_by_ratio(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+        ratio_value: object,
+    ) -> list[tuple[list[list[float]], str]]:
+        try:
+            ratio = float(ratio_value)
+        except (TypeError, ValueError):
+            ratio = 1.0
+        if ratio >= 1.0:
+            return samples
+        if ratio <= 0.0:
+            return []
+        grouped: dict[str, list[tuple[list[list[float]], str]]] = {}
+        for sample in samples:
+            grouped.setdefault(sample[1], []).append(sample)
+        limited: list[tuple[list[list[float]], str]] = []
+        for label in sorted(grouped):
+            group = grouped[label]
+            keep = max(1, int(round(len(group) * ratio)))
+            limited.extend(group[:keep])
+        return limited
+
     def _training_config(self, experiment: dict[str, object]) -> dict[str, int | str]:
         training = experiment.get("training", {})
         return {
@@ -221,6 +354,7 @@ class DummyHARHarness:
         experiment_path = worktree_path / "research" / "experiment.json"
         if not experiment_path.exists():
             return {
+                "dataset": {"name": "uci_har"},
                 "training": {"epochs": 5},
             }
         payload = json.loads(experiment_path.read_text(encoding="utf-8"))
@@ -232,11 +366,259 @@ class DummyHARHarness:
         dataset_name = str(experiment["dataset"]["name"])
         if dataset_name == "dummy_imu_har":
             dataset_name = "uci_har"
+        return self._load_dataset_by_name(dataset_name)
+
+    def _load_dataset_by_name(self, dataset_name: str) -> WindowedHARDataset:
         if self._dataset is None or self._dataset_name != dataset_name:
-            self._dataset = create_har_dataset(dataset_name)
+            if dataset_name not in self._dataset_cache:
+                dataset = create_har_dataset(dataset_name)
+                dataset.ensure_downloaded()
+                self._dataset_cache[dataset_name] = dataset
+            self._dataset = self._dataset_cache[dataset_name]
             self._dataset_name = dataset_name
-            self._dataset.ensure_downloaded()
         return self._dataset
+
+    def _align_dataset_classes(
+        self,
+        train_samples: list[tuple[list[list[float]], str]],
+        val_samples: list[tuple[list[list[float]], str]],
+        data_params: dict[str, float | int | str | bool],
+    ) -> tuple[
+        list[tuple[list[list[float]], str]],
+        list[tuple[list[list[float]], str]],
+        list[str],
+    ]:
+        train_by_canonical = self._label_display_by_canonical(train_samples)
+        val_by_canonical = self._label_display_by_canonical(val_samples)
+        eval_targets = set(val_by_canonical)
+        targets = self._target_class_set(data_params)
+        if targets is not None:
+            eval_targets &= targets
+        common = set(train_by_canonical).intersection(eval_targets)
+        ordered_common = [
+            canonical
+            for canonical in val_by_canonical
+            if canonical in common
+        ]
+        canonical_to_label = {
+            canonical: val_by_canonical[canonical]
+            for canonical in ordered_common
+        }
+        aligned_train = self._filter_and_relabel_samples(
+            train_samples,
+            canonical_to_label,
+        )
+        aligned_val = self._filter_and_relabel_samples(
+            val_samples,
+            canonical_to_label,
+        )
+        labels = [canonical_to_label[canonical] for canonical in ordered_common]
+        return aligned_train, aligned_val, labels
+
+    def _label_display_by_canonical(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+    ) -> dict[str, str]:
+        labels: dict[str, str] = {}
+        for _, label in samples:
+            canonical = self._canonical_activity_label(label)
+            labels.setdefault(canonical, canonical)
+        return labels
+
+    def _filter_and_relabel_samples(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+        canonical_to_label: dict[str, str],
+    ) -> list[tuple[list[list[float]], str]]:
+        filtered: list[tuple[list[list[float]], str]] = []
+        for window, label in samples:
+            canonical = self._canonical_activity_label(label)
+            if canonical in canonical_to_label:
+                filtered.append((window, canonical_to_label[canonical]))
+        return filtered
+
+    def _target_class_set(
+        self,
+        data_params: dict[str, float | int | str | bool],
+    ) -> set[str] | None:
+        raw_targets = data_params.get("target_classes", "all")
+        if raw_targets in {"", "all", None}:
+            return None
+        targets = {
+            self._canonical_activity_label(target)
+            for target in self._split_config_list(raw_targets)
+        }
+        return targets or None
+
+    def _split_config_list(self, value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        text = str(value).strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text.replace("'", '"'))
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except json.JSONDecodeError:
+                pass
+        return [part.strip() for part in text.split(",") if part.strip()]
+
+    def _canonical_activity_label(self, label: object) -> str:
+        token = re.sub(r"[^a-z0-9]+", "_", str(label).strip().lower()).strip("_")
+        aliases = {
+            "walking": "walk",
+            "walk": "walk",
+            "jogging": "run",
+            "running": "run",
+            "run": "run",
+            "sitting": "sit",
+            "sit": "sit",
+            "standing": "stand",
+            "stand": "stand",
+            "lying": "lie",
+            "laying": "lie",
+            "lay": "lie",
+            "lie": "lie",
+            "upstairs": "walk_upstairs",
+            "walking_upstairs": "walk_upstairs",
+            "walk_upstairs": "walk_upstairs",
+            "ascending_stairs": "walk_upstairs",
+            "climbing_stairs": "stairs",
+            "stairs_up": "walk_upstairs",
+            "downstairs": "walk_downstairs",
+            "walking_downstairs": "walk_downstairs",
+            "walk_downstairs": "walk_downstairs",
+            "descending_stairs": "walk_downstairs",
+            "stairs_down": "walk_downstairs",
+        }
+        return aliases.get(token, token)
+
+    def _add_synthetic_training_samples(
+        self,
+        train_samples: list[tuple[list[list[float]], str]],
+        synthetic_sources: list[str],
+        config: CandidateConfig,
+    ) -> list[tuple[list[list[float]], str]]:
+        if not train_samples or not synthetic_sources:
+            return train_samples
+        try:
+            synthetic_ratio = float(config.data_params.get("synthetic_ratio", 0.0))
+        except (TypeError, ValueError):
+            synthetic_ratio = 0.0
+        if synthetic_ratio <= 0.0:
+            return train_samples
+
+        source_modes = {
+            "synthetic_imu_to_imu": "imu_to_imu",
+            "synthetic_text_to_imu": "text_to_imu",
+            "synthetic_video_to_imu": "video_to_imu",
+        }
+        augmented = list(train_samples)
+        source_targets = self._synthetic_source_targets(config.data_params)
+        source_ratios = self._per_source_synthetic_ratios(config.data_params)
+        global_targets = self._target_class_set(
+            {"target_classes": config.data_params.get("synthetic_target_classes", "all")}
+        )
+
+        for source_index, source in enumerate(synthetic_sources):
+            mode = source_modes.get(source, source)
+            source_target_set = source_targets.get(source) or source_targets.get(mode)
+            if source_target_set is None:
+                source_target_set = global_targets
+            source_samples = self._samples_for_target_classes(
+                train_samples,
+                source_target_set,
+            )
+            if not source_samples:
+                continue
+            source_ratio = source_ratios.get(source, source_ratios.get(mode, synthetic_ratio))
+            target_count = int(round(len(source_samples) * source_ratio))
+            if target_count <= 0:
+                continue
+            for index in range(target_count):
+                window, label = source_samples[index % len(source_samples)]
+                params = dict(config.augmentation_params)
+                params.setdefault("synthetic_source", mode)
+                params.setdefault("synthetic_target_class", label)
+                rng = random.Random(config.window_size * 1009 + source_index * 104729 + index)
+                synthetic_window = self._augment(
+                    self._copy_window(window),
+                    mode,
+                    config.augmentation_strength,
+                    params,
+                    rng=rng,
+                )
+                augmented.append((synthetic_window, label))
+        return augmented
+
+    def _samples_for_target_classes(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+        target_classes: set[str] | None,
+    ) -> list[tuple[list[list[float]], str]]:
+        if target_classes is None:
+            return samples
+        return [
+            sample
+            for sample in samples
+            if self._canonical_activity_label(sample[1]) in target_classes
+        ]
+
+    def _synthetic_source_targets(
+        self,
+        data_params: dict[str, float | int | str | bool],
+    ) -> dict[str, set[str]]:
+        raw = data_params.get("synthetic_source_targets", "")
+        parsed = self._parse_mapping(raw)
+        targets: dict[str, set[str]] = {}
+        for source, value in parsed.items():
+            class_set = {
+                self._canonical_activity_label(item)
+                for item in self._split_config_list(value)
+            }
+            if class_set:
+                targets[source] = class_set
+        return targets
+
+    def _per_source_synthetic_ratios(
+        self,
+        data_params: dict[str, float | int | str | bool],
+    ) -> dict[str, float]:
+        parsed = self._parse_mapping(data_params.get("per_source_synthetic_ratio", ""))
+        ratios: dict[str, float] = {}
+        for source, value in parsed.items():
+            try:
+                ratios[source] = max(0.0, float(value))
+            except (TypeError, ValueError):
+                continue
+        return ratios
+
+    def _parse_mapping(self, value: object) -> dict[str, object]:
+        if value is None or value == "":
+            return {}
+        if isinstance(value, dict):
+            return {str(key): item for key, item in value.items()}
+        text = str(value).strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text.replace("'", '"'))
+            if isinstance(parsed, dict):
+                return {str(key): item for key, item in parsed.items()}
+        except json.JSONDecodeError:
+            pass
+        result: dict[str, object] = {}
+        for part in text.split(";"):
+            if ":" not in part:
+                continue
+            key, raw_value = part.split(":", 1)
+            if key.strip():
+                result[key.strip()] = raw_value.strip()
+        return result
 
     def _prepare_window(
         self,

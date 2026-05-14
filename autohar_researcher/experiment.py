@@ -312,16 +312,20 @@ def default_data_params(
         "dataset_policy": "single_dataset",
         "dataset_sources": "uci_har",
         "primary_dataset": "uci_har",
-        "available_real_datasets": "uci_har,pamap2,mhealth,opportunity,motionsense",
+        "evaluation_dataset": "",
+        "available_real_datasets": "wisdm,uci_har,utd_mhad,hapt,usc_had,unimib_shar,motion_sense,real_life_har,wisdm_19_phone,wisdm_19_watch,ku_har,hang_time,capture_24",
         "secondary_datasets": "",
         "real_ratio": 1.0,
         "synthetic_ratio": 0.0,
         "synthetic_sources": "",
+        "synthetic_target_classes": "all",
+        "synthetic_source_targets": "",
+        "per_source_synthetic_ratio": "",
         "class_sampling_policy": "preserve",
         "target_classes": "all",
         "per_class_real_ratio": "",
         "per_class_synthetic_ratio": "",
-        "dataset_mix_notes": "loaders implemented for uci_har,pamap2,mhealth,opportunity,motionsense",
+        "dataset_mix_notes": "real datasets are loaded through teco-kit/whar-datasets",
     }
     if preprocessing == "normalized+gravity_filter":
         params["channel_layout"] = "body_acc+gyro"
@@ -881,16 +885,20 @@ def _module_patch_builder(agent_name: str) -> str:
         '        "dataset_policy": "single_dataset",\n'
         '        "dataset_sources": "uci_har",\n'
         '        "primary_dataset": "uci_har",\n'
-        '        "available_real_datasets": "uci_har,pamap2,mhealth,opportunity,motionsense",\n'
+        '        "evaluation_dataset": "",\n'
+        '        "available_real_datasets": "wisdm,uci_har,utd_mhad,hapt,usc_had,unimib_shar,motion_sense,real_life_har,wisdm_19_phone,wisdm_19_watch,ku_har,hang_time,capture_24",\n'
         '        "secondary_datasets": "",\n'
         '        "real_ratio": 1.0,\n'
         '        "synthetic_ratio": 0.0,\n'
         '        "synthetic_sources": "",\n'
+        '        "synthetic_target_classes": "all",\n'
+        '        "synthetic_source_targets": "",\n'
+        '        "per_source_synthetic_ratio": "",\n'
         '        "class_sampling_policy": "preserve",\n'
         '        "target_classes": "all",\n'
         '        "per_class_real_ratio": "",\n'
         '        "per_class_synthetic_ratio": "",\n'
-        '        "dataset_mix_notes": "loaders implemented for uci_har,pamap2,mhealth,opportunity,motionsense",\n'
+        '        "dataset_mix_notes": "real datasets are loaded through teco-kit/whar-datasets",\n'
         "    }\n"
         '    if target_preprocessing == "normalized+gravity_filter":\n'
         '        params["channel_layout"] = "body_acc+gyro"\n'

@@ -15,47 +15,33 @@ AVAILABLE_PREPROCESSING = [
 ]
 
 AVAILABLE_DATA_SOURCES = [
+    "wisdm",
     "uci_har",
-    "pamap2",
-    "mhealth",
-    "opportunity",
-    "motionsense",
+    "utd_mhad",
+    "hapt",
+    "usc_had",
+    "unimib_shar",
+    "motion_sense",
+    "real_life_har",
+    "wisdm_19_phone",
+    "wisdm_19_watch",
+    "ku_har",
+    "hang_time",
+    "capture_24",
     "synthetic_imu_to_imu",
     "synthetic_text_to_imu",
     "synthetic_video_to_imu",
 ]
 
 READILY_DOWNLOADABLE_DATASETS = {
-    "uci_har": {
-        "status": "implemented",
-        "source": "UCI",
-        "modalities": ["accelerometer", "gyroscope"],
-        "download": "https://cdn.uci-ics-mlr-prod.aws.uci.edu/240/human%2Bactivity%2Brecognition%2Busing%2Bsmartphones.zip",
-    },
-    "pamap2": {
-        "status": "implemented",
-        "source": "UCI",
-        "modalities": ["multi-IMU", "heart_rate"],
-        "download": "https://archive.ics.uci.edu/static/public/231/pamap2+physical+activity+monitoring.zip",
-    },
-    "mhealth": {
-        "status": "implemented",
-        "source": "UCI",
-        "modalities": ["multi-IMU", "ECG"],
-        "download": "https://archive.ics.uci.edu/static/public/319/mhealth+dataset.zip",
-    },
-    "opportunity": {
-        "status": "implemented",
-        "source": "UCI",
-        "modalities": ["body_IMU", "object_sensors", "ambient_sensors"],
-        "download": "https://archive.ics.uci.edu/static/public/226/opportunity+activity+recognition.zip",
-    },
-    "motionsense": {
-        "status": "implemented",
-        "source": "GitHub",
-        "modalities": ["smartphone_accelerometer", "smartphone_gyroscope"],
-        "download": "https://github.com/mmalekzadeh/motion-sense/archive/refs/heads/master.zip",
-    },
+    name: {
+        "status": "whar",
+        "source": "teco-kit/whar-datasets",
+        "modalities": ["configured_by_whar"],
+        "download": "managed by WHAR dataset config",
+    }
+    for name in AVAILABLE_DATA_SOURCES
+    if not name.startswith("synthetic_")
 }
 
 PREPROCESSING = "normalized"
@@ -66,15 +52,18 @@ STRIDE = 64
 LOWPASS_CUTOFF = 5.0
 GRAVITY_FILTER_ORDER = 4
 
-# Dataset/source-mix controls. The current runtime has loaders for the five
-# common public IMU datasets listed above.
-DATASET_POLICY = "single_dataset"  # single_dataset, multi_dataset, real_synthetic_mix
+# Dataset/source-mix controls. The runtime uses WHAR Datasets for real datasets.
+DATASET_POLICY = "single_dataset"  # single_dataset, multi_dataset, cross_dataset, real_synthetic_mix
 PRIMARY_DATASET = "uci_har"
+EVALUATION_DATASET = ""  # blank means evaluate on PRIMARY_DATASET
 SECONDARY_DATASETS = []
 DATASET_SOURCES = ["uci_har"]
 REAL_RATIO = 1.0
 SYNTHETIC_RATIO = 0.0
 SYNTHETIC_SOURCES = []  # synthetic_imu_to_imu, synthetic_text_to_imu, synthetic_video_to_imu
+SYNTHETIC_TARGET_CLASSES = "all"
+SYNTHETIC_SOURCE_TARGETS = {}
+PER_SOURCE_SYNTHETIC_RATIO = {}
 CLASS_SAMPLING_POLICY = "preserve"  # preserve, boost_minority, class_targeted
 TARGET_CLASSES = "all"
 PER_CLASS_REAL_RATIO = {}
@@ -83,13 +72,21 @@ PER_CLASS_SYNTHETIC_RATIO = {}
 MUTATION_SPACE = {
     "data_sources": AVAILABLE_DATA_SOURCES,
     "readily_downloadable_real_datasets": [
+        "wisdm",
         "uci_har",
-        "pamap2",
-        "mhealth",
-        "opportunity",
-        "motionsense",
+        "utd_mhad",
+        "hapt",
+        "usc_had",
+        "unimib_shar",
+        "motion_sense",
+        "real_life_har",
+        "wisdm_19_phone",
+        "wisdm_19_watch",
+        "ku_har",
+        "hang_time",
+        "capture_24",
     ],
-    "dataset_policies": ["single_dataset", "multi_dataset", "real_synthetic_mix"],
+    "dataset_policies": ["single_dataset", "multi_dataset", "cross_dataset", "real_synthetic_mix"],
     "preprocessing": AVAILABLE_PREPROCESSING,
     "windowing": {
         "window_size": [64, 96, 128, 192, 256],
@@ -97,11 +94,15 @@ MUTATION_SPACE = {
     },
     "source_mix_controls": [
         "primary_dataset",
+        "evaluation_dataset",
         "secondary_datasets",
         "dataset_sources",
         "real_ratio",
         "synthetic_ratio",
         "synthetic_sources",
+        "synthetic_target_classes",
+        "synthetic_source_targets",
+        "per_source_synthetic_ratio",
     ],
     "class_mix_controls": [
         "class_sampling_policy",

@@ -97,32 +97,44 @@ Stable dataset-policy anchors:
 
 - `single_dataset`
 - `multi_dataset`
+- `cross_dataset`
 - `real_synthetic_mix`
 
 Stable source anchors:
 
+- `wisdm`
 - `uci_har`
-- `pamap2`
-- `mhealth`
-- `opportunity`
-- `motionsense`
+- `utd_mhad`
+- `hapt`
+- `usc_had`
+- `unimib_shar`
+- `motion_sense`
+- `real_life_har`
+- `wisdm_19_phone`
+- `wisdm_19_watch`
+- `ku_har`
+- `hang_time`
+- `capture_24`
 - `synthetic_imu_to_imu`
 - `synthetic_text_to_imu`
 - `synthetic_video_to_imu`
 
-Readily downloadable real IMU datasets:
+WHAR real IMU datasets:
 
-- `uci_har`: smartphone accelerometer and gyroscope.
-- `pamap2`: UCI download; hand/chest/ankle IMUs plus heart rate.
-- `mhealth`: UCI download; chest/wrist/ankle IMUs plus ECG.
-- `opportunity`: UCI download; body IMUs plus object and ambient sensors.
-- `motionsense`: GitHub download; smartphone accelerometer and gyroscope.
+- Real datasets are loaded through `teco-kit/whar-datasets`.
+- WHAR handles download/extraction/parsing from original dataset sources.
+- Evaluation runs should use the WHAR benchmark IDs above.
 
 Data mix controls:
 
 - `real_ratio`
 - `synthetic_ratio`
 - `synthetic_sources`
+- `synthetic_target_classes`
+- `synthetic_source_targets`
+- `per_source_synthetic_ratio`
+- `primary_dataset`
+- `evaluation_dataset`
 - `target_classes`
 - `per_class_real_ratio`
 - `per_class_synthetic_ratio`
@@ -131,7 +143,7 @@ Data mix controls:
 
 Those anchors are not the whole point of the search. If the best move is a representation heuristic, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
 
-The current runtime has loaders for these five real datasets. Synthetic-source controls remain policy placeholders unless matching generators are integrated.
+For cross-dataset evaluation, set `primary_dataset` for the main training source and `evaluation_dataset` for test-time evaluation. Add real training sources through `dataset_sources` or `secondary_datasets`, and add synthetic training sources through `synthetic_sources`. The runtime lets the evaluation dataset define the target activity universe, filters real training windows to overlapping classes, and lets `target_classes` further restrict that evaluation-defined set. Synthetic rows can be targeted with `synthetic_target_classes` for all synthetic sources, or `synthetic_source_targets` for per-source class routing such as `synthetic_text_to_imu: sit,stand; synthetic_video_to_imu: walk,run`.
 
 Use `custom` only when a new bounded preprocessing transform is more appropriate than tuning an existing regime. For `custom`, define this function inside `function_rewrite`:
 

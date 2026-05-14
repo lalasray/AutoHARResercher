@@ -133,7 +133,7 @@ class TestSafeEval:
             '{"model": model_name, "lr": learning_rate}',
             globals_dict={"model_name": "lstm", "learning_rate": 0.001},
         )
-        assert result == {"model": "lstm", "learning_rate": 0.001}
+        assert result == {"model": "lstm", "lr": 0.001}
 
     def test_invalid_expression(self):
         result = safe_eval("this is not valid python")
