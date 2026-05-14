@@ -4,6 +4,42 @@ Multi-agent autonomous HAR research. Inspired by [karpathy/autoresearch](https:/
 
 ## Quick Start
 
+### Conda + WHAR Datasets
+
+The WHAR-backed dataset runtime is the recommended setup.
+
+```bash
+~/miniconda3/bin/conda env create -f environment.yml
+~/miniconda3/bin/conda activate autohar-whar
+cp .autohar.env.example .autohar.env
+```
+
+If you already have an environment:
+
+```bash
+pip install -e ".[dev,whar]"
+```
+
+Run the test suite:
+
+```bash
+pytest tests/ -q
+```
+
+Run a short heuristic smoke test without an LLM backend:
+
+```bash
+AUTOHAR_LLM_BACKEND=heuristic python -m autohar_researcher.main --rounds 1
+```
+
+Run with the local OpenCode backend:
+
+```bash
+./run_autohar_opencode.sh --rounds 10
+```
+
+### Minimal Pip Setup
+
 ```bash
 pip install -e ".[dev]"
 cp .autohar.env.example .autohar.env
@@ -13,6 +49,8 @@ cp .autohar.env.example .autohar.env
 # Run the main multi-agent loop
 ./run_autohar_opencode.sh --never-stop --materialize-git
 ```
+
+Use `pip install -e ".[dev,whar]"` instead if you want WHAR dataset evaluation.
 
 ## Shell Scripts
 
@@ -142,6 +180,54 @@ def custom_prepare_window(window, params):
 
 The harness validates the returned same-shape finite numeric window and falls back to the standard preprocessed window if the custom function fails.
 
+## WHAR Dataset Evaluation
+
+Real datasets are loaded through [`teco-kit/whar-datasets`](https://github.com/teco-kit/whar-datasets). The evaluation catalog is:
+
+- `wisdm`
+- `uci_har`
+- `utd_mhad`
+- `hapt`
+- `usc_had`
+- `unimib_shar`
+- `motion_sense`
+- `real_life_har`
+- `wisdm_19_phone`
+- `wisdm_19_watch`
+- `ku_har`
+- `hang_time`
+- `capture_24`
+
+The DataAgent can train on one or more real datasets, evaluate on a separate held-out dataset, and add class-targeted synthetic rows. The evaluation dataset defines the activity universe; real and synthetic training samples are filtered to classes that overlap the evaluation target classes.
+
+Example data params:
+
+```python
+{
+    "dataset_policy": "real_synthetic_mix",
+    "primary_dataset": "wisdm",
+    "dataset_sources": "wisdm,uci_har,hapt,synthetic_imu_to_imu",
+    "secondary_datasets": "usc_had",
+    "evaluation_dataset": "motion_sense",
+    "target_classes": "all",
+    "real_ratio": 0.75,
+    "synthetic_ratio": 0.25,
+    "synthetic_sources": "synthetic_imu_to_imu,synthetic_text_to_imu,synthetic_video_to_imu",
+    "synthetic_source_targets": {
+        "synthetic_text_to_imu": "sit,stand",
+        "synthetic_video_to_imu": "walk,run",
+        "synthetic_imu_to_imu": "all",
+    },
+    "per_source_synthetic_ratio": {
+        "synthetic_text_to_imu": 0.5,
+        "synthetic_video_to_imu": 0.25,
+        "synthetic_imu_to_imu": 0.2,
+    },
+}
+```
+
+WHAR downloads from original dataset sources. Some datasets may require external credentials or accepting upstream terms before downloading.
+
 ## Results
 
 The main multi-agent loop writes round artifacts and reports under `artifacts/`:
@@ -203,5 +289,6 @@ b2c3d4e  0.8612    keep    better_augmentation
 ## Testing
 
 ```bash
-pytest tests/ -v
+conda activate autohar-whar
+pytest tests/ -q
 ```
