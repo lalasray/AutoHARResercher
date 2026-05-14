@@ -133,17 +133,19 @@ Data mix controls:
 - `synthetic_target_classes`
 - `synthetic_source_targets`
 - `per_source_synthetic_ratio`
-- `primary_dataset`
+- `train_datasets`
+- `per_dataset_real_ratio`
 - `evaluation_dataset`
 - `target_classes`
 - `per_class_real_ratio`
+- `per_dataset_class_real_ratio`
 - `per_class_synthetic_ratio`
 - `class_sampling_policy`
 - `stride`
 
 Those anchors are not the whole point of the search. If the best move is a representation heuristic, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
 
-For cross-dataset evaluation, set `primary_dataset` for the main training source and `evaluation_dataset` for test-time evaluation. Add real training sources through `dataset_sources` or `secondary_datasets`, and add synthetic training sources through `synthetic_sources`. The runtime lets the evaluation dataset define the target activity universe, filters real training windows to overlapping classes, and lets `target_classes` further restrict that evaluation-defined set. Synthetic rows can be targeted with `synthetic_target_classes` for all synthetic sources, or `synthetic_source_targets` for per-source class routing such as `synthetic_text_to_imu: sit,stand; synthetic_video_to_imu: walk,run`.
+For cross-dataset evaluation, use `train_datasets` for the real training pool and `evaluation_dataset` for test-time evaluation. The real training pool can contain one dataset, many datasets, or fractions of datasets via `real_ratio`, `per_dataset_real_ratio`, `per_class_real_ratio`, and `per_dataset_class_real_ratio`. The runtime lets the evaluation dataset define the target activity universe, filters real training windows to overlapping classes, and lets `target_classes` further restrict that evaluation-defined set. Synthetic rows can be targeted with `synthetic_target_classes` for all synthetic sources, or `synthetic_source_targets` for per-source class routing such as `synthetic_text_to_imu: sit,stand; synthetic_video_to_imu: walk,run`.
 
 Use `custom` only when a new bounded preprocessing transform is more appropriate than tuning an existing regime. For `custom`, define this function inside `function_rewrite`:
 

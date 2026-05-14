@@ -257,28 +257,15 @@ class DummyHARHarness:
             artifact_paths=merged_artifacts,
         )
 
-    def _resolve_dataset_pair(
-        self,
-        experiment: dict[str, object],
-        data_params: dict[str, float | int | str | bool],
-    ) -> tuple[str, str]:
-        train_datasets, eval_dataset, _ = self._resolve_dataset_plan(
-            experiment,
-            data_params,
-        )
-        return train_datasets[0], eval_dataset
-
     def _resolve_dataset_plan(
         self,
         experiment: dict[str, object],
         data_params: dict[str, float | int | str | bool],
     ) -> tuple[list[str], str, list[str]]:
         experiment_dataset = str(experiment.get("dataset", {}).get("name", "uci_har"))
-        primary = str(data_params.get("primary_dataset", experiment_dataset)).strip()
-        primary = primary or experiment_dataset
         policy = str(data_params.get("dataset_policy", "single_dataset")).strip().lower()
         source_names = self._split_config_list(data_params.get("dataset_sources", ""))
-        secondary = self._split_config_list(data_params.get("secondary_datasets", ""))
+        train_dataset_names = self._split_config_list(data_params.get("train_datasets", ""))
         synthetic_sources = [
             source for source in self._split_config_list(data_params.get("synthetic_sources", ""))
             if source.startswith("synthetic_")
@@ -288,10 +275,9 @@ class DummyHARHarness:
         )
         synthetic_sources = list(dict.fromkeys(synthetic_sources))
         real_sources = [source for source in source_names if not source.startswith("synthetic_")]
-        train_datasets = [primary]
+        train_datasets = train_dataset_names or [experiment_dataset]
         if policy in {"multi_dataset", "cross_dataset", "cross_dataset_eval", "real_synthetic_mix"}:
             train_datasets.extend(real_sources)
-            train_datasets.extend(secondary)
         train_datasets = list(dict.fromkeys(name for name in train_datasets if name))
         eval_dataset = str(
             data_params.get("evaluation_dataset")
@@ -299,12 +285,8 @@ class DummyHARHarness:
             or data_params.get("test_dataset")
             or ""
         ).strip()
-        if not eval_dataset and policy in {"cross_dataset", "cross_dataset_eval"}:
-            candidates = [name for name in [*secondary, *real_sources] if name != primary]
-            if candidates:
-                eval_dataset = candidates[0]
         if not eval_dataset:
-            eval_dataset = primary
+            eval_dataset = train_datasets[0] if train_datasets else experiment_dataset
         return train_datasets, eval_dataset, synthetic_sources
 
     def _load_training_samples(
@@ -313,10 +295,25 @@ class DummyHARHarness:
         data_params: dict[str, float | int | str | bool],
     ) -> list[tuple[list[list[float]], str]]:
         samples: list[tuple[list[list[float]], str]] = []
+        per_dataset_ratio = self._ratio_mapping(data_params.get("per_dataset_real_ratio", ""))
         for dataset_name in dataset_names:
             dataset = self._load_dataset_by_name(dataset_name)
-            samples.extend(dataset.load_split("train"))
-        return self._limit_samples_by_ratio(samples, data_params.get("real_ratio", 1.0))
+            dataset_samples = dataset.load_split("train")
+            dataset_samples = self._limit_samples_by_ratio(
+                dataset_samples,
+                per_dataset_ratio.get(dataset_name, data_params.get("real_ratio", 1.0)),
+            )
+            dataset_samples = self._limit_samples_by_class_ratio(
+                dataset_samples,
+                data_params.get("per_class_real_ratio", ""),
+            )
+            dataset_samples = self._limit_samples_by_dataset_class_ratio(
+                dataset_samples,
+                dataset_name,
+                data_params.get("per_dataset_class_real_ratio", ""),
+            )
+            samples.extend(dataset_samples)
+        return samples
 
     def _limit_samples_by_ratio(
         self,
@@ -341,6 +338,36 @@ class DummyHARHarness:
             limited.extend(group[:keep])
         return limited
 
+    def _limit_samples_by_class_ratio(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+        ratio_value: object,
+    ) -> list[tuple[list[list[float]], str]]:
+        ratios = self._ratio_mapping(ratio_value)
+        if not ratios:
+            return samples
+        grouped: dict[str, list[tuple[list[list[float]], str]]] = {}
+        for sample in samples:
+            grouped.setdefault(self._canonical_activity_label(sample[1]), []).append(sample)
+        limited: list[tuple[list[list[float]], str]] = []
+        for label, group in grouped.items():
+            ratio = ratios.get(label, 1.0)
+            keep = len(group) if ratio >= 1.0 else max(1, int(round(len(group) * max(0.0, ratio))))
+            limited.extend(group[:keep])
+        return limited
+
+    def _limit_samples_by_dataset_class_ratio(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+        dataset_name: str,
+        ratio_value: object,
+    ) -> list[tuple[list[list[float]], str]]:
+        mapping = self._parse_mapping(ratio_value)
+        raw_dataset_ratios = mapping.get(dataset_name)
+        if raw_dataset_ratios is None:
+            return samples
+        return self._limit_samples_by_class_ratio(samples, raw_dataset_ratios)
+
     def _training_config(self, experiment: dict[str, object]) -> dict[str, int | str]:
         training = experiment.get("training", {})
         return {
@@ -364,8 +391,6 @@ class DummyHARHarness:
 
     def _load_dataset(self, experiment: dict[str, object]) -> WindowedHARDataset:
         dataset_name = str(experiment["dataset"]["name"])
-        if dataset_name == "dummy_imu_har":
-            dataset_name = "uci_har"
         return self._load_dataset_by_name(dataset_name)
 
     def _load_dataset_by_name(self, dataset_name: str) -> WindowedHARDataset:
@@ -589,10 +614,17 @@ class DummyHARHarness:
         data_params: dict[str, float | int | str | bool],
     ) -> dict[str, float]:
         parsed = self._parse_mapping(data_params.get("per_source_synthetic_ratio", ""))
+        return self._coerce_ratio_mapping(parsed)
+
+    def _ratio_mapping(self, value: object) -> dict[str, float]:
+        parsed = self._parse_mapping(value)
+        return self._coerce_ratio_mapping(parsed)
+
+    def _coerce_ratio_mapping(self, parsed: dict[str, object]) -> dict[str, float]:
         ratios: dict[str, float] = {}
         for source, value in parsed.items():
             try:
-                ratios[source] = max(0.0, float(value))
+                ratios[self._canonical_activity_label(source)] = max(0.0, float(value))
             except (TypeError, ValueError):
                 continue
         return ratios

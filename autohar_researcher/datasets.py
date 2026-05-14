@@ -269,7 +269,6 @@ def _normalize_whar_dataset_id(name: str) -> str:
     elif normalized.startswith("whar_"):
         normalized = normalized.removeprefix("whar_")
     aliases = {
-        "dummy_imu_har": "uci_har",
         "ucihar": "uci_har",
         "utdmhad": "utd_mhad",
         "unimibshar": "unimib_shar",

@@ -90,29 +90,14 @@ class TestDummyHARHarness:
         assert [label for _, label in aligned_train] == ["walk"]
         assert [label for _, label in aligned_val] == ["walk"]
 
-    def test_resolve_dataset_pair_uses_evaluation_dataset(self):
-        harness = DummyHARHarness()
-        train_name, eval_name = harness._resolve_dataset_pair(
-            {"dataset": {"name": "uci_har"}},
-            {
-                "dataset_policy": "cross_dataset",
-                "primary_dataset": "wisdm",
-                "evaluation_dataset": "hapt",
-            },
-        )
-
-        assert train_name == "wisdm"
-        assert eval_name == "hapt"
-
     def test_resolve_dataset_plan_supports_multi_real_and_synthetic_sources(self):
         harness = DummyHARHarness()
         train_names, eval_name, synthetic_sources = harness._resolve_dataset_plan(
             {"dataset": {"name": "uci_har"}},
             {
                 "dataset_policy": "real_synthetic_mix",
-                "primary_dataset": "wisdm",
-                "dataset_sources": "wisdm,uci_har,synthetic_imu_to_imu",
-                "secondary_datasets": "hapt",
+                "train_datasets": "wisdm,uci_har,hapt",
+                "dataset_sources": "synthetic_imu_to_imu",
                 "evaluation_dataset": "motion_sense",
                 "synthetic_sources": "synthetic_text_to_imu,synthetic_imu_to_imu",
             },
@@ -121,6 +106,57 @@ class TestDummyHARHarness:
         assert train_names == ["wisdm", "uci_har", "hapt"]
         assert eval_name == "motion_sense"
         assert synthetic_sources == ["synthetic_text_to_imu", "synthetic_imu_to_imu"]
+
+    def test_resolve_dataset_plan_uses_train_datasets(self):
+        harness = DummyHARHarness()
+        train_names, eval_name, synthetic_sources = harness._resolve_dataset_plan(
+            {"dataset": {"name": "uci_har"}},
+            {
+                "dataset_policy": "cross_dataset",
+                "train_datasets": "wisdm,uci_har,hapt",
+                "evaluation_dataset": "usc_had",
+            },
+        )
+
+        assert train_names == ["wisdm", "uci_har", "hapt"]
+        assert eval_name == "usc_had"
+        assert synthetic_sources == []
+
+    def test_load_training_samples_supports_dataset_and_class_ratios(self):
+        class FakeDataset:
+            def __init__(self, label_prefix: str = "") -> None:
+                self.label_prefix = label_prefix
+
+            def ensure_downloaded(self):
+                return None
+
+            def load_split(self, split: str):
+                assert split == "train"
+                return [
+                    ([[1.0]], "walk"),
+                    ([[2.0]], "walk"),
+                    ([[3.0]], "sit"),
+                    ([[4.0]], "sit"),
+                ]
+
+            def metadata(self):
+                return {"activity_labels": ["walk", "sit"]}
+
+        harness = DummyHARHarness()
+        harness._dataset_cache = {"wisdm": FakeDataset(), "uci_har": FakeDataset()}
+
+        samples = harness._load_training_samples(
+            ["wisdm", "uci_har"],
+            {
+                "per_dataset_real_ratio": {"wisdm": 0.5, "uci_har": 1.0},
+                "per_class_real_ratio": {"walk": 0.5, "sit": 1.0},
+                "per_dataset_class_real_ratio": {"uci_har": {"sit": 0.5}},
+            },
+        )
+
+        labels = [label for _, label in samples]
+        assert labels.count("walk") == 2
+        assert labels.count("sit") == 2
 
     def test_synthetic_training_samples_add_rows(self):
         harness = DummyHARHarness()

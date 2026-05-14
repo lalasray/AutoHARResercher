@@ -310,12 +310,12 @@ def default_data_params(
         "append_magnitude": preprocessing == "normalized+magnitude_channels",
         "stride": max(16, window_size // 2),
         "dataset_policy": "single_dataset",
+        "train_datasets": "uci_har",
         "dataset_sources": "uci_har",
-        "primary_dataset": "uci_har",
         "evaluation_dataset": "",
         "available_real_datasets": "wisdm,uci_har,utd_mhad,hapt,usc_had,unimib_shar,motion_sense,real_life_har,wisdm_19_phone,wisdm_19_watch,ku_har,hang_time,capture_24",
-        "secondary_datasets": "",
         "real_ratio": 1.0,
+        "per_dataset_real_ratio": "",
         "synthetic_ratio": 0.0,
         "synthetic_sources": "",
         "synthetic_target_classes": "all",
@@ -324,6 +324,7 @@ def default_data_params(
         "class_sampling_policy": "preserve",
         "target_classes": "all",
         "per_class_real_ratio": "",
+        "per_dataset_class_real_ratio": "",
         "per_class_synthetic_ratio": "",
         "dataset_mix_notes": "real datasets are loaded through teco-kit/whar-datasets",
     }
@@ -883,12 +884,12 @@ def _module_patch_builder(agent_name: str) -> str:
         '        "append_magnitude": target_preprocessing == "normalized+magnitude_channels",\n'
         '        "stride": max(16, target_window // 2),\n'
         '        "dataset_policy": "single_dataset",\n'
+        '        "train_datasets": "uci_har",\n'
         '        "dataset_sources": "uci_har",\n'
-        '        "primary_dataset": "uci_har",\n'
         '        "evaluation_dataset": "",\n'
         '        "available_real_datasets": "wisdm,uci_har,utd_mhad,hapt,usc_had,unimib_shar,motion_sense,real_life_har,wisdm_19_phone,wisdm_19_watch,ku_har,hang_time,capture_24",\n'
-        '        "secondary_datasets": "",\n'
         '        "real_ratio": 1.0,\n'
+        '        "per_dataset_real_ratio": "",\n'
         '        "synthetic_ratio": 0.0,\n'
         '        "synthetic_sources": "",\n'
         '        "synthetic_target_classes": "all",\n'
@@ -897,6 +898,7 @@ def _module_patch_builder(agent_name: str) -> str:
         '        "class_sampling_policy": "preserve",\n'
         '        "target_classes": "all",\n'
         '        "per_class_real_ratio": "",\n'
+        '        "per_dataset_class_real_ratio": "",\n'
         '        "per_class_synthetic_ratio": "",\n'
         '        "dataset_mix_notes": "real datasets are loaded through teco-kit/whar-datasets",\n'
         "    }\n"

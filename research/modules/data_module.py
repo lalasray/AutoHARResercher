@@ -54,11 +54,11 @@ GRAVITY_FILTER_ORDER = 4
 
 # Dataset/source-mix controls. The runtime uses WHAR Datasets for real datasets.
 DATASET_POLICY = "single_dataset"  # single_dataset, multi_dataset, cross_dataset, real_synthetic_mix
-PRIMARY_DATASET = "uci_har"
-EVALUATION_DATASET = ""  # blank means evaluate on PRIMARY_DATASET
-SECONDARY_DATASETS = []
+TRAIN_DATASETS = ["uci_har"]
+EVALUATION_DATASET = ""  # blank means evaluate on the first train dataset
 DATASET_SOURCES = ["uci_har"]
 REAL_RATIO = 1.0
+PER_DATASET_REAL_RATIO = {}
 SYNTHETIC_RATIO = 0.0
 SYNTHETIC_SOURCES = []  # synthetic_imu_to_imu, synthetic_text_to_imu, synthetic_video_to_imu
 SYNTHETIC_TARGET_CLASSES = "all"
@@ -67,6 +67,7 @@ PER_SOURCE_SYNTHETIC_RATIO = {}
 CLASS_SAMPLING_POLICY = "preserve"  # preserve, boost_minority, class_targeted
 TARGET_CLASSES = "all"
 PER_CLASS_REAL_RATIO = {}
+PER_DATASET_CLASS_REAL_RATIO = {}
 PER_CLASS_SYNTHETIC_RATIO = {}
 
 MUTATION_SPACE = {
@@ -93,11 +94,11 @@ MUTATION_SPACE = {
         "stride": [16, 32, 48, 64, 96, 128],
     },
     "source_mix_controls": [
-        "primary_dataset",
+        "train_datasets",
         "evaluation_dataset",
-        "secondary_datasets",
         "dataset_sources",
         "real_ratio",
+        "per_dataset_real_ratio",
         "synthetic_ratio",
         "synthetic_sources",
         "synthetic_target_classes",
@@ -108,6 +109,7 @@ MUTATION_SPACE = {
         "class_sampling_policy",
         "target_classes",
         "per_class_real_ratio",
+        "per_dataset_class_real_ratio",
         "per_class_synthetic_ratio",
     ],
 }

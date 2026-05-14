@@ -205,12 +205,13 @@ Example data params:
 ```python
 {
     "dataset_policy": "real_synthetic_mix",
-    "primary_dataset": "wisdm",
-    "dataset_sources": "wisdm,uci_har,hapt,synthetic_imu_to_imu",
-    "secondary_datasets": "usc_had",
+    "train_datasets": "wisdm,uci_har,hapt,usc_had",
     "evaluation_dataset": "motion_sense",
     "target_classes": "all",
     "real_ratio": 0.75,
+    "per_dataset_real_ratio": {"wisdm": 1.0, "uci_har": 0.5, "hapt": 0.5},
+    "per_class_real_ratio": {"walk": 1.0, "sit": 0.75, "stand": 0.75},
+    "per_dataset_class_real_ratio": {"usc_had": {"walk": 0.5, "sit": 0.25}},
     "synthetic_ratio": 0.25,
     "synthetic_sources": "synthetic_imu_to_imu,synthetic_text_to_imu,synthetic_video_to_imu",
     "synthetic_source_targets": {
