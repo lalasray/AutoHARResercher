@@ -12,3 +12,5 @@ data/
 /research/modules/__pycache__
 /research/modules/preprocessing/__pycache__
 /research/__pycache__
+/research/modules/architectures/__pycache__
+/research/modules/augmentations/__pycache__

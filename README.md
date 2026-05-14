@@ -58,7 +58,6 @@ Use `pip install -e ".[dev,whar]"` instead if you want WHAR dataset evaluation.
 |--------|-------------|
 | `./run_mission.sh missions/your_mission.md` | Start directly from a mission markdown file |
 | `./run_autohar_opencode.sh` | Use local opencode CLI |
-| `./run_autohar_lmstudio.sh` | Deprecated shim that forwards to `run_autohar_opencode.sh` |
 | `./run_autohar_openai.sh` | Use OpenAI API |
 | `./run_autoresearch.sh` | Simple single-script loop |
 
@@ -115,7 +114,7 @@ AUTOHAR_TIME_BUDGET_SECONDS=300
 AUTOHAR_MISSION_FILE=missions/example_mission.md
 ```
 
-The OpenAI and OpenCode wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. `run_autohar_lmstudio.sh` is kept only as a compatibility shim and now forwards to OpenCode. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
+The OpenAI and OpenCode wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
 
 ## Architecture
 

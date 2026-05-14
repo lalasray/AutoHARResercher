@@ -431,8 +431,15 @@ class OpenAIPlanner:
     ) -> dict[str, object]:
         dataset_name = "uci_har"
         if best_result is not None:
-            # Future-proofing for multi-dataset support if config later carries dataset name differently.
-            dataset_name = "uci_har"
+            train_datasets = str(
+                best_result.config.data_params.get("train_datasets", "uci_har")
+            )
+            dataset_name = train_datasets.split(",", 1)[0].strip() or "uci_har"
+            evaluation_dataset = str(
+                best_result.config.data_params.get("evaluation_dataset", "")
+            ).strip()
+            if evaluation_dataset:
+                dataset_name = evaluation_dataset
         try:
             return create_har_dataset(dataset_name).metadata()
         except ValueError:
