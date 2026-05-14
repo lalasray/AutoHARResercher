@@ -85,7 +85,7 @@ def _choose_backend_from_mission(settings: dict[str, object]) -> str | None:
     backend = str(settings.get("backend", "")).strip().lower()
     if not backend:
         return None
-    if backend in {"openai", "lmstudio", "opencode", "heuristic"}:
+    if backend in {"openai", "lmstudio", "opencode"}:
         return backend
     if backend != "auto":
         return None
@@ -97,7 +97,7 @@ def _choose_backend_from_mission(settings: dict[str, object]) -> str | None:
         return "opencode"
     if os.getenv("AUTOHAR_LLM_BASE_URL") or os.getenv("AUTOHAR_LMSTUDIO_MODEL"):
         return "lmstudio"
-    return "heuristic"
+    return None
 
 
 def main() -> None:

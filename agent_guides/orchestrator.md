@@ -71,7 +71,7 @@ Remember:
 - a good single-agent proposal does not guarantee a good full combination
 - the best orchestrator action is sometimes to promote one agent branch rather than a composed candidate
 
-## Strategy Heuristics
+## Strategy Rules
 
 Prefer `exploit` when:
 

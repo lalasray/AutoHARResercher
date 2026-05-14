@@ -6,7 +6,6 @@ import re
 import subprocess
 from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 try:
     from openai import OpenAI
@@ -26,10 +25,6 @@ from autohar_researcher.experiment import (
     MODEL_HYPERPARAMETERS,
     model_architecture_catalog,
 )
-
-if TYPE_CHECKING:
-    from autohar_researcher.heuristic_planner import HeuristicPlanner
-
 
 def load_local_env(path: Path | None = None) -> None:
     env_path = path or (Path.cwd() / ".autohar.env")
@@ -557,7 +552,7 @@ class OpenAIPlanner:
             + "Use `logic_expression` only for trivial direct overrides.\n"
             + "Prefer `helper_code` when the decision depends on baseline context, compatibility, guardrails, or conditional logic.\n"
             + "Do not behave like a dropdown picker. "
-            + "If the important idea is a local model heuristic rather than a family switch, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
+            + "If the important idea is a local model rule rather than a family switch, keep the family stable and express the novelty through `helper_code` or `function_rewrite`.\n"
             + rewrite_preference
             + "When the main mutation is family-dependent parameter compatibility, prefer defining "
             + "`model_params_override(...)` inside `function_rewrite` rather than only returning static model_params.\n"
@@ -586,7 +581,7 @@ class OpenAIPlanner:
             + "Keep helper_code short, self-contained, and limited to model-side reasoning. "
             + "If you emit helper_code, it should usually be the primary mechanism and `logic_expression` can be empty.\n"
             + "Prefer owned-module reasoning over menu hopping: use code when your idea is about architecture compatibility, family-dependent defaults, "
-            + "or training-shape heuristics rather than just swapping one named family for another.\n"
+            + "or training-shape rules rather than just swapping one named family for another.\n"
         )
 
     def _augmentation_agent_prompt(
@@ -682,7 +677,7 @@ class OpenAIPlanner:
             + "Use `logic_expression` only for trivial direct overrides.\n"
             + "Prefer `helper_code` when the choice depends on baseline context, compatibility, guardrails, or conditional logic.\n"
             + "Do not behave like a fixed menu chooser. "
-            + "If the real idea is a representation heuristic, keep the top-level setting stable and express the novelty through `helper_code` or `function_rewrite`.\n"
+            + "If the real idea is a representation rule, keep the top-level setting stable and express the novelty through `helper_code` or `function_rewrite`.\n"
             + rewrite_preference
             + "When the main mutation is preprocessing/window-dependent data parameter compatibility, prefer defining "
             + "`data_params_override(...)` inside `function_rewrite` rather than only relying on static defaults.\n"
@@ -2204,12 +2199,9 @@ class OpenAIPlanner:
 def build_planner(
     mission_brief: str | None = None,
     mission_source: str | None = None,
-) -> OpenAIPlanner | HeuristicPlanner:
+) -> OpenAIPlanner:
     load_local_env()
     backend = os.getenv("AUTOHAR_LLM_BACKEND", "openai").strip().lower()
-    allow_fallback = (
-        os.getenv("AUTOHAR_ALLOW_LLM_FALLBACK", "true").strip().lower() == "true"
-    )
 
     if backend == "opencode":
         planner = OpenAIPlanner(
@@ -2238,38 +2230,15 @@ def build_planner(
         )
 
     if not os.getenv("OPENAI_API_KEY"):
-        if allow_fallback:
-            from autohar_researcher.heuristic_planner import HeuristicPlanner
-
-            print(
-                "[AutoHAR] Warning: No OpenAI API key found. Using heuristic fallback planner."
-            )
-            print(
-                "[AutoHAR] Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=opencode"
-            )
-            return HeuristicPlanner(
-                mission_brief=mission_brief,
-                mission_source=mission_source,
-            )
         raise RuntimeError(
             "OPENAI_API_KEY is required for the default OpenAI planner. "
             "Options: Set OPENAI_API_KEY or use AUTOHAR_LLM_BACKEND=opencode (local CLI planner)."
         )
 
     if OpenAI is None:
-        if allow_fallback:
-            from autohar_researcher.heuristic_planner import HeuristicPlanner
-
-            print(
-                "[AutoHAR] Warning: openai package not installed. Using heuristic fallback planner."
-            )
-            return HeuristicPlanner(
-                mission_brief=mission_brief,
-                mission_source=mission_source,
-            )
         raise RuntimeError(
             "The openai Python package is required for planning. "
-            "Install project dependencies or set AUTOHAR_ALLOW_LLM_FALLBACK=true for heuristic fallback."
+            "Install project dependencies or use AUTOHAR_LLM_BACKEND=opencode."
         )
 
     return OpenAIPlanner(

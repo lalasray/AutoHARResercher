@@ -85,7 +85,7 @@ Available architecture anchors:
 - `gru`
 - `custom`
 
-Those anchors are not the whole point of the search. If the best move is a model-side heuristic, compatibility rule, hyperparameter-tuning strategy, or local architecture strategy, express that through owned-module code rather than treating architecture names like a dropdown.
+Those anchors are not the whole point of the search. If the best move is a model-side rule, compatibility policy, hyperparameter-tuning strategy, or local architecture strategy, express that through owned-module code rather than treating architecture names like a dropdown.
 
 Use `custom` only when a new bounded model-side representation is more appropriate than tuning an existing family. For `custom`, define this function inside `function_rewrite`:
 

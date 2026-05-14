@@ -107,7 +107,7 @@ Stable strength anchors:
 - `medium`
 - `strong`
 
-Those anchors are not the whole point of the search. If the best move is a robustness heuristic, context-sensitive parameter policy, or compatibility rule, express that through owned-module code rather than behaving like a menu picker.
+Those anchors are not the whole point of the search. If the best move is a robustness rule, context-sensitive parameter policy, or compatibility rule, express that through owned-module code rather than behaving like a menu picker.
 
 Generative placeholders:
 

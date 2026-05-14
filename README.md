@@ -26,12 +26,6 @@ Run the test suite:
 pytest tests/ -q
 ```
 
-Run a short heuristic smoke test without an LLM backend:
-
-```bash
-AUTOHAR_LLM_BACKEND=heuristic python -m autohar_researcher.main --rounds 1
-```
-
 Run with the local OpenCode backend:
 
 ```bash
@@ -114,7 +108,7 @@ AUTOHAR_TIME_BUDGET_SECONDS=300
 AUTOHAR_MISSION_FILE=missions/example_mission.md
 ```
 
-The OpenAI and OpenCode wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose. For heuristic mode, run Python directly with `AUTOHAR_LLM_BACKEND=heuristic` or set `backend: heuristic` in the mission file.
+The OpenAI and OpenCode wrapper scripts force their matching backend. `run_mission.sh` does not force a backend; it lets the mission frontmatter choose.
 
 ## Architecture
 

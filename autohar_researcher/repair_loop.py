@@ -22,7 +22,6 @@ from autohar_researcher.types import (
 )
 
 if TYPE_CHECKING:
-    from autohar_researcher.heuristic_planner import HeuristicPlanner
     from autohar_researcher.planner import OpenAIPlanner
 
 
@@ -45,7 +44,6 @@ class RepairRecord:
     error_traceback: str
     attempts: list[RepairAttempt] = field(default_factory=list)
     final_success: bool = False
-    fell_back_to_heuristic: bool = False
     record_artifact: str = ""
 
 
@@ -138,7 +136,7 @@ def _error_context_dict(
 class CrashRepairLoop:
     def __init__(
         self,
-        planner: OpenAIPlanner | HeuristicPlanner,
+        planner: OpenAIPlanner,
         config: RepairConfig | None = None,
     ) -> None:
         self.planner = planner
@@ -214,16 +212,6 @@ class CrashRepairLoop:
 
                 attempt.success = False
                 record.attempts.append(attempt)
-
-                if self.config.fallback_to_heuristic:
-                    heuristic_repaired = self._heuristic_repair(proposals, exc)
-                    if heuristic_repaired is not None:
-                        proposals = heuristic_repaired
-                        record.fell_back_to_heuristic = True
-                        attempt.repaired_proposals = heuristic_repaired
-                        attempt.repair_artifact = self._write_repair_artifact(
-                            round_id, attempt_num, heuristic_repaired
-                        )
 
                 record.record_artifact = self._write_repair_record(round_id, record)
                 raise
@@ -539,48 +527,6 @@ class CrashRepairLoop:
         except Exception:
             return None
 
-    def _heuristic_repair(
-        self,
-        proposals: list[ModelProposal | AugmentationProposal | DataProposal] | None,
-        exc: Exception,
-    ) -> list[ModelProposal | AugmentationProposal | DataProposal] | None:
-        from autohar_researcher.heuristic_planner import HeuristicPlanner
-
-        fallback = HeuristicPlanner()
-        repaired = []
-
-        for proposal in proposals or []:
-            if isinstance(proposal, ModelProposal):
-                hint = fallback._heuristic_model_hint(None, {}, 1)
-                repaired.append(
-                    ModelProposal(
-                        model_name=hint.model_name,
-                        learning_rate=hint.learning_rate,
-                        model_params=dict(hint.model_params),
-                        notes=f"[heuristic fallback after {_summarize_error(exc)}]",
-                    )
-                )
-            elif isinstance(proposal, AugmentationProposal):
-                hint = fallback._heuristic_augmentation_hint(None, {}, 1)
-                repaired.append(
-                    AugmentationProposal(
-                        augmentation=hint.augmentation,
-                        strength=hint.strength,
-                        notes=f"[heuristic fallback after {_summarize_error(exc)}]",
-                    )
-                )
-            else:
-                hint = fallback._heuristic_data_hint(None, {}, 1)
-                repaired.append(
-                    DataProposal(
-                        preprocessing=hint.preprocessing,
-                        window_size=hint.window_size,
-                        notes=f"[heuristic fallback after {_summarize_error(exc)}]",
-                    )
-                )
-
-        return repaired if repaired else None
-
     def _write_repair_artifact(
         self,
         round_id: int,
@@ -665,6 +611,5 @@ class CrashRepairLoop:
                 for a in record.attempts
             ],
             "final_success": record.final_success,
-            "fell_back_to_heuristic": record.fell_back_to_heuristic,
         }
         return write_json_artifact(round_dir / "repair_record.json", payload)

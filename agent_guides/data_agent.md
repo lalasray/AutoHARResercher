@@ -143,7 +143,7 @@ Data mix controls:
 - `class_sampling_policy`
 - `stride`
 
-Those anchors are not the whole point of the search. If the best move is a representation heuristic, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
+Those anchors are not the whole point of the search. If the best move is a representation rule, compatibility rule, or local data policy, express that through owned-module code rather than treating the settings like a fixed menu.
 
 For cross-dataset evaluation, use `train_datasets` for the real training pool and `evaluation_dataset` for test-time evaluation. The real training pool can contain one dataset, many datasets, or fractions of datasets via `real_ratio`, `per_dataset_real_ratio`, `per_class_real_ratio`, and `per_dataset_class_real_ratio`. The runtime lets the evaluation dataset define the target activity universe, filters real training windows to overlapping classes, and lets `target_classes` further restrict that evaluation-defined set. Synthetic rows can be targeted with `synthetic_target_classes` for all synthetic sources, or `synthetic_source_targets` for per-source class routing such as `synthetic_text_to_imu: sit,stand; synthetic_video_to_imu: walk,run`.
 
@@ -248,7 +248,7 @@ A good proposal:
 - is compatible with the current accepted baseline
 - makes a clear representation hypothesis
 - is easy to evaluate against the current best setup
-- uses owned helper logic when the real novelty is a representation or compatibility heuristic rather than only a preset flip
+- uses owned helper logic when the real novelty is a representation or compatibility rule rather than only a preset flip
 - if helper code is used, it stays short, local, and only affects data-side decisions
 - if parameterization changes are made, they stay plausible for the selected preprocessing and window regime
 

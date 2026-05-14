@@ -680,7 +680,7 @@ def _module_patch_builder(agent_name: str) -> str:
             '    """Return supported augmentation families."""\n'
             '    return ["none", "rotation", "time_warp", "jitter", "mixup", "scaling", "drift", "permutation", "magnitude_warp", "channel_dropout", "sensor_bias", "frequency_mask", "imu_to_imu", "text_to_imu", "video_to_imu", "custom"]\n\n'
             "def choose_augmentation_name(base_experiment: dict[str, object], requested_name: str) -> str:\n"
-            '    """Apply simple compatibility heuristics for augmentation selection."""\n'
+            '    """Apply simple compatibility rules for augmentation selection."""\n'
             "    valid = valid_augmentations()\n"
             "    if requested_name not in valid:\n"
             '        requested_name = str(current_augmentation(base_experiment).get("name", "none"))\n'
@@ -868,7 +868,7 @@ def _module_patch_builder(agent_name: str) -> str:
         '        return "normalized"\n'
         "    return requested_mode\n\n"
         "def choose_window(base_experiment: dict[str, object], requested_window: int) -> int:\n"
-        '    """Apply simple compatibility heuristics for window size."""\n'
+        '    """Apply simple compatibility rules for window size."""\n'
         "    snapped = nearest_valid_window(requested_window)\n"
         '    augmentation = str(base_experiment.get("augmentation", {}).get("name", "none"))\n'
         '    if augmentation in {"time_warp", "permutation"} and snapped > 192:\n'
