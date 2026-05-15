@@ -29,15 +29,6 @@ source ".autohar.env"
 set +a
 
 export AUTOHAR_LLM_BACKEND="$BACKEND"
-if [[ "$BACKEND" == "openai" ]]; then
-  if [[ -n "${AUTOHAR_OPENAI_MODEL:-}" ]]; then
-    export AUTOHAR_LLM_MODEL="${AUTOHAR_OPENAI_MODEL}"
-  fi
-else
-  if [[ -n "${AUTOHAR_OPENCODE_MODEL:-}" ]]; then
-    export AUTOHAR_LLM_MODEL="${AUTOHAR_OPENCODE_MODEL}"
-  fi
-fi
 
 ROUNDS="${AUTOHAR_ROUNDS:-20}"
 MATERIALIZE_GIT="${AUTOHAR_MATERIALIZE_GIT:-1}"

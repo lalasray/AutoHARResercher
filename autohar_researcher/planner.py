@@ -91,9 +91,9 @@ class OpenAIPlanner:
         mission_source: str | None = None,
     ) -> None:
         if api_mode == "opencode":
-            self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "")
+            self.model = model or os.getenv("AUTOHAR_OPENCODE_MODEL", "")
         else:
-            self.model = model or os.getenv("AUTOHAR_LLM_MODEL", "gpt-5-mini")
+            self.model = model or os.getenv("AUTOHAR_OPENAI_MODEL", "gpt-5-mini")
         self.base_url = base_url
         self.api_mode = api_mode
         self.name = planner_name or self.name
@@ -311,11 +311,6 @@ class OpenAIPlanner:
 
     def _role_api_mode(self, role: str, backend: str) -> str:
         role_key = self.ROLE_KEYS.get(role, role.upper())
-        if backend == "lmstudio":
-            return os.getenv(
-                f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
-                os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
-            )
         return os.getenv(
             f"AUTOHAR_OPENAI_{role_key}_API_MODE",
             os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
@@ -1089,19 +1084,14 @@ class OpenAIPlanner:
         if configured:
             return configured
         preferred_local = [
-            "lmstudio/qwen/qwen3-30b-a3b-2507",
-            "lmstudio/qwen/qwen3-coder-30b",
-            "lmstudio/openai/gpt-oss-20b",
+            "qwen/qwen3-30b-a3b-2507",
+            "qwen/qwen3-coder-30b",
+            "openai/gpt-oss-20b",
         ]
         models = self._opencode_models()
-        local_models = [model for model in models if model.startswith("lmstudio/")]
         for preferred in preferred_local:
-            if preferred in local_models:
+            if preferred in models:
                 return preferred
-        if local_models:
-            return local_models[0]
-        for preferred in preferred_local:
-            return preferred
         preferred_remote = [
             "opencode/gpt-5-nano",
             "opencode/big-pickle",
@@ -1110,6 +1100,8 @@ class OpenAIPlanner:
         for preferred in preferred_remote:
             if preferred in models:
                 return preferred
+        for preferred in preferred_local:
+            return preferred
         return self.model or "opencode/gpt-5-nano"
 
     def _opencode_models(self) -> list[str]:
@@ -1264,45 +1256,10 @@ class OpenAIPlanner:
                 "api_key": "",
                 "api_mode": "opencode",
             }
-        if backend == "lmstudio":
-            return {
-                "backend": backend,
-                "model": os.getenv(
-                    f"AUTOHAR_LMSTUDIO_{role_key}_MODEL",
-                    os.getenv(
-                        f"AUTOHAR_{role_key}_MODEL",
-                        os.getenv("AUTOHAR_LMSTUDIO_MODEL", self.model),
-                    ),
-                ),
-                "base_url": os.getenv(
-                    f"AUTOHAR_LMSTUDIO_{role_key}_BASE_URL",
-                    os.getenv(
-                        f"AUTOHAR_{role_key}_BASE_URL",
-                        os.getenv(
-                            "AUTOHAR_LLM_BASE_URL",
-                            self.base_url or "http://127.0.0.1:1234/v1",
-                        ),
-                    ),
-                ),
-                "api_key": os.getenv(
-                    f"AUTOHAR_LMSTUDIO_{role_key}_API_KEY",
-                    os.getenv(
-                        f"AUTOHAR_{role_key}_API_KEY",
-                        os.getenv(
-                            "AUTOHAR_LLM_API_KEY",
-                            self.default_api_key or "lm-studio",
-                        ),
-                    ),
-                ),
-                "api_mode": (
-                    os.getenv(
-                        f"AUTOHAR_LMSTUDIO_{role_key}_API_MODE",
-                        os.getenv(f"AUTOHAR_{role_key}_API_MODE", "chat"),
-                    )
-                    .strip()
-                    .lower()
-                ),
-            }
+        if backend != "openai":
+            raise RuntimeError(
+                f"Unsupported LLM backend '{backend}'. Supported backends: openai, opencode."
+            )
         return {
             "backend": backend,
             "model": os.getenv(
@@ -2215,18 +2172,9 @@ def build_planner(
             planner.model = planner._default_opencode_model()
         return planner
 
-    if backend == "lmstudio":
-        base_url = os.getenv("AUTOHAR_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
-        api_key = os.getenv("AUTOHAR_LLM_API_KEY", "lm-studio")
-        model = os.getenv("AUTOHAR_LLM_MODEL", "local-model")
-        return OpenAIPlanner(
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            planner_name="lmstudio_chat_multiagent",
-            api_mode="chat",
-            mission_brief=mission_brief,
-            mission_source=mission_source,
+    if backend not in {"openai", "opencode"}:
+        raise RuntimeError(
+            f"Unsupported LLM backend '{backend}'. Supported backends: openai, opencode."
         )
 
     if not os.getenv("OPENAI_API_KEY"):

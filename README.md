@@ -96,7 +96,7 @@ AUTOHAR_OPENAI_MODEL=gpt-4o-mini
 
 # OpenCode local
 AUTOHAR_OPENCODE_BIN=/home/your-user/.opencode/bin/opencode
-AUTOHAR_OPENCODE_MODEL=lmstudio/qwen/qwen3-30b-a3b-2507
+AUTOHAR_OPENCODE_MODEL=qwen/qwen3-30b-a3b-2507
 
 # Never-stop mode
 AUTOHAR_NEVER_STOP=true
