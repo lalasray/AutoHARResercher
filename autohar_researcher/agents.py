@@ -521,12 +521,14 @@ class HierarchicalOrchestrator:
         previous_best = (
             None if best_result is None else self._clone_result(best_result)
         )
+        self._progress(round_id, "planning round with OpenAI/OpenCode backend")
         round_plan = self.plan_round(
             round_id=round_id,
             best_result=best_result,
             history=history,
             accepted_history=accepted_history,
         )
+        self._progress(round_id, "planner decision ready")
         actions.extend(self.plan_git_actions(round_id=round_id, round_plan=round_plan))
         return previous_best, round_plan
 
@@ -555,6 +557,12 @@ class HierarchicalOrchestrator:
             accepted_candidate.accepted = True
             current_best = accepted_candidate
             accepted_history.append(self._clone_result(accepted_candidate))
+            self._progress(
+                round_id,
+                f"accepted {accepted_candidate.agent_name} score={accepted_candidate.val_score:.4f}",
+            )
+        else:
+            self._progress(round_id, "no successful candidate beat the baseline")
 
         history.extend(round_results)
         self._refresh_active_mission(history, accepted_history)
@@ -1031,6 +1039,7 @@ class HierarchicalOrchestrator:
         planner_hints = dict(round_plan.get("planner_hints", {}))
 
         def _run_round():
+            self._progress(round_id, "requesting specialist proposals")
             with ThreadPoolExecutor(max_workers=len(self.agents)) as pool:
                 futures = [
                     pool.submit(
@@ -1045,6 +1054,7 @@ class HierarchicalOrchestrator:
                     for agent in self.agents
                 ]
                 proposals = [future.result() for future in futures]
+            self._progress(round_id, "specialist proposals ready; judging proposals")
 
             proposal_judgments = self._judge_proposals(
                 round_id=round_id,
@@ -1057,6 +1067,7 @@ class HierarchicalOrchestrator:
             baseline_experiment = self._baseline_experiment_from_branch(
                 str(round_plan["baseline_branch"])
             )
+            self._progress(round_id, "materializing round artifacts")
 
             round_state = self._materialize_round_state(
                 round_id=round_id,
@@ -1065,6 +1076,7 @@ class HierarchicalOrchestrator:
                 proposal_judgments=proposal_judgments,
             )
             if materialize_git:
+                self._progress(round_id, "materializing git worktrees")
                 round_state = self.git_runtime.materialize_round(
                     round_id=round_id,
                     baseline_branch=str(round_plan["baseline_branch"]),
@@ -1079,6 +1091,7 @@ class HierarchicalOrchestrator:
                 round_state=round_state,
                 baseline_experiment=baseline_experiment,
             )
+            self._progress(round_id, "specialist evaluations complete; evaluating orchestrator composition")
             result = self._evaluate_orchestrator_result(
                 round_id=round_id,
                 proposals=proposals,
@@ -1089,6 +1102,7 @@ class HierarchicalOrchestrator:
                 agent_results=agent_results,
                 proposal_judgments=proposal_judgments,
             )
+            self._progress(round_id, "orchestrator evaluation complete")
             return [*agent_results, result], round_state
 
         return self.repair_loop.execute_with_repair(
@@ -1098,6 +1112,9 @@ class HierarchicalOrchestrator:
             history=history,
             round_plan=round_plan,
         )
+
+    def _progress(self, round_id: int, message: str) -> None:
+        print(f"[AutoHAR] round {round_id}: {message}", flush=True)
 
     def evaluate_round(self, round_results: list[CandidateResult]) -> CandidateResult:
         successful = [
@@ -1205,7 +1222,14 @@ class HierarchicalOrchestrator:
         )
         round_state.combination_order = [label for label, _, _ in candidate_specs]
         evaluated: list[CandidateResult] = []
-        for label, included_agents, source_mode in candidate_specs:
+        total_specs = len(candidate_specs)
+        for index, (label, included_agents, source_mode) in enumerate(
+            candidate_specs, start=1
+        ):
+            self._progress(
+                round_id,
+                f"evaluating orchestrator candidate {index}/{total_specs}: {label}",
+            )
             if source_mode == "historical_best":
                 experiment = self._compose_experiment_from_results(
                     baseline_experiment=baseline_experiment,
@@ -1572,7 +1596,7 @@ class HierarchicalOrchestrator:
         baseline_experiment: dict[str, object],
     ) -> list[CandidateResult]:
         results: list[CandidateResult] = []
-        for proposal in proposals:
+        for index, proposal in enumerate(proposals, start=1):
             if isinstance(proposal, ModelProposal):
                 agent_name = "model_agent"
                 notes = proposal.notes
@@ -1591,24 +1615,31 @@ class HierarchicalOrchestrator:
 
             config = experiment_to_candidate_config(experiment, notes=notes)
             workspace = self.workspaces[agent_name]
-            results.append(
-                self.harness.evaluate(
-                    round_id=round_id,
-                    agent_name=agent_name,
-                    branch_name=workspace.branch_name,
-                    worktree_path=workspace.worktree_path,
-                    config=config,
-                    experiment=experiment,
-                    artifact_paths={
-                        "proposal_artifact": round_state.proposal_artifacts.get(
-                            agent_name, ""
-                        ),
-                        "materialized_agent_module": round_state.materialized_agent_files.get(
-                            agent_name, ""
-                        ),
-                    },
-                )
+            self._progress(
+                round_id,
+                f"evaluating specialist {index}/{len(proposals)}: {agent_name}",
             )
+            result = self.harness.evaluate(
+                round_id=round_id,
+                agent_name=agent_name,
+                branch_name=workspace.branch_name,
+                worktree_path=workspace.worktree_path,
+                config=config,
+                experiment=experiment,
+                artifact_paths={
+                    "proposal_artifact": round_state.proposal_artifacts.get(
+                        agent_name, ""
+                    ),
+                    "materialized_agent_module": round_state.materialized_agent_files.get(
+                        agent_name, ""
+                    ),
+                },
+            )
+            self._progress(
+                round_id,
+                f"{agent_name} score={result.val_score:.4f} summary={result.summary[:120]}",
+            )
+            results.append(result)
         return results
 
     def _materialize_round_state(
