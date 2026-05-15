@@ -158,6 +158,40 @@ class TestDummyHARHarness:
         assert labels.count("walk") == 2
         assert labels.count("sit") == 2
 
+    def test_smoke_sample_limit_keeps_balanced_classes(self, monkeypatch):
+        harness = DummyHARHarness()
+        samples = [
+            ([[float(index)]], "walk" if index < 6 else "sit")
+            for index in range(12)
+        ]
+
+        monkeypatch.setenv("AUTOHAR_SMOKE_SAMPLES", "4")
+        limited = harness._limit_smoke_samples(samples)
+
+        labels = [label for _, label in limited]
+        assert len(limited) == 4
+        assert labels.count("walk") == 2
+        assert labels.count("sit") == 2
+
+    def test_smoke_sample_limit_sets_one_epoch_default(self, monkeypatch):
+        harness = DummyHARHarness()
+
+        monkeypatch.setenv("AUTOHAR_SMOKE_SAMPLES", "8")
+        training = harness._training_config(
+            {
+                "training": {
+                    "epochs": 30,
+                    "min_epochs": 4,
+                    "early_stopping_patience": 5,
+                    "device": "cpu",
+                }
+            }
+        )
+
+        assert training["epochs"] == 1
+        assert training["min_epochs"] == 1
+        assert training["early_stopping_patience"] == 1
+
     def test_synthetic_training_samples_add_rows(self):
         harness = DummyHARHarness()
         train_samples = [

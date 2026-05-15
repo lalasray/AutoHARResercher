@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import math
+import os
 import random
 import re
 from pathlib import Path
@@ -95,6 +96,8 @@ class DummyHARHarness:
             tuple(train_dataset_names),
             eval_dataset_name,
             tuple(synthetic_sources),
+            self._smoke_sample_limit(),
+            self._smoke_epoch_limit(),
             config.model_name,
             json.dumps(config.model_params, sort_keys=True),
             config.preprocessing,
@@ -124,6 +127,8 @@ class DummyHARHarness:
                     "No overlapping classes remained after dataset/class filtering "
                     f"for train={train_dataset_names!r}, eval={eval_dataset_name!r}."
                 )
+            train_samples = self._limit_smoke_samples(train_samples)
+            val_samples = self._limit_smoke_samples(val_samples)
             self.LABELS = list(common_labels)
             label_to_index = {label: index for index, label in enumerate(self.LABELS)}
             train_samples = [
@@ -370,12 +375,71 @@ class DummyHARHarness:
 
     def _training_config(self, experiment: dict[str, object]) -> dict[str, int | str]:
         training = experiment.get("training", {})
+        epochs = int(training.get("epochs", 12))
+        min_epochs = int(training.get("min_epochs", 4))
+        patience = int(training.get("early_stopping_patience", 3))
+        smoke_epochs = self._smoke_epoch_limit()
+        if smoke_epochs is not None:
+            epochs = max(1, smoke_epochs)
+            min_epochs = min(max(1, min_epochs), epochs)
+            patience = min(max(1, patience), epochs)
         return {
-            "epochs": int(training.get("epochs", 12)),
-            "min_epochs": int(training.get("min_epochs", 4)),
-            "early_stopping_patience": int(training.get("early_stopping_patience", 3)),
+            "epochs": epochs,
+            "min_epochs": min_epochs,
+            "early_stopping_patience": patience,
             "device": str(training.get("device", "auto")),
         }
+
+    def _smoke_sample_limit(self) -> int | None:
+        raw_limit = os.getenv(
+            "AUTOHAR_SMOKE_SAMPLES",
+            os.getenv("AUTOHAR_MAX_SAMPLES_PER_SPLIT", ""),
+        ).strip()
+        if not raw_limit:
+            return None
+        try:
+            limit = int(raw_limit)
+        except ValueError:
+            return None
+        return limit if limit > 0 else None
+
+    def _smoke_epoch_limit(self) -> int | None:
+        raw_limit = os.getenv("AUTOHAR_SMOKE_EPOCHS", "").strip()
+        if not raw_limit and self._smoke_sample_limit() is not None:
+            raw_limit = "1"
+        if not raw_limit:
+            return None
+        try:
+            limit = int(raw_limit)
+        except ValueError:
+            return None
+        return limit if limit > 0 else None
+
+    def _limit_smoke_samples(
+        self,
+        samples: list[tuple[list[list[float]], str]],
+    ) -> list[tuple[list[list[float]], str]]:
+        limit = self._smoke_sample_limit()
+        if limit is None or len(samples) <= limit:
+            return samples
+        grouped: dict[str, list[tuple[list[list[float]], str]]] = {}
+        for sample in samples:
+            grouped.setdefault(sample[1], []).append(sample)
+        labels = sorted(grouped)
+        if not labels:
+            return samples[:limit]
+        per_label = max(1, limit // len(labels))
+        limited: list[tuple[list[list[float]], str]] = []
+        for label in labels:
+            limited.extend(grouped[label][:per_label])
+        if len(limited) < limit:
+            leftovers = [
+                sample
+                for label in labels
+                for sample in grouped[label][per_label:]
+            ]
+            limited.extend(leftovers[: limit - len(limited)])
+        return limited[:limit]
 
     def _load_experiment(self, worktree_path: Path) -> dict[str, object]:
         experiment_path = worktree_path / "research" / "experiment.json"
