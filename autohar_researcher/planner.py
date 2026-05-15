@@ -25,31 +25,20 @@ from autohar_researcher.experiment import (
     MODEL_HYPERPARAMETERS,
     model_architecture_catalog,
 )
-
-def load_local_env(path: Path | None = None) -> None:
-    env_path = path or (Path.cwd() / ".autohar.env")
-    if not env_path.exists():
-        return
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
+from autohar_researcher.planner_runtime import (
+    OpencodeModelCatalog,
+    ROLE_KEYS as PLANNER_ROLE_KEYS,
+    load_local_env,
+    role_api_mode,
+    role_backend,
+    role_runtime_config,
+    selected_backend,
+)
 
 
 class OpenAIPlanner:
     name = "openai_responses_multiagent"
-    ROLE_KEYS = {
-        "orchestrator": "ORCHESTRATOR",
-        "model_agent": "MODEL_AGENT",
-        "augmentation_agent": "AUGMENTATION_AGENT",
-        "data_agent": "DATA_AGENT",
-        "judge": "JUDGE",
-    }
+    ROLE_KEYS = PLANNER_ROLE_KEYS
     MODEL_FAMILIES = [item["name"] for item in model_architecture_catalog()]
     AUGMENTATIONS = [
         "none",
@@ -99,7 +88,7 @@ class OpenAIPlanner:
         self.name = planner_name or self.name
         self.default_api_key = api_key
         self._client_cache: dict[tuple[str, str, str, str], OpenAI] = {}
-        self._opencode_model_cache: list[str] | None = None
+        self._opencode_models_catalog = OpencodeModelCatalog()
         self.guides = self._load_guides()
         self.mission_brief = (mission_brief or "").strip()
         self.mission_source = mission_source
@@ -303,18 +292,12 @@ class OpenAIPlanner:
         }
 
     def _role_backend(self, role: str) -> str:
-        role_key = self.ROLE_KEYS.get(role, role.upper())
-        return os.getenv(
-            f"AUTOHAR_{role_key}_BACKEND",
-            os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
-        )
+        return role_backend(role)
 
     def _role_api_mode(self, role: str, backend: str) -> str:
-        role_key = self.ROLE_KEYS.get(role, role.upper())
-        return os.getenv(
-            f"AUTOHAR_OPENAI_{role_key}_API_MODE",
-            os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
-        )
+        if backend == "opencode":
+            return "opencode"
+        return role_api_mode(role, self.api_mode)
 
     def _compact_result(self, item: object) -> dict[str, object] | None:
         if not isinstance(item, dict):
@@ -1080,54 +1063,10 @@ class OpenAIPlanner:
         return "\n".join(text_events)
 
     def _default_opencode_model(self) -> str:
-        configured = os.getenv("AUTOHAR_OPENCODE_MODEL", "").strip()
-        if configured:
-            return configured
-        preferred_local = [
-            "qwen/qwen3-30b-a3b-2507",
-            "qwen/qwen3-coder-30b",
-            "openai/gpt-oss-20b",
-        ]
-        models = self._opencode_models()
-        for preferred in preferred_local:
-            if preferred in models:
-                return preferred
-        preferred_remote = [
-            "opencode/gpt-5-nano",
-            "opencode/big-pickle",
-            "opencode/nemotron-3-super-free",
-        ]
-        for preferred in preferred_remote:
-            if preferred in models:
-                return preferred
-        for preferred in preferred_local:
-            return preferred
-        return self.model or "opencode/gpt-5-nano"
+        return self._opencode_models_catalog.default_model(self.model)
 
     def _opencode_models(self) -> list[str]:
-        if self._opencode_model_cache is not None:
-            return self._opencode_model_cache
-        binary = os.getenv(
-            "AUTOHAR_OPENCODE_BIN", os.path.expanduser("~/.opencode/bin/opencode")
-        )
-        try:
-            result = subprocess.run(
-                [binary, "models"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if result.returncode != 0:
-                self._opencode_model_cache = []
-                return self._opencode_model_cache
-            self._opencode_model_cache = [
-                line.strip()
-                for line in result.stdout.splitlines()
-                if line.strip()
-            ]
-        except Exception:
-            self._opencode_model_cache = []
-        return self._opencode_model_cache
+        return self._opencode_models_catalog.models()
 
     def _parse_json_response(self, content: str) -> dict[str, object]:
         content = content.strip()
@@ -1224,71 +1163,14 @@ class OpenAIPlanner:
         return {}
 
     def _role_runtime_config(self, role: str) -> dict[str, str]:
-        role_key = self.ROLE_KEYS.get(role, role.upper())
-        backend = (
-            os.getenv(
-                f"AUTOHAR_{role_key}_BACKEND",
-                os.getenv("AUTOHAR_LLM_BACKEND", "openai"),
-            )
-            .strip()
-            .lower()
+        return role_runtime_config(
+            role,
+            planner_model=self.model,
+            base_url=self.base_url,
+            default_api_key=self.default_api_key,
+            default_api_mode=self.api_mode,
+            default_opencode_model=self._default_opencode_model,
         )
-        if backend == "opencode":
-            return {
-                "backend": backend,
-                "model": os.getenv(
-                    f"AUTOHAR_OPENCODE_{role_key}_MODEL",
-                    os.getenv(
-                        f"AUTOHAR_{role_key}_MODEL",
-                        os.getenv(
-                            "AUTOHAR_OPENCODE_MODEL",
-                            self._default_opencode_model(),
-                        ),
-                    ),
-                ),
-                "base_url": os.getenv(
-                    f"AUTOHAR_OPENCODE_{role_key}_BIN",
-                    os.getenv(
-                        "AUTOHAR_OPENCODE_BIN",
-                        os.path.expanduser("~/.opencode/bin/opencode"),
-                    ),
-                ),
-                "api_key": "",
-                "api_mode": "opencode",
-            }
-        if backend != "openai":
-            raise RuntimeError(
-                f"Unsupported LLM backend '{backend}'. Supported backends: openai, opencode."
-            )
-        return {
-            "backend": backend,
-            "model": os.getenv(
-                f"AUTOHAR_OPENAI_{role_key}_MODEL",
-                os.getenv(
-                    f"AUTOHAR_{role_key}_MODEL",
-                    os.getenv("AUTOHAR_OPENAI_MODEL", self.model),
-                ),
-            ),
-            "base_url": os.getenv(
-                f"AUTOHAR_OPENAI_{role_key}_BASE_URL",
-                os.getenv(f"AUTOHAR_{role_key}_BASE_URL", self.base_url or ""),
-            ),
-            "api_key": os.getenv(
-                f"AUTOHAR_OPENAI_{role_key}_API_KEY",
-                os.getenv(
-                    f"AUTOHAR_{role_key}_API_KEY",
-                    self.default_api_key or os.getenv("OPENAI_API_KEY", ""),
-                ),
-            ),
-            "api_mode": (
-                os.getenv(
-                    f"AUTOHAR_OPENAI_{role_key}_API_MODE",
-                    os.getenv(f"AUTOHAR_{role_key}_API_MODE", self.api_mode),
-                )
-                .strip()
-                .lower()
-            ),
-        }
 
     def _client_for_role(self, role: str) -> tuple[object | None, str, str]:
         runtime = self._role_runtime_config(role)
@@ -2158,7 +2040,7 @@ def build_planner(
     mission_source: str | None = None,
 ) -> OpenAIPlanner:
     load_local_env()
-    backend = os.getenv("AUTOHAR_LLM_BACKEND", "openai").strip().lower()
+    backend = selected_backend()
 
     if backend == "opencode":
         planner = OpenAIPlanner(
@@ -2171,11 +2053,6 @@ def build_planner(
         if not planner.model:
             planner.model = planner._default_opencode_model()
         return planner
-
-    if backend not in {"openai", "opencode"}:
-        raise RuntimeError(
-            f"Unsupported LLM backend '{backend}'. Supported backends: openai, opencode."
-        )
 
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError(
