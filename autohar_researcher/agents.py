@@ -1100,7 +1100,18 @@ class HierarchicalOrchestrator:
         )
 
     def evaluate_round(self, round_results: list[CandidateResult]) -> CandidateResult:
-        return max(round_results, key=lambda result: result.val_score)
+        successful = [
+            result for result in round_results if self._is_successful_result(result)
+        ]
+        candidates = successful or round_results
+        return max(candidates, key=lambda result: result.val_score)
+
+    def _is_successful_result(self, result: CandidateResult) -> bool:
+        if result.details.get("crash") or result.details.get("timeout"):
+            return False
+        if result.score_breakdown.get("crash") or result.score_breakdown.get("timeout"):
+            return False
+        return True
 
     def _evaluate_orchestrator_result(
         self,
@@ -1818,7 +1829,12 @@ class HierarchicalOrchestrator:
         round_results: list[CandidateResult],
         best_result: CandidateResult | None,
     ) -> CandidateResult | None:
-        round_best = self.evaluate_round(round_results)
+        valid_results = [
+            result for result in round_results if self._is_successful_result(result)
+        ]
+        if not valid_results:
+            return None
+        round_best = self.evaluate_round(valid_results)
         if best_result is None or round_best.val_score > best_result.val_score:
             return round_best
         return None
@@ -2298,8 +2314,11 @@ class HierarchicalOrchestrator:
             and abs(result.val_score - round_best.val_score) < 1e-9
         )
         beats_previous_baseline = (
-            previous_baseline_score is None
-            or result.val_score > previous_baseline_score
+            self._is_successful_result(result)
+            and (
+                previous_baseline_score is None
+                or result.val_score > previous_baseline_score
+            )
         )
         accepted_as_new_baseline = (
             accepted_candidate is not None
@@ -2316,7 +2335,9 @@ class HierarchicalOrchestrator:
         else:
             domain_focus = f"composition:{selected_combination or 'orchestrator'}"
 
-        if accepted_as_new_baseline:
+        if not self._is_successful_result(result):
+            decision = "rejected_crash_or_timeout"
+        elif accepted_as_new_baseline:
             decision = "promoted"
         elif not beats_previous_baseline:
             decision = "rejected_below_previous_baseline"
