@@ -1,0 +1,315 @@
+[
+  {
+    "id": "capture_24/tinyhar/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 5,
+        "overlap": 0,
+        "normalization": "none",
+        "balanced_sampling": true
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "capture_24",
+      "variant": "reference",
+      "sources": {
+        "capture": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/README.md",
+          "supports": "10-second wrist-acceleration windows and participant-isolated validation. 10 seconds exceeds this harness limit."
+        },
+        "capture_augment": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/conf/augment/default.yaml",
+          "supports": "Time warp sigma .05, knots 4, probability 1; magnitude warp sigma .05, knots 2, probability 1. Upstream also shifts windows; that shift is not used here."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
+        "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  },
+  {
+    "id": "capture_24/tinyhar/minmax",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 5,
+        "overlap": 0,
+        "normalization": "minmax",
+        "balanced_sampling": true
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "capture_24",
+      "variant": "minmax",
+      "sources": {
+        "capture": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/README.md",
+          "supports": "10-second wrist-acceleration windows and participant-isolated validation. 10 seconds exceeds this harness limit."
+        },
+        "capture_augment": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/conf/augment/default.yaml",
+          "supports": "Time warp sigma .05, knots 4, probability 1; magnitude warp sigma .05, knots 2, probability 1. Upstream also shifts windows; that shift is not used here."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
+        "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  },
+  {
+    "id": "capture_24/tinyhar/augmented",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 5,
+        "overlap": 0,
+        "normalization": "none",
+        "balanced_sampling": true
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "compose",
+        "strength": 0.02,
+        "synthetic": [],
+        "transforms": [
+          {
+            "kind": "time_warp",
+            "params": {
+              "sigma": 0.05,
+              "knots": 4
+            }
+          },
+          {
+            "kind": "magnitude_warp",
+            "params": {
+              "sigma": 0.05,
+              "knots": 2
+            }
+          }
+        ]
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "capture_24",
+      "variant": "augmented",
+      "sources": {
+        "capture": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/README.md",
+          "supports": "10-second wrist-acceleration windows and participant-isolated validation. 10 seconds exceeds this harness limit."
+        },
+        "capture_augment": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/conf/augment/default.yaml",
+          "supports": "Time warp sigma .05, knots 4, probability 1; magnitude warp sigma .05, knots 2, probability 1. Upstream also shifts windows; that shift is not used here."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
+        "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  },
+  {
+    "id": "capture_24/bilstmattention/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 5,
+        "overlap": 0,
+        "normalization": "none",
+        "balanced_sampling": true
+      },
+      "model": {
+        "hidden_dim": 64,
+        "dropout": 0.2,
+        "optimizer": "nadam",
+        "learning_rate": 0.001,
+        "optimizer_eps": 1e-07,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 64,
+        "max_epochs": 150,
+        "patience": 150,
+        "scheduler": "none",
+        "architecture": "bilstmattention",
+        "conv_channels": [
+          256,
+          128,
+          64,
+          32
+        ],
+        "kernel_size": 3,
+        "pool_size": 2,
+        "branch_channels": 3,
+        "head_dropout": 0.5,
+        "classifier_batch_norm": true,
+        "norm_eps": 0.001,
+        "batch_norm_momentum": 0.99
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "capture_24",
+      "variant": "reference",
+      "sources": {
+        "capture": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/README.md",
+          "supports": "10-second wrist-acceleration windows and participant-isolated validation. 10 seconds exceeds this harness limit."
+        },
+        "capture_augment": {
+          "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/conf/augment/default.yaml",
+          "supports": "Time warp sigma .05, knots 4, probability 1; magnitude warp sigma .05, knots 2, probability 1. Upstream also shifts windows; that shift is not used here."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
+        "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
+        "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
+        "file": "bilstmattention.py",
+        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+      }
+    }
+  }
+]

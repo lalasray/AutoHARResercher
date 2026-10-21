@@ -1,0 +1,37 @@
+{
+  "tinyhar": {
+    "repository": "https://github.com/teco-kit/ISWC22-HAR",
+    "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+    "source": "models/TinyHAR.py",
+    "file": "tinyhar.py",
+    "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+  },
+  "tinierhar": {
+    "repository": "https://github.com/zhaxidele/TinierHAR",
+    "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
+    "source": "models/TinierHAR.py",
+    "file": "tinierhar.py",
+    "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
+  },
+  "deepconvlstmattention": {
+    "repository": "https://github.com/teco-kit/ISWC22-HAR",
+    "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+    "source": "models/deepconvlstm_attn.py",
+    "file": "deepconvlstmattention.py",
+    "sha256": "912c563cf4c2eb1e7a0cab48a4df2df3a1d0a32ce8ca6b2a862167135a72743c"
+  },
+  "hart": {
+    "repository": "https://github.com/getalp/Lightweight-Transformer-Models-For-HAR-on-Mobile-Devices",
+    "revision": "0b8b39bbf615c252b9a79a8b121b0665e071dcd4",
+    "source": "model.py",
+    "file": "hart.py",
+    "sha256": "9ec62f3c8b0d7944b0f80d31de37aaa11d41c711c8d31a29e4108a6aad2b340b"
+  },
+  "bilstmattention": {
+    "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
+    "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
+    "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
+    "file": "bilstmattention.py",
+    "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+  }
+}

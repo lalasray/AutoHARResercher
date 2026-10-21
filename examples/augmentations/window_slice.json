@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "window_slice",
+    "params": {
+      "ratio": 0.9
+    }
+  }
+}

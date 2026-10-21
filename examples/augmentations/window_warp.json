@@ -1,0 +1,12 @@
+{
+  "augmentation": {
+    "kind": "window_warp",
+    "params": {
+      "ratio": 0.1,
+      "scales": [
+        0.5,
+        2.0
+      ]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "time_mask",
+    "params": {
+      "ratio": 0.1
+    }
+  }
+}

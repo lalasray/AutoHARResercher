@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "rotation",
+    "params": {
+      "max_angle": 0.5235987755982988
+    }
+  }
+}

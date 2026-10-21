@@ -1,0 +1,295 @@
+[
+  {
+    "id": "unimib_shar/tinyhar/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 3.02,
+        "overlap": 0,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "unimib_shar",
+      "variant": "reference",
+      "sources": {
+        "unimib": {
+          "url": "https://doi.org/10.3390/app7101101",
+          "supports": "151-sample, 50 Hz, event-centred accelerometer segments. Original baselines are not these neural architectures."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  },
+  {
+    "id": "unimib_shar/tinyhar/minmax",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 3.02,
+        "overlap": 0,
+        "normalization": "minmax",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "unimib_shar",
+      "variant": "minmax",
+      "sources": {
+        "unimib": {
+          "url": "https://doi.org/10.3390/app7101101",
+          "supports": "151-sample, 50 Hz, event-centred accelerometer segments. Original baselines are not these neural architectures."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  },
+  {
+    "id": "unimib_shar/tinyhar/augmented",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 3.02,
+        "overlap": 0,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "rotation",
+        "strength": 0.02,
+        "synthetic": [],
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "unimib_shar",
+      "variant": "augmented",
+      "sources": {
+        "unimib": {
+          "url": "https://doi.org/10.3390/app7101101",
+          "supports": "151-sample, 50 Hz, event-centred accelerometer segments. Original baselines are not these neural architectures."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  },
+  {
+    "id": "unimib_shar/bilstmattention/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 3.02,
+        "overlap": 0,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 64,
+        "dropout": 0.2,
+        "optimizer": "nadam",
+        "learning_rate": 0.001,
+        "optimizer_eps": 1e-07,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 64,
+        "max_epochs": 150,
+        "patience": 150,
+        "scheduler": "none",
+        "architecture": "bilstmattention",
+        "conv_channels": [
+          256,
+          128,
+          64,
+          32
+        ],
+        "kernel_size": 3,
+        "pool_size": 2,
+        "branch_channels": 3,
+        "head_dropout": 0.5,
+        "classifier_batch_norm": true,
+        "norm_eps": 0.001,
+        "batch_norm_momentum": 0.99
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "unimib_shar",
+      "variant": "reference",
+      "sources": {
+        "unimib": {
+          "url": "https://doi.org/10.3390/app7101101",
+          "supports": "151-sample, 50 Hz, event-centred accelerometer segments. Original baselines are not these neural architectures."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
+        "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
+        "file": "bilstmattention.py",
+        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+      }
+    }
+  }
+]

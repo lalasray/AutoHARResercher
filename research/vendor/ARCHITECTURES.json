@@ -1,0 +1,147 @@
+{
+  "tinyhar": {
+    "status": "author_code",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/teco-kit/ISWC22-HAR",
+      "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+      "source": "models/TinyHAR.py",
+      "file": "tinyhar.py",
+      "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+    },
+    "architecture": "Original TinyHAR_Model; transformer/FC/LSTM/tnaive configuration, 20 shared filters. Adapter inserts one dimension only.",
+    "training": "Paper Adam 1e-4, batch 256, max 150 epochs. Shared harness uses Macro-F1 early stopping (patience 15). Repository Train_baseline.py instead sets 1e-3 for its DeepConvLSTM experiment; not silently treated as TinyHAR paper setting.",
+    "differences": [
+      "Released convolutions alternate strides 1,2,1,2, unlike the paper prose suggesting stride 2 throughout. Released code is retained.",
+      "Original data splits, normalization, sampling frequency and window sizes are replaced by the user-requested AutoResearcHAR protocol."
+    ]
+  },
+  "tinierhar": {
+    "status": "author_code",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/zhaxidele/TinierHAR",
+      "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
+      "source": "models/TinierHAR.py",
+      "file": "tinierhar.py",
+      "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
+    },
+    "architecture": "Original TinierHAR_Model and configs/model.yaml: 2 pooling blocks + 4 additional residual blocks, 4 initial filters, bidirectional GRU with 16 units per direction, dropout .3.",
+    "training": "train.py: Adam .001, batch 32, 80 epochs; validation-loss plateau LR factor .1 / patience 7; early-stop patience 15. LR schedule is replayed from source-validation training during final train+val refit.",
+    "differences": [
+      "Checkpoint/early-stop objective remains source-validation Macro-F1, rather than author validation loss.",
+      "Original source model constructor updates BN statistics during its dummy shape pass; retained unchanged."
+    ]
+  },
+  "bilstmattention": {
+    "status": "author_architecture_port",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
+      "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
+      "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
+      "file": "bilstmattention.py",
+      "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+    },
+    "architecture": "PyTorch port of the pinned author architecture; see research/modules/architectures/torch_author.py and bilstmattention.py.",
+    "training": "Published preset hyperparameters with PyTorch optimizers and source-validation checkpoint selection.",
+    "differences": [
+      "PyTorch execution, initialization RNG, dropout RNG and optimizer implementation replace TensorFlow. Numerical forward/gradient parity is tested after transferring author weights; this does not establish benchmark reproduction.",
+      "Source-only evaluation, fixed ontology and resampling follow the project protocol."
+    ]
+  },
+  "hart": {
+    "status": "author_architecture_port",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/getalp/Lightweight-Transformer-Models-For-HAR-on-Mobile-Devices",
+      "revision": "0b8b39bbf615c252b9a79a8b121b0665e071dcd4",
+      "source": "model.py",
+      "file": "hart.py",
+      "sha256": "9ec62f3c8b0d7944b0f80d31de37aaa11d41c711c8d31a29e4108a6aad2b340b"
+    },
+    "architecture": "PyTorch port of the pinned author architecture; see research/modules/architectures/torch_author.py and bilstmattention.py.",
+    "training": "Published preset hyperparameters with PyTorch optimizers and source-validation checkpoint selection.",
+    "differences": [
+      "PyTorch execution, initialization RNG, dropout RNG and optimizer implementation replace TensorFlow. Numerical forward/gradient parity is tested after transferring author weights; this does not establish benchmark reproduction.",
+      "Source-only evaluation, fixed ontology and resampling follow the project protocol."
+    ]
+  },
+  "mobilehart": {
+    "status": "author_architecture_port",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/getalp/Lightweight-Transformer-Models-For-HAR-on-Mobile-Devices",
+      "revision": "0b8b39bbf615c252b9a79a8b121b0665e071dcd4",
+      "source": "model.py",
+      "file": "hart.py",
+      "sha256": "9ec62f3c8b0d7944b0f80d31de37aaa11d41c711c8d31a29e4108a6aad2b340b"
+    },
+    "architecture": "PyTorch port of the pinned author architecture; see research/modules/architectures/torch_author.py and bilstmattention.py.",
+    "training": "Published preset hyperparameters with PyTorch optimizers and source-validation checkpoint selection.",
+    "differences": [
+      "PyTorch execution, initialization RNG, dropout RNG and optimizer implementation replace TensorFlow. Numerical forward/gradient parity is tested after transferring author weights; this does not establish benchmark reproduction.",
+      "Source-only evaluation, fixed ontology and resampling follow the project protocol."
+    ]
+  },
+  "deepconvlstmattention": {
+    "status": "published_benchmark_code",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/teco-kit/ISWC22-HAR",
+      "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+      "source": "models/deepconvlstm_attn.py",
+      "file": "deepconvlstmattention.py",
+      "sha256": "912c563cf4c2eb1e7a0cab48a4df2df3a1d0a32ce8ca6b2a862167135a72743c"
+    },
+    "architecture": "Original TECO benchmark DeepConvLSTM_ATTN; no claim that TECO is the original attention paper author.",
+    "training": "Adam .001, batch64, max150/patience15 are shared-harness choices, not a verified original attention-paper recipe.",
+    "differences": [
+      "Auxiliary search alternative, not one of the supplied paper five LOSO baselines."
+    ]
+  },
+  "deepconvlstm": {
+    "status": "framework_port",
+    "framework": "pytorch",
+    "source": {
+      "repository": "https://github.com/STRCWearlab/DeepConvLSTM",
+      "revision": "ea25e34da3a48b151a97bd3502802db547523b7f",
+      "file": "DeepConvLSTM.ipynb"
+    },
+    "architecture": "Four valid5x1/64-filter convolutions, two128-unit peephole LSTMs, last-time-step classifier; cell/gate equations from Lasagne recurrent.py revision5d3c63cb315c50b1cbd27a6bc8664b406f34dd99.",
+    "training": "Paper batch100, RMSProp rho.9, learning rate literally printed 10e-3 (=.01), orthogonal matrix initialization and .5 dropout on dense-layer inputs. Lasagne epsilon1e-6 inside sqrt. Max300 epochs is an explicit reconstruction assumption.",
+    "differences": [
+      "Original Theano/Lasagne runtime unavailable in modern environment; recurrence port checked independently against NumPy equations.",
+      "Inference notebook omits dropout; paper training dropout is applied before final dense layer.",
+      "Exact original training script/seed and framework version not released. Per-gate orthogonal initialization and normal(.1) peephole initialization explicitly combine paper and Lasagne defaults.",
+      "No claim of bit-identical optimizer/kernel results or pretrained-checkpoint compatibility."
+    ]
+  },
+  "spectra": {
+    "status": "paper_reconstruction",
+    "framework": "pytorch",
+    "source": {
+      "paper": "https://arxiv.org/html/2603.26482v1",
+      "sections": "III-A through III-E, equations1\u201311"
+    },
+    "architecture": "Hann-windowed STFT magnitude; depthwise+pointwise Conv2d with BN/ReLU/residual; CxC QKV attention with gamma; temporal projection; BiGRU; attention pooling; dropout/classifier.",
+    "assumptions": {
+      "n_fft": 32,
+      "stft_hop": 16,
+      "center": false,
+      "periodic_hann": true,
+      "conv_blocks": 1,
+      "kernel_size": 3,
+      "conv_filters": 16,
+      "hidden_dim": 16,
+      "dropout": 0.3,
+      "gamma_initial": 0.0,
+      "reshape": "Paper conv output LxFxD does not specify how to recover CxD sensor tokens. Retain C mixed feature maps, then project frequency bins to D features for each channel."
+    },
+    "training": "Paper gives2s windows/50% overlap/50Hz/standardization/cross-entropy. Adam .001, batch64, 150 epochs/patience15 are explicit assumptions; original optimizer/settings are unspecified.",
+    "differences": [
+      "No author code was found. User authorized paper reconstruction.",
+      "Parameter count and reported F1 cannot be asserted identical because key dimensions/reshape are unspecified."
+    ]
+  }
+}

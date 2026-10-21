@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "jitter",
+    "params": {
+      "sigma": 0.03
+    }
+  }
+}

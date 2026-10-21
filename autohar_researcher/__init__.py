@@ -1,2 +1,1 @@
-"""Minimal AutoHARResearcher prototype."""
-
+"""AutoResearcHAR: source-validation-guided pipeline search."""

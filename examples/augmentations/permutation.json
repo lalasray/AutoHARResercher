@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "permutation",
+    "params": {
+      "max_segments": 5
+    }
+  }
+}

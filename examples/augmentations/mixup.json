@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "mixup",
+    "params": {
+      "alpha": 0.2
+    }
+  }
+}

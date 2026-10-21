@@ -1,0 +1,53 @@
+{
+  "repository": "/absolute/path/to/IMUGPT",
+  "python": "/absolute/path/to/IMUGPT-environment/bin/python",
+  "revision": "4b7a73fa7c8b6fdbd18a389b902c0d935a77fc4f",
+  "device": "cuda:0",
+  "vq_checkpoint": "pretrained/VQVAE/net_last.pth",
+  "motion_checkpoint": "pretrained/VQTransformer_corruption05/net_best_fid.pth",
+  "mean": "checkpoints/t2m/VQVAEV3_CB1024_CMT_H1024_NRES3/meta/mean.npy",
+  "std": "checkpoints/t2m/VQVAEV3_CB1024_CMT_H1024_NRES3/meta/std.npy",
+  "sensor_dataset": "realworld",
+  "channel_map": [
+    {
+      "kind": "acc",
+      "joint": "Spine1",
+      "axis": 0,
+      "scale": 1.0
+    },
+    {
+      "kind": "acc",
+      "joint": "Spine1",
+      "axis": 1,
+      "scale": 1.0
+    },
+    {
+      "kind": "acc",
+      "joint": "Spine1",
+      "axis": 2,
+      "scale": 1.0
+    },
+    {
+      "kind": "gyro",
+      "joint": "Spine1",
+      "axis": 0,
+      "scale": 1.0
+    },
+    {
+      "kind": "gyro",
+      "joint": "Spine1",
+      "axis": 1,
+      "scale": 1.0
+    },
+    {
+      "kind": "gyro",
+      "joint": "Spine1",
+      "axis": 2,
+      "scale": 1.0
+    }
+  ],
+  "body_scale": 1.096774193548387,
+  "max_count": 100,
+  "attempts_per_sample": 10,
+  "timeout_seconds": 3600
+}

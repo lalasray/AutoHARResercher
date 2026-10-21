@@ -1,0 +1,9 @@
+{
+  "augmentation": {
+    "kind": "spawner",
+    "params": {
+      "sigma": 0.05,
+      "band_ratio": 0.1
+    }
+  }
+}

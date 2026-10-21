@@ -1,0 +1,45 @@
+{
+  "data": {
+    "sources": [],
+    "window_seconds": 2.56,
+    "overlap": 0.5,
+    "normalization": "standard",
+    "balanced_sampling": false
+  },
+  "model": {
+    "hidden_dim": 64,
+    "dropout": 0.2,
+    "optimizer": "nadam",
+    "learning_rate": 0.001,
+    "optimizer_eps": 1e-07,
+    "optimizer_beta1": 0.9,
+    "optimizer_beta2": 0.999,
+    "weight_decay": 0.0,
+    "loss": "cross_entropy",
+    "label_smoothing": 0.0,
+    "batch_size": 64,
+    "max_epochs": 150,
+    "patience": 150,
+    "scheduler": "none",
+    "architecture": "bilstmattention",
+    "conv_channels": [
+      256,
+      128,
+      64,
+      32
+    ],
+    "kernel_size": 3,
+    "pool_size": 2,
+    "branch_channels": 3,
+    "head_dropout": 0.5,
+    "classifier_batch_norm": true,
+    "norm_eps": 0.001,
+    "batch_norm_momentum": 0.99
+  },
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": []
+  },
+  "code": {}
+}

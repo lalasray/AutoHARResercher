@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "random_guided_warp",
+    "params": {
+      "band_ratio": 0.1
+    }
+  }
+}

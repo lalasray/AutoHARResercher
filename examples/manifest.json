@@ -1,0 +1,17 @@
+{
+  "datasets": {
+    "uci_har": {
+      "sampling_hz": 50,
+      "channels": ["ax", "ay", "az", "gx", "gy", "gz"],
+      "unit_scales": [9.80665, 9.80665, 9.80665, 1, 1, 1],
+      "placement": "waist",
+      "labels": ["walking", "walking_upstairs", "walking_downstairs", "sitting", "standing", "lying"],
+      "label_map": {"1": "walking", "2": "walking_upstairs", "3": "walking_downstairs", "4": "sitting", "5": "standing", "6": "lying"}
+    }
+  },
+  "recordings": [
+    {"dataset": "uci_har", "subject": "1", "session": "1-walk", "path": "../data/subject-1-walk.npy", "label": "1"},
+    {"dataset": "uci_har", "subject": "2", "session": "2-walk", "path": "../data/subject-2-walk.npy", "label": "1"},
+    {"dataset": "uci_har", "subject": "3", "session": "3-walk", "path": "../data/subject-3-walk.npy", "label": "1"}
+  ]
+}

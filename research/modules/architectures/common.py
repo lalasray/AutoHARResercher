@@ -10,16 +10,10 @@ except Exception:  # pragma: no cover
 
 def as_sequence(x, input_channels: int = 1):
     """Return x as [batch, time, channels]."""
-    if x.dim() == 2:
-        batch, features = x.shape
-        channels = max(1, min(input_channels, features))
-        usable = (features // channels) * channels
-        if usable <= 0:
-            return x.unsqueeze(-1)
-        return x[:, :usable].reshape(batch, usable // channels, channels)
-    if x.dim() == 3:
-        return x
-    raise ValueError("Expected input shaped [batch, features] or [batch, time, channels]")
+    if x.dim() != 3 or x.shape[-1] != input_channels:
+        raise ValueError("Expected [batch, time, configured channels]")
+    return x
+
 
 
 class TemporalAttention(torch.nn.Module if torch is not None else object):

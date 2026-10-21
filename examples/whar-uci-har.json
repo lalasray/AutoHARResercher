@@ -1,0 +1,14 @@
+{
+  "datasets": {
+    "uci_har": {
+      "raw_dir": "../data/whar/uci_har/data",
+      "sampling_hz": 50,
+      "source_columns": ["total_acc_x", "total_acc_y", "total_acc_z", "body_gyro_x", "body_gyro_y", "body_gyro_z"],
+      "channels": ["ax", "ay", "az", "gx", "gy", "gz"],
+      "unit_scales": [9.80665, 9.80665, 9.80665, 1, 1, 1],
+      "placement": "waist",
+      "labels": ["walking", "walking_upstairs", "walking_downstairs", "sitting", "standing", "lying"],
+      "label_map": {"Walking": "walking", "Walking Upstairs": "walking_upstairs", "Walking Downstairs": "walking_downstairs", "Sitting": "sitting", "Standing": "standing", "Laying": "lying"}
+    }
+  }
+}

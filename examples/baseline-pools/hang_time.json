@@ -1,0 +1,285 @@
+[
+  {
+    "id": "hang_time/deepconvlstm/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 1,
+        "overlap": 0.5,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 1024,
+        "dropout": 0.5,
+        "optimizer": "rmsprop",
+        "learning_rate": 0.01,
+        "optimizer_eps": 1e-06,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 100,
+        "max_epochs": 300,
+        "patience": 300,
+        "scheduler": "none",
+        "architecture": "deepconvlstm",
+        "conv_filters": 64,
+        "lstm_layers": 1,
+        "optimizer_alpha": 0.9
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "hang_time",
+      "variant": "reference",
+      "sources": {
+        "hangtime": {
+          "url": "https://ahoelzemann.github.io/hangtime_har/",
+          "supports": "DeepConvLSTM-family baselines use 1-second windows, 50% overlap and one recurrent layer with 1024 hidden units."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "DeepConvLSTM uses one 1024-unit recurrent layer, inspired by the dataset benchmark; the Lasagne port is not the Hang-Time authors’ exact model implementation.",
+        "Standardization, min-max and rotation are candidate adaptations; source-validation selects among them."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/STRCWearlab/DeepConvLSTM",
+        "revision": "ea25e34da3a48b151a97bd3502802db547523b7f",
+        "file": "DeepConvLSTM.ipynb"
+      }
+    }
+  },
+  {
+    "id": "hang_time/deepconvlstm/minmax",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 1,
+        "overlap": 0.5,
+        "normalization": "minmax",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 1024,
+        "dropout": 0.5,
+        "optimizer": "rmsprop",
+        "learning_rate": 0.01,
+        "optimizer_eps": 1e-06,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 100,
+        "max_epochs": 300,
+        "patience": 300,
+        "scheduler": "none",
+        "architecture": "deepconvlstm",
+        "conv_filters": 64,
+        "lstm_layers": 1,
+        "optimizer_alpha": 0.9
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "hang_time",
+      "variant": "minmax",
+      "sources": {
+        "hangtime": {
+          "url": "https://ahoelzemann.github.io/hangtime_har/",
+          "supports": "DeepConvLSTM-family baselines use 1-second windows, 50% overlap and one recurrent layer with 1024 hidden units."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "DeepConvLSTM uses one 1024-unit recurrent layer, inspired by the dataset benchmark; the Lasagne port is not the Hang-Time authors’ exact model implementation.",
+        "Standardization, min-max and rotation are candidate adaptations; source-validation selects among them."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/STRCWearlab/DeepConvLSTM",
+        "revision": "ea25e34da3a48b151a97bd3502802db547523b7f",
+        "file": "DeepConvLSTM.ipynb"
+      }
+    }
+  },
+  {
+    "id": "hang_time/deepconvlstm/augmented",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 1,
+        "overlap": 0.5,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 1024,
+        "dropout": 0.5,
+        "optimizer": "rmsprop",
+        "learning_rate": 0.01,
+        "optimizer_eps": 1e-06,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 100,
+        "max_epochs": 300,
+        "patience": 300,
+        "scheduler": "none",
+        "architecture": "deepconvlstm",
+        "conv_filters": 64,
+        "lstm_layers": 1,
+        "optimizer_alpha": 0.9
+      },
+      "augmentation": {
+        "kind": "rotation",
+        "strength": 0.02,
+        "synthetic": [],
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "hang_time",
+      "variant": "augmented",
+      "sources": {
+        "hangtime": {
+          "url": "https://ahoelzemann.github.io/hangtime_har/",
+          "supports": "DeepConvLSTM-family baselines use 1-second windows, 50% overlap and one recurrent layer with 1024 hidden units."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "DeepConvLSTM uses one 1024-unit recurrent layer, inspired by the dataset benchmark; the Lasagne port is not the Hang-Time authors’ exact model implementation.",
+        "Standardization, min-max and rotation are candidate adaptations; source-validation selects among them."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/STRCWearlab/DeepConvLSTM",
+        "revision": "ea25e34da3a48b151a97bd3502802db547523b7f",
+        "file": "DeepConvLSTM.ipynb"
+      }
+    }
+  },
+  {
+    "id": "hang_time/tinyhar/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 1,
+        "overlap": 0.5,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "hang_time",
+      "variant": "reference",
+      "sources": {
+        "hangtime": {
+          "url": "https://ahoelzemann.github.io/hangtime_har/",
+          "supports": "DeepConvLSTM-family baselines use 1-second windows, 50% overlap and one recurrent layer with 1024 hidden units."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "DeepConvLSTM uses one 1024-unit recurrent layer, inspired by the dataset benchmark; the Lasagne port is not the Hang-Time authors’ exact model implementation.",
+        "Standardization, min-max and rotation are candidate adaptations; source-validation selects among them."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  }
+]

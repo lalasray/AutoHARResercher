@@ -1,0 +1,334 @@
+[
+  {
+    "id": "wisdm/tinierhar/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 4,
+        "overlap": 0.5,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 16,
+        "dropout": 0.3,
+        "optimizer": "adam",
+        "learning_rate": 0.001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 32,
+        "max_epochs": 80,
+        "patience": 15,
+        "scheduler": "plateau_validation_loss",
+        "architecture": "tinierhar",
+        "conv_filters": 4,
+        "depth": 4,
+        "lr_patience": 7,
+        "lr_factor": 0.1
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "wisdm",
+      "variant": "reference",
+      "sources": {
+        "tinier_data": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/configs/data.yaml",
+          "supports": "Dataset-specific window durations for WISDM, UCI, HAPT, USC-HAD, MotionSense and UTD-MHAD-W."
+        },
+        "tinier_train": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/train.py",
+          "supports": "Standardization, natural sampling, Adam .001 and the TinierHAR training schedule."
+        },
+        "tinier_window": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/dataloader_base.py",
+          "supports": "Half-window displacement in the time-domain loader."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/zhaxidele/TinierHAR",
+        "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
+        "source": "models/TinierHAR.py",
+        "file": "tinierhar.py",
+        "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
+      }
+    }
+  },
+  {
+    "id": "wisdm/tinierhar/minmax",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 4,
+        "overlap": 0.5,
+        "normalization": "minmax",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 16,
+        "dropout": 0.3,
+        "optimizer": "adam",
+        "learning_rate": 0.001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 32,
+        "max_epochs": 80,
+        "patience": 15,
+        "scheduler": "plateau_validation_loss",
+        "architecture": "tinierhar",
+        "conv_filters": 4,
+        "depth": 4,
+        "lr_patience": 7,
+        "lr_factor": 0.1
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "wisdm",
+      "variant": "minmax",
+      "sources": {
+        "tinier_data": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/configs/data.yaml",
+          "supports": "Dataset-specific window durations for WISDM, UCI, HAPT, USC-HAD, MotionSense and UTD-MHAD-W."
+        },
+        "tinier_train": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/train.py",
+          "supports": "Standardization, natural sampling, Adam .001 and the TinierHAR training schedule."
+        },
+        "tinier_window": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/dataloader_base.py",
+          "supports": "Half-window displacement in the time-domain loader."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/zhaxidele/TinierHAR",
+        "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
+        "source": "models/TinierHAR.py",
+        "file": "tinierhar.py",
+        "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
+      }
+    }
+  },
+  {
+    "id": "wisdm/tinierhar/augmented",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 4,
+        "overlap": 0.5,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 16,
+        "dropout": 0.3,
+        "optimizer": "adam",
+        "learning_rate": 0.001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 32,
+        "max_epochs": 80,
+        "patience": 15,
+        "scheduler": "plateau_validation_loss",
+        "architecture": "tinierhar",
+        "conv_filters": 4,
+        "depth": 4,
+        "lr_patience": 7,
+        "lr_factor": 0.1
+      },
+      "augmentation": {
+        "kind": "rotation",
+        "strength": 0.02,
+        "synthetic": [],
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "wisdm",
+      "variant": "augmented",
+      "sources": {
+        "tinier_data": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/configs/data.yaml",
+          "supports": "Dataset-specific window durations for WISDM, UCI, HAPT, USC-HAD, MotionSense and UTD-MHAD-W."
+        },
+        "tinier_train": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/train.py",
+          "supports": "Standardization, natural sampling, Adam .001 and the TinierHAR training schedule."
+        },
+        "tinier_window": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/dataloader_base.py",
+          "supports": "Half-window displacement in the time-domain loader."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/zhaxidele/TinierHAR",
+        "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
+        "source": "models/TinierHAR.py",
+        "file": "tinierhar.py",
+        "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
+      }
+    }
+  },
+  {
+    "id": "wisdm/tinyhar/reference",
+    "pipeline": {
+      "data": {
+        "sources": [],
+        "window_seconds": 2,
+        "overlap": 0.5,
+        "normalization": "standard",
+        "balanced_sampling": false
+      },
+      "model": {
+        "hidden_dim": 20,
+        "dropout": 0.1,
+        "optimizer": "adam",
+        "learning_rate": 0.0001,
+        "optimizer_eps": 1e-08,
+        "optimizer_beta1": 0.9,
+        "optimizer_beta2": 0.999,
+        "weight_decay": 0.0,
+        "loss": "cross_entropy",
+        "label_smoothing": 0.0,
+        "batch_size": 256,
+        "max_epochs": 150,
+        "patience": 15,
+        "scheduler": "none",
+        "architecture": "tinyhar"
+      },
+      "augmentation": {
+        "kind": "none",
+        "strength": 0.02,
+        "synthetic": []
+      },
+      "code": {}
+    },
+    "evidence": {
+      "dataset": "wisdm",
+      "variant": "reference",
+      "sources": {
+        "tinier_data": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/configs/data.yaml",
+          "supports": "Dataset-specific window durations for WISDM, UCI, HAPT, USC-HAD, MotionSense and UTD-MHAD-W."
+        },
+        "tinier_train": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/train.py",
+          "supports": "Standardization, natural sampling, Adam .001 and the TinierHAR training schedule."
+        },
+        "tinier_window": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/dataloader_base.py",
+          "supports": "Half-window displacement in the time-domain loader."
+        },
+        "tinier_normalize": {
+          "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+          "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+        },
+        "augmentation": {
+          "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+          "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+        },
+        "paper": {
+          "url": "https://doi.org/10.1145/3830727.3834823",
+          "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+        }
+      },
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "researched_on": "2026-10-21",
+      "architecture_source": {
+        "repository": "https://github.com/teco-kit/ISWC22-HAR",
+        "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
+        "source": "models/TinyHAR.py",
+        "file": "tinyhar.py",
+        "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
+      }
+    }
+  }
+]

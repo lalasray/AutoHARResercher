@@ -1,59 +1,70 @@
-"""DeepConvLSTM architecture for wearable HAR.
+"""Port of the STRCWearlab Lasagne reference graph, including LSTM peepholes.
 
-Faithful pattern: four temporal convolution layers without pooling followed by
-stacked LSTM layers and a classifier, adapted to this repo's build_model API.
+Four valid 5×1 convolutions, two peephole LSTMs, final-step classification.
+Lasagne gate order (input, forget, cell, output) are retained.
+This is a framework port, not the original Theano runtime/checkpoint format.
 """
-
-from __future__ import annotations
-
-try:
-    import torch
-except Exception:  # pragma: no cover
-    torch = None
-
-from research.modules.architectures.common import as_sequence
+import torch
+from torch import nn
+from .common import as_sequence
 
 
-ARCHITECTURE_NAME = "deepconvlstm"
-
-
-class DeepConvLSTM(torch.nn.Module if torch is not None else object):
-    def __init__(self, input_dim: int, num_classes: int, params: dict[str, object]):
+class PeepholeLSTM(nn.Module):
+    def __init__(self, inputs, hidden):
         super().__init__()
-        self.input_channels = int(params.get("input_channels", 1))
-        conv_filters = int(params.get("conv_filters", params.get("hidden_dim", 64)))
-        lstm_units = int(params.get("hidden_dim", 64))
-        lstm_layers = max(1, int(params.get("lstm_layers", 2)))
-        dropout = float(params.get("dropout", 0.0))
-        conv_layers: list[torch.nn.Module] = []
-        channels = self.input_channels
-        for _ in range(4):
-            conv_layers.extend(
-                [
-                    torch.nn.Conv1d(channels, conv_filters, kernel_size=5, padding=2),
-                    torch.nn.ReLU(),
-                ]
-            )
-            channels = conv_filters
-        self.conv = torch.nn.Sequential(*conv_layers)
-        self.lstm = torch.nn.LSTM(
-            input_size=conv_filters,
-            hidden_size=lstm_units,
-            num_layers=lstm_layers,
-            batch_first=True,
-            dropout=dropout if lstm_layers > 1 else 0.0,
-        )
-        self.classifier = torch.nn.Linear(lstm_units, num_classes)
+        self.hidden = hidden
+        self.weight_ih = nn.Parameter(torch.empty(inputs, 4 * hidden))
+        self.weight_hh = nn.Parameter(torch.empty(hidden, 4 * hidden))
+        self.bias = nn.Parameter(torch.zeros(4 * hidden))
+        self.peepholes = nn.Parameter(torch.empty(3, hidden))
+        for weight in (self.weight_ih, self.weight_hh):
+            for gate in weight.chunk(4, dim=1):
+                nn.init.orthogonal_(gate)
+        nn.init.normal_(self.peepholes, std=.1)
 
     def forward(self, x):
-        sequence = as_sequence(x, self.input_channels).transpose(1, 2)
-        features = self.conv(sequence).transpose(1, 2)
-        recurrent, _ = self.lstm(features)
-        return self.classifier(recurrent[:, -1, :])
+        h = x.new_zeros(x.shape[0], self.hidden)
+        c = torch.zeros_like(h)
+        outputs = []
+        projected = x @ self.weight_ih + self.bias
+        for value in projected.unbind(1):
+            i, f, candidate, o = (value + h @ self.weight_hh).chunk(4, dim=-1)
+            i = torch.sigmoid(i + c * self.peepholes[0])
+            f = torch.sigmoid(f + c * self.peepholes[1])
+            c = f * c + i * torch.tanh(candidate)
+            h = torch.sigmoid(o + c * self.peepholes[2]) * torch.tanh(c)
+            outputs.append(h)
+        return torch.stack(outputs, dim=1)
 
 
-def build_model(input_dim: int, num_classes: int, params: dict[str, object]):
-    del input_dim
-    if torch is None:
-        raise RuntimeError("PyTorch is required for deepconvlstm")
-    return DeepConvLSTM(input_dim=1, num_classes=num_classes, params=params)
+class DeepConvLSTM(nn.Module):
+    def __init__(self, num_classes, params):
+        super().__init__()
+        self.channels = params['input_channels']
+        filters, hidden = params.get('conv_filters', 64), params.get('hidden_dim', 128)
+        conv = []
+        incoming = 1
+        for _ in range(4):
+            layer = nn.Conv2d(incoming, filters, (5, 1))
+            nn.init.orthogonal_(layer.weight)
+            nn.init.zeros_(layer.bias)
+            conv.extend([layer, nn.ReLU()])
+            incoming = filters
+        self.conv = nn.Sequential(*conv)
+        layers = params.get('lstm_layers', 2)
+        self.lstm = nn.ModuleList([PeepholeLSTM(filters * self.channels if i == 0 else hidden, hidden)
+                                  for i in range(layers)])
+        self.dropout = nn.Dropout(params.get('dropout', .5))
+        self.classifier = nn.Linear(hidden, num_classes)
+        nn.init.orthogonal_(self.classifier.weight)
+        nn.init.zeros_(self.classifier.bias)
+
+    def forward(self, x):
+        x = self.conv(as_sequence(x, self.channels).unsqueeze(1)).permute(0, 2, 1, 3).flatten(2)
+        for layer in self.lstm:
+            x = layer(x)
+        return self.classifier(self.dropout(x[:, -1]))
+
+
+def build_model(input_dim, num_classes, params):
+    return DeepConvLSTM(num_classes, params)

@@ -1,0 +1,29 @@
+{
+  "augmentation": {
+    "kind": "compose",
+    "transforms": [
+      {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      {
+        "kind": "magnitude_warp",
+        "params": {
+          "sigma": 0.1,
+          "knots": 4
+        },
+        "probability": 0.5
+      }
+    ],
+    "mixing": {
+      "kind": "mixup",
+      "params": {
+        "alpha": 0.2
+      },
+      "probability": 0.5
+    }
+  }
+}

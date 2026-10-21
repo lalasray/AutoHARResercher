@@ -1,0 +1,389 @@
+{
+  "schema_version": 1,
+  "researched_on": "2026-10-21",
+  "selection": "Highest source-validation macro-F1 within each fold/seed; never use test scores. Candidate fits consume the shared total budget.",
+  "limitations": [
+    "Candidate order is deterministic, not a ranking of published scores.",
+    "All candidate combinations obey fixed ontology, channels, physical units and 50 Hz resampling.",
+    "Source-backed components do not imply the entire combination has published performance. No pretrained weights are used."
+  ],
+  "sources": {
+    "tinier_data": {
+      "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/configs/data.yaml",
+      "supports": "Dataset-specific window durations for WISDM, UCI, HAPT, USC-HAD, MotionSense and UTD-MHAD-W."
+    },
+    "tinier_train": {
+      "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/train.py",
+      "supports": "Standardization, natural sampling, Adam .001 and the TinierHAR training schedule."
+    },
+    "tinier_normalize": {
+      "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/utils.py",
+      "supports": "Standardization and min-max normalization implementations; min-max is a candidate, not the training default."
+    },
+    "tinier_window": {
+      "url": "https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/dataloaders/dataloader_base.py",
+      "supports": "Half-window displacement in the time-domain loader."
+    },
+    "uci": {
+      "url": "https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones",
+      "supports": "2.56-second windows at 50 Hz, 50% overlap, and already-filtered released inertial signals."
+    },
+    "unimib": {
+      "url": "https://doi.org/10.3390/app7101101",
+      "supports": "151-sample, 50 Hz, event-centred accelerometer segments. Original baselines are not these neural architectures."
+    },
+    "hangtime": {
+      "url": "https://ahoelzemann.github.io/hangtime_har/",
+      "supports": "DeepConvLSTM-family baselines use 1-second windows, 50% overlap and one recurrent layer with 1024 hidden units."
+    },
+    "capture": {
+      "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/README.md",
+      "supports": "10-second wrist-acceleration windows and participant-isolated validation. 10 seconds exceeds this harness limit."
+    },
+    "capture_augment": {
+      "url": "https://github.com/OxWearables/capture24/blob/f861b44f5675cb3e8294cd3d560d7a71a749616f/conf/augment/default.yaml",
+      "supports": "Time warp sigma .05, knots 4, probability 1; magnitude warp sigma .05, knots 2, probability 1. Upstream also shifts windows; that shift is not used here."
+    },
+    "real_life": {
+      "url": "https://doi.org/10.3390/s20082200",
+      "supports": "Uncontrolled smartphone orientation/placement; source benchmark uses SVM features, not these neural architectures."
+    },
+    "real_life_correction": {
+      "url": "https://doi.org/10.3390/s20164650",
+      "supports": "Corrected 20-second segmentation and dataset results; 20 seconds exceeds this harness limit."
+    },
+    "hart": {
+      "url": "https://github.com/getalp/Lightweight-Transformer-Models-For-HAR-on-Mobile-Devices",
+      "supports": "Sensor-wise HART and MobileHART architectures and training code; fixed six-channel MobileHART adapter uses 128 samples."
+    },
+    "augmentation": {
+      "url": "https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c",
+      "supports": "Wearable-signal augmentation mechanisms; candidate strengths/probabilities below are local hypotheses unless noted."
+    },
+    "paper": {
+      "url": "https://doi.org/10.1145/3830727.3834823",
+      "supports": "Benchmark architecture families, dataset scope and source-only selection. Does not disclose an exact initial pipeline per dataset."
+    }
+  },
+  "datasets": {
+    "wisdm": {
+      "window_seconds": 4,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "tinierhar",
+        "tinyhar"
+      ],
+      "sources": [
+        "tinier_data",
+        "tinier_train",
+        "tinier_window",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "alternative_window_seconds": 2
+    },
+    "hapt": {
+      "window_seconds": 4,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "tinierhar",
+        "bilstmattention"
+      ],
+      "sources": [
+        "tinier_data",
+        "tinier_train",
+        "tinier_window",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 1-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "alternative_window_seconds": 1
+    },
+    "usc_had": {
+      "window_seconds": 4,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "tinierhar",
+        "deepconvlstm"
+      ],
+      "sources": [
+        "tinier_data",
+        "tinier_train",
+        "tinier_window",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "alternative_window_seconds": 2
+    },
+    "utd_mhad": {
+      "window_seconds": 4,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "tinierhar",
+        "deepconvlstm"
+      ],
+      "sources": [
+        "tinier_data",
+        "tinier_train",
+        "tinier_window",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "alternative_window_seconds": 2
+    },
+    "motion_sense": {
+      "window_seconds": 4,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "tinierhar",
+        "bilstmattention"
+      ],
+      "sources": [
+        "tinier_data",
+        "tinier_train",
+        "tinier_window",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "Time duration preserved while resampling to the protected 50 Hz; source-only fitted statistics and person-isolated validation replace author evaluation splits.",
+        "Rotation and min-max candidates are local combinations of cited methods, not reported optimal pipelines.",
+        "Model settings use the pinned architecture presets; channel count follows the fixed task.",
+        "The second architecture uses a local 2.56-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "alternative_window_seconds": 2.56
+    },
+    "uci_har": {
+      "window_seconds": 2.56,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "bilstmattention",
+        "tinierhar"
+      ],
+      "sources": [
+        "uci",
+        "tinier_data",
+        "tinier_train",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "Uses supplied inertial channels without reapplying gravity/noise filters.",
+        "Min-max and conservative rotation are validation candidates, not claimed author-optimal settings."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      }
+    },
+    "unimib_shar": {
+      "window_seconds": 3.02,
+      "overlap": 0,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "tinyhar",
+        "bilstmattention"
+      ],
+      "sources": [
+        "unimib",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      }
+    },
+    "hang_time": {
+      "window_seconds": 1,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "deepconvlstm",
+        "tinyhar"
+      ],
+      "sources": [
+        "hangtime",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "DeepConvLSTM uses one 1024-unit recurrent layer, inspired by the dataset benchmark; the Lasagne port is not the Hang-Time authors’ exact model implementation.",
+        "Standardization, min-max and rotation are candidate adaptations; source-validation selects among them."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      },
+      "model_overrides": {
+        "deepconvlstm": {
+          "hidden_dim": 1024,
+          "lstm_layers": 1
+        }
+      }
+    },
+    "capture_24": {
+      "window_seconds": 5,
+      "overlap": 0,
+      "normalization": "none",
+      "balanced_sampling": true,
+      "models": [
+        "tinyhar",
+        "bilstmattention"
+      ],
+      "sources": [
+        "capture",
+        "capture_augment",
+        "tinier_normalize",
+        "paper"
+      ],
+      "adaptations": [
+        "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
+        "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
+      ],
+      "augmentation": {
+        "kind": "compose",
+        "transforms": [
+          {
+            "kind": "time_warp",
+            "params": {
+              "sigma": 0.05,
+              "knots": 4
+            }
+          },
+          {
+            "kind": "magnitude_warp",
+            "params": {
+              "sigma": 0.05,
+              "knots": 2
+            }
+          }
+        ]
+      }
+    },
+    "real_life_har": {
+      "window_seconds": 5,
+      "overlap": 0.5,
+      "normalization": "standard",
+      "balanced_sampling": false,
+      "models": [
+        "bilstmattention",
+        "tinyhar"
+      ],
+      "sources": [
+        "real_life",
+        "real_life_correction",
+        "tinier_normalize",
+        "augmentation",
+        "paper"
+      ],
+      "adaptations": [
+        "The source SVM benchmark uses 20-second windows; 5 seconds is an explicit adaptation to the protected maximum.",
+        "Uses the manifest’s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
+        "Model/normalization/rotation combinations are validation hypotheses drawn from the supplied benchmark and cited method sources, not published winning pipelines."
+      ],
+      "augmentation": {
+        "kind": "rotation",
+        "params": {
+          "max_angle": 0.3
+        },
+        "probability": 0.5
+      }
+    }
+  }
+}

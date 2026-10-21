@@ -1,56 +1,26 @@
-"""DeepConvLSTM plus context-vector temporal attention."""
+"""TECO TinyHAR benchmark's DeepConvLSTM-attention implementation.
 
-from __future__ import annotations
-
-try:
-    import torch
-except Exception:  # pragma: no cover
-    torch = None
-
-from research.modules.architectures.common import TemporalAttention, as_sequence
+This is explicitly the TECO benchmark variant, not an assertion that it is
+Murahari & Ploetz's original implementation.
+"""
+from torch import nn
+from research.vendor.deepconvlstmattention import DeepConvLSTM_ATTN
+from .common import as_sequence
 
 
-ARCHITECTURE_NAME = "deepconvlstmattention"
-
-
-class DeepConvLSTMAttention(torch.nn.Module if torch is not None else object):
-    def __init__(self, input_dim: int, num_classes: int, params: dict[str, object]):
+class DeepConvLSTMAttention(nn.Module):
+    def __init__(self, input_dim, num_classes, params):
         super().__init__()
-        self.input_channels = int(params.get("input_channels", 1))
-        conv_filters = int(params.get("conv_filters", params.get("hidden_dim", 80)))
-        lstm_units = int(params.get("hidden_dim", 80))
-        lstm_layers = max(1, int(params.get("lstm_layers", 2)))
-        dropout = float(params.get("dropout", 0.0))
-        conv_layers: list[torch.nn.Module] = []
-        channels = self.input_channels
-        for _ in range(4):
-            conv_layers.extend(
-                [
-                    torch.nn.Conv1d(channels, conv_filters, kernel_size=5, padding=2),
-                    torch.nn.ReLU(),
-                ]
-            )
-            channels = conv_filters
-        self.conv = torch.nn.Sequential(*conv_layers)
-        self.lstm = torch.nn.LSTM(
-            input_size=conv_filters,
-            hidden_size=lstm_units,
-            num_layers=lstm_layers,
-            batch_first=True,
-            dropout=dropout if lstm_layers > 1 else 0.0,
-        )
-        self.attention = TemporalAttention(lstm_units)
-        self.classifier = torch.nn.Linear(lstm_units, num_classes)
+        self.channels = params['input_channels']
+        self.original = DeepConvLSTM_ATTN((1, 1, input_dim // self.channels, self.channels), num_classes, 1,
+            {'nb_conv_blocks': 2, 'nb_filters': params.get('conv_filters', 64),
+             'dilation': 1, 'batch_norm': 0, 'filter_width': 5,
+             'nb_layers_lstm': params.get('lstm_layers', 2),
+             'nb_units_lstm': params.get('hidden_dim', 128), 'drop_prob': params.get('dropout', .5)})
 
     def forward(self, x):
-        sequence = as_sequence(x, self.input_channels).transpose(1, 2)
-        features = self.conv(sequence).transpose(1, 2)
-        recurrent, _ = self.lstm(features)
-        return self.classifier(self.attention(recurrent))
+        return self.original(as_sequence(x, self.channels).unsqueeze(1))
 
 
-def build_model(input_dim: int, num_classes: int, params: dict[str, object]):
-    del input_dim
-    if torch is None:
-        raise RuntimeError("PyTorch is required for deepconvlstmattention")
-    return DeepConvLSTMAttention(input_dim=1, num_classes=num_classes, params=params)
+def build_model(input_dim, num_classes, params):
+    return DeepConvLSTMAttention(input_dim, num_classes, params)

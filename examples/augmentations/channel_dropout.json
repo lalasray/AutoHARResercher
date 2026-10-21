@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "channel_dropout",
+    "params": {
+      "rate": 0.1
+    }
+  }
+}

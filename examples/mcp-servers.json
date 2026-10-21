@@ -1,0 +1,13 @@
+{
+  "text": {
+    "command": "/absolute/path/to/AutoHARResercher/.venv/bin/python",
+    "args": [
+      "-m",
+      "autohar_researcher.imugpt_mcp",
+      "--config",
+      "/absolute/path/to/imugpt-server.json"
+    ],
+    "tool": "generate_imu",
+    "timeout_seconds": 3700
+  }
+}

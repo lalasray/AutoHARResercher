@@ -1,0 +1,185 @@
+{
+  "status": "literature-informed reconstruction; not recovered author experiment settings",
+  "paper": "https://doi.org/10.1145/3830727.3834823",
+  "paper_explicit": {
+    "max_rounds": 100,
+    "max_candidates": 300,
+    "seeds": [
+      13,
+      37,
+      73,
+      101,
+      131
+    ],
+    "source_validation_fraction": 0.2,
+    "sampling_hz": 50,
+    "window_seconds_bounds": [
+      1,
+      5
+    ],
+    "overlap_bounds": [
+      0,
+      0.75
+    ],
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "max_output_tokens": 4096,
+    "judge_minimums": {
+      "novelty": 2,
+      "plausibility": 3,
+      "compatibility": 4
+    }
+  },
+  "reconstructed": {
+    "architecture": {
+      "name": "bilstmattention",
+      "conv_channels": [
+        256,
+        128,
+        64,
+        32
+      ],
+      "kernel_size": 3,
+      "pool_size": 2,
+      "hidden_dim": 64,
+      "recurrent_layers_per_branch": 2,
+      "bidirectional": true,
+      "residual": true,
+      "branch_channels": 3,
+      "source": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention/blob/b192a743c28b5c1d94a19117d8fce6587d936fcc/1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
+      "note": "PyTorch port of author model definitions; PyTorch NAdam optimizer. Task dimensions adapt complete sensor-triplet branch count and attention length; exact UCI reference geometry is128x9 with6classes."
+    },
+    "training": {
+      "optimizer": "nadam",
+      "learning_rate": 0.001,
+      "batch_size": 64,
+      "max_epochs": 150,
+      "patience": 150,
+      "optimizer_eps": 1e-07,
+      "optimizer_beta1": 0.9,
+      "optimizer_beta2": 0.999,
+      "source": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention/blob/b192a743c28b5c1d94a19117d8fce6587d936fcc/1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
+      "note": "Reference150-epoch horizon and PyTorch NAdam; source-validation Macro-F1 replaces official-test validation accuracy."
+    },
+    "windowing": {
+      "seconds": 2.56,
+      "overlap": 0.5,
+      "source": "https://archive.ics.uci.edu/dataset/240/human+activity+recognition+using+smartphones"
+    },
+    "split_seed": {
+      "value": 13,
+      "reason": "Seeded person cycle for clarified LOSO; fixed 80/20 source split for LODO. Exact original membership unpublished."
+    },
+    "normalization": "source-training per-channel standardization",
+    "regularization": {
+      "dropout": 0.2,
+      "head_dropout": 0.5,
+      "weight_decay": 0,
+      "label_smoothing": 0,
+      "source": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention/blob/b192a743c28b5c1d94a19117d8fce6587d936fcc/1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
+    },
+    "synthetic": {
+      "baseline": "real-only",
+      "optional_count_per_class": 100,
+      "optional_synthetic_to_real_ratio_cap": 0.25,
+      "video_selection": "all",
+      "note": "Counts, ratios and prompt text are reconstruction choices; generator internals remain upstream-owned."
+    }
+  },
+  "upstream_generators": {
+    "text": "https://github.com/ZikangLeng/IMUGPT",
+    "video": "https://github.com/hyeokhyen/imutube",
+    "note": "The supplied paper's MCP deployment is not published. This project implements an IMUGPT stdio server against official revision 4b7a73fa7c8b6fdbd18a389b902c0d935a77fc4f, using categorical T2M-GPT motion sampling, skeleton IK, and ideal IMUSim acceleration/gyroscope channels at 50 Hz. Owner-configured sensor placement, channel mapping, pretrained assets and a separate CUDA environment are required. Real model generation remains unverified. IMUTube requires official access: contact its original authors."
+  },
+  "user_clarifications": {
+    "loso": "One test person, next distinct person in a seeded cyclic order for validation, all remaining people train. Cycle every person once in each held-out role. Overrides the paper source-validation fraction for LOSO."
+  },
+  "baseline_selection": {
+    "selected": "bilstmattention",
+    "criterion": "Highest equally weighted mean of real-only LOSO Macro-F1 columns in supplied paper Table 2; fixed literature-informed choice, not an empirical claim for new folds.",
+    "evidence": "https://doi.org/10.1145/3830727.3834823",
+    "dataset_order": [
+      "wisdm",
+      "uci_har",
+      "utd_mhad",
+      "hapt",
+      "usc_had",
+      "unimib_shar",
+      "motion_sense",
+      "real_life_har",
+      "hang_time",
+      "capture_24"
+    ],
+    "published_real_only_scores_percent": {
+      "tinyhar": [
+        82.8,
+        95.1,
+        63.0,
+        82.2,
+        74.8,
+        77.6,
+        91.4,
+        82.6,
+        46.9,
+        50.3
+      ],
+      "deepconvlstm": [
+        82.9,
+        95.5,
+        51.4,
+        85.4,
+        75.4,
+        84.1,
+        91.6,
+        77.6,
+        45.2,
+        50.4
+      ],
+      "tinierhar": [
+        81.3,
+        95.5,
+        61.5,
+        82.6,
+        73.5,
+        77.5,
+        91.7,
+        69.3,
+        46.5,
+        50.1
+      ],
+      "spectra": [
+        83.6,
+        94.8,
+        65.0,
+        84.0,
+        71.2,
+        82.0,
+        91.8,
+        80.0,
+        46.0,
+        50.0
+      ],
+      "bilstmattention": [
+        85.7,
+        97.4,
+        68.6,
+        84.8,
+        74.0,
+        82.5,
+        91.2,
+        81.0,
+        48.5,
+        49.0
+      ]
+    },
+    "mean_macro_f1_percent": {
+      "tinyhar": 74.67,
+      "deepconvlstm": 73.95,
+      "tinierhar": 72.95,
+      "spectra": 74.84,
+      "bilstmattention": 76.27
+    },
+    "scope": "Literature rationale for the explicit BiLSTM-Attention template, not automatic dataset-specific selection."
+  },
+  "configuration_scope": "This file documents the explicit examples/baseline.json reference template. Automatic search initialization uses research/baseline_registry.json and source-validation selection."
+}

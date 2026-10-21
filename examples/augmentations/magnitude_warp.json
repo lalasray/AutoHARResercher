@@ -1,0 +1,9 @@
+{
+  "augmentation": {
+    "kind": "magnitude_warp",
+    "params": {
+      "sigma": 0.2,
+      "knots": 4
+    }
+  }
+}

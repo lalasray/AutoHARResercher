@@ -1,0 +1,17 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "per_class": {
+      "walking": {
+        "kind": "compose",
+        "transforms": [
+          {"kind": "rotation", "params": {"max_angle": 0.2}, "probability": 0.5},
+          {"kind": "jitter", "params": {"sigma": 0.01}, "probability": 0.3}
+        ],
+        "mixing": {"kind": "mixup", "params": {"alpha": 0.2}, "probability": 0.25}
+      },
+      "sitting": {"kind": "none"},
+      "standing": {"kind": "scaling", "params": {"sigma": 0.05}, "probability": 0.2}
+    }
+  }
+}

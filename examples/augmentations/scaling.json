@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "scaling",
+    "params": {
+      "sigma": 0.1
+    }
+  }
+}

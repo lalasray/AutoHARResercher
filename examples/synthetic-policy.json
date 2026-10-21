@@ -1,0 +1,13 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {"generator": "text", "label": "walking", "count": 100, "ratio": 0.25, "prompt": "An adult walks forward on level ground at a natural pace, with alternating foot contacts and natural arm swing. Waist-mounted inertial sensing."},
+      {"generator": "text", "label": "walking_upstairs", "count": 100, "ratio": 0.25, "prompt": "An adult continuously ascends a staircase step by step at a natural pace. Waist-mounted inertial sensing."},
+      {"generator": "text", "label": "walking_downstairs", "count": 100, "ratio": 0.25, "prompt": "An adult continuously descends a staircase step by step at a natural pace. Waist-mounted inertial sensing."},
+      {"generator": "text", "label": "sitting", "count": 100, "ratio": 0.25, "prompt": "An adult remains seated upright on a chair with small natural posture movements, without standing up. Waist-mounted inertial sensing."},
+      {"generator": "text", "label": "standing", "count": 100, "ratio": 0.25, "prompt": "An adult remains standing in place with small natural postural sway, without walking or sitting. Waist-mounted inertial sensing."}
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "data": {
+    "sources": [],
+    "window_seconds": 2.0,
+    "overlap": 0.5,
+    "normalization": "standard",
+    "balanced_sampling": false
+  },
+  "model": {
+    "hidden_dim": 16,
+    "dropout": 0.3,
+    "optimizer": "adam",
+    "learning_rate": 0.001,
+    "optimizer_eps": 1e-08,
+    "optimizer_beta1": 0.9,
+    "optimizer_beta2": 0.999,
+    "weight_decay": 0.0,
+    "loss": "cross_entropy",
+    "label_smoothing": 0.0,
+    "batch_size": 64,
+    "max_epochs": 150,
+    "patience": 15,
+    "scheduler": "none",
+    "architecture": "spectra",
+    "conv_filters": 16,
+    "kernel_size": 3,
+    "n_fft": 32,
+    "stft_hop": 16
+  },
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": []
+  },
+  "code": {}
+}

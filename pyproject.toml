@@ -1,25 +1,15 @@
 [project]
 name = "autohar-researcher"
-version = "0.1.0"
-description = "Minimal multi-agent auto-research prototype for IMU-based HAR."
+version = "0.2.0"
+description = "Source-validation-guided multi-agent IMU HAR pipeline search"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = [
-    "openai>=1.0.0",
-    "numpy>=1.24.0",
-]
+dependencies = ["numpy>=1.24", "scipy>=1.10", "torch>=2.0", "einops>=0.6"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-]
-torch = [
-    "torch>=2.0.0",
-]
-whar = [
-    "whar-datasets @ git+https://github.com/teco-kit/whar-datasets.git",
-]
+dev = ["pytest>=7"]
+mcp = ["mcp>=1.0"]
+whar = ["whar-datasets @ git+https://github.com/teco-kit/whar-datasets.git"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -27,9 +17,15 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-
-[tool.setuptools.package-data]
-autohar_researcher = ["py.typed"]
+include = ["autohar_researcher*", "research*"]
 
 [project.scripts]
 autohar = "autohar_researcher.main:main"
+autohar-imugpt-mcp = "autohar_researcher.imugpt_mcp:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+"research" = ["baseline_registry.json"]
+"research.vendor" = ["*.json", "*.txt"]

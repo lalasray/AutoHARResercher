@@ -1,146 +1,85 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
+from research.modules.architectures.presets import model_defaults
 
-@dataclass(frozen=True)
-class CandidateConfig:
-    model_name: str
-    preprocessing: str
-    augmentation: str
-    augmentation_strength: str
-    learning_rate: float
-    window_size: int
-    model_params: dict[str, float | int | str | bool] = field(default_factory=dict)
-    data_params: dict[str, float | int | str | bool] = field(default_factory=dict)
-    augmentation_params: dict[str, float | int | str] = field(default_factory=dict)
-    notes: str = ""
+ROLES = ('data', 'model', 'augmentation')
+SEEDS = (13, 37, 73, 101, 131)
+LOSO_DATASETS = ('wisdm', 'uci_har', 'utd_mhad', 'hapt', 'usc_had',
+                 'unimib_shar', 'motion_sense', 'real_life_har', 'hang_time', 'capture_24')
+LODO_DATASETS = ('uci_har', 'motion_sense', 'real_life_har')
+LODO_LABELS = ('walking', 'walking_upstairs', 'walking_downstairs', 'sitting', 'standing')
 
 
 @dataclass
-class CandidateResult:
-    round_id: int
-    agent_name: str
-    branch_name: str
-    worktree_path: str
-    config: CandidateConfig
-    val_score: float
-    summary: str
-    score_breakdown: dict[str, float] = field(default_factory=dict)
-    details: dict[str, object] = field(default_factory=dict)
-    component_summaries: dict[str, str] = field(default_factory=dict)
-    artifact_paths: dict[str, str] = field(default_factory=dict)
-    accepted: bool = False
-    best_so_far_score: float = 0.0
+class Pipeline:
+    # Reference template for explicit configurations; automatic search uses the dataset registry.
+    data: dict[str, Any] = field(default_factory=lambda: {
+        'sources': [], 'window_seconds': 2.56, 'overlap': 0.5,
+        'normalization': 'standard', 'balanced_sampling': False,
+    })
+    model: dict[str, Any] = field(default_factory=model_defaults)
+    augmentation: dict[str, Any] = field(default_factory=lambda: {
+        'kind': 'none', 'strength': 0.02, 'synthetic': [],
+    })
+    # Candidate-owned executable files; never edits the evaluator's checkout.
+    code: dict[str, str] = field(default_factory=dict)
+
+    def payload(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: dict) -> Pipeline:
+        if set(value) - {'data', 'model', 'augmentation', 'code'}:
+            raise ValueError('Unknown pipeline sections')
+        result = cls()
+        if 'architecture' in value.get('model', {}):
+            result.model = model_defaults(value['model']['architecture'])
+        for name in ('data', 'model', 'augmentation', 'code'):
+            if name in value:
+                getattr(result, name).update(value[name])
+        return result
 
 
 @dataclass(frozen=True)
-class FilePatch:
-    file_path: str
-    content: str
-    patch_mode: str = "full_rewrite"
-    rationale: str = ""
+class Proposal:
+    role: str
+    changes: dict[str, Any]
+    files: dict[str, str]
+    rationale: str
+    dependencies: tuple[str, ...] = ()
+    validation: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
-class ModelProposal:
-    model_name: str
-    learning_rate: float
-    model_params: dict[str, float | int | str | bool] = field(default_factory=dict)
-    notes: str = ""
-    logic_expression: str = ""
-    helper_code: str = ""
-    function_rewrite: str = ""
-    file_patches: list[FilePatch] = field(default_factory=list)
+class Judgment:
+    novelty: int
+    plausibility: int
+    compatibility: int
+    rationale: str = ''
+
+    @property
+    def eligible(self) -> bool:
+        scores = (self.novelty, self.plausibility, self.compatibility)
+        return (all(type(s) is int and 1 <= s <= 5 for s in scores)
+                and self.novelty >= 2 and self.plausibility >= 3
+                and self.compatibility >= 4)
 
 
 @dataclass(frozen=True)
-class AugmentationProposal:
-    augmentation: str
-    strength: str
-    notes: str = ""
-    logic_expression: str = ""
-    helper_code: str = ""
-    function_rewrite: str = ""
-    file_patches: list[FilePatch] = field(default_factory=list)
+class Evaluation:
+    score: float
+    dataset_scores: dict[str, float]
+    best_epoch: int
 
 
-@dataclass(frozen=True)
-class DataProposal:
-    preprocessing: str
-    window_size: int
-    data_params: dict[str, float | int | str | bool] = field(default_factory=dict)
-    notes: str = ""
-    logic_expression: str = ""
-    helper_code: str = ""
-    function_rewrite: str = ""
-    file_patches: list[FilePatch] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class AgentWorkspace:
-    agent_name: str
-    branch_name: str
-    worktree_path: str
-
-
-@dataclass(frozen=True)
-class GitAction:
-    label: str
-    command: str
-
-
-@dataclass(frozen=True)
-class RunOutputs:
-    trial_history_csv: str
-    trial_history_svg: str
-    accepted_history_csv: str
-    accepted_history_svg: str
-    active_mission_md: str = ""
-    latest_promotion_artifact: str = ""
-
-
-@dataclass(frozen=True)
-class ModelPlanHint:
-    model_name: str
-    learning_rate: float
-    model_params: dict[str, float | int | str | bool] = field(default_factory=dict)
-    rationale: str = ""
-    logic_expression: str = ""
-    helper_code: str = ""
-    function_rewrite: str = ""
-    file_patches: list[FilePatch] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class AugmentationPlanHint:
-    augmentation: str
-    strength: str
-    rationale: str = ""
-    logic_expression: str = ""
-    helper_code: str = ""
-    function_rewrite: str = ""
-    file_patches: list[FilePatch] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class DataPlanHint:
-    preprocessing: str
-    window_size: int
-    data_params: dict[str, float | int | str | bool] = field(default_factory=dict)
-    rationale: str = ""
-    logic_expression: str = ""
-    helper_code: str = ""
-    function_rewrite: str = ""
-    file_patches: list[FilePatch] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class ProposalJudgment:
-    agent_name: str
-    mutation_size: str
-    novelty: str
-    plausibility: str
-    compatibility: str
-    evaluate_now: bool
-    rationale: str = ""
+@dataclass
+class Outcome:
+    round: int
+    origin: tuple[str, ...]
+    status: str
+    pipeline: dict | None = None
+    evaluation: Evaluation | None = None
+    reason: str = ''

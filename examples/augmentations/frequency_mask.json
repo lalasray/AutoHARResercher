@@ -1,0 +1,8 @@
+{
+  "augmentation": {
+    "kind": "frequency_mask",
+    "params": {
+      "ratio": 0.1
+    }
+  }
+}
