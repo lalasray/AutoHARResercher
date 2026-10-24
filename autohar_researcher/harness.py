@@ -52,9 +52,9 @@ class Normalizer:
         return ((x - self.mean) / self.scale).astype(np.float32)
 
 
-def custom_functions(pipeline: Pipeline, role: str) -> dict:
+def custom_functions(pipeline: Pipeline, role: str, bindings=None) -> dict:
     source = pipeline.code.get(OWNED_FILES[role])
-    namespace = {}
+    namespace = {'component_params': copy.deepcopy(getattr(pipeline, role).get('custom_params', {})), **(bindings or {})}
     if source:
         # Static checks are a correctness boundary, not an OS security sandbox.
         exec(compile(source, OWNED_FILES[role], 'exec'), namespace)
@@ -82,6 +82,8 @@ class HARHarness:
         self._evaluations: dict[str, list[int]] = {}
         self._lr_schedules: dict[str, list[float]] = {}
         self._last_lr_schedule: list[float] = []
+        self._validation_diagnostics: dict = {}
+        self._preprocessing_states: dict = {}
         self.output.mkdir(parents=True, exist_ok=True)
 
     @property
@@ -102,16 +104,15 @@ class HARHarness:
     def _build_model(self, p: Pipeline):
         model_provenance(p.model, 'research/components/model.py' in p.code)
         params = dict(p.model, input_channels=len(self.task.channels), seed=self.seed, device=self.device)
-        custom = custom_functions(p, 'model')
+        name = p.model['architecture']
+        if not name.isidentifier() or name.startswith('_'):
+            raise ValueError('Invalid architecture module')
+        module = importlib.import_module(f'research.modules.architectures.{name}')
+        factory = module.build_model
+        custom = custom_functions(p, 'model', {'baseline_model': factory})
         if 'build_model' in custom:
             factory = custom['build_model']
-        else:
-            name = p.model['architecture']
-            if not name.isidentifier() or name.startswith('_'):
-                raise ValueError('Invalid architecture module')
-            module = importlib.import_module(f'research.modules.architectures.{name}')
-            factory = module.build_model
-        return factory(round(p.data['window_seconds'] * 50) * len(self.task.channels),
+        return factory(round(p.data['window_seconds'] * self.task.sampling_hz) * len(self.task.channels),
                        len(self.task.labels), params).to(self.device)
 
     def preflight(self, p: Pipeline) -> None:
@@ -119,9 +120,14 @@ class HARHarness:
         import torch
         validate_pipeline(p, self.sources)
         self._seed()
+        custom = custom_functions(p, 'data')
+        if 'fit_preprocessor' in custom or 'transform' in custom:
+            training_x, _, _ = windows(self._records(p, fit=False), self.task.labels,
+                                       p.data['window_seconds'], p.data['overlap'], sampling_hz=self.task.sampling_hz)
+            self._fit_preprocessor(p, training_x)
         from research.augmentations import validate_class_names
         validate_class_names(p.augmentation, self.task.labels)
-        length = round(p.data['window_seconds'] * 50)
+        length = round(p.data['window_seconds'] * self.task.sampling_hz)
         count = max(2, len(self.task.labels))
         labels = torch.arange(count, device=self.device) % len(self.task.labels)
         x = np.zeros((count, length, len(self.task.channels)), dtype=np.float32)
@@ -142,7 +148,7 @@ class HARHarness:
                 raise ValueError('Requested MCP generator is not configured')
         # Class coverage/source eligibility cannot be inferred from tensor checks.
         train = self._records(p, fit=False)
-        _, y, _ = windows(train, self.task.labels, p.data['window_seconds'], p.data['overlap'])
+        _, y, _ = windows(train, self.task.labels, p.data['window_seconds'], p.data['overlap'], sampling_hz=self.task.sampling_hz)
         self._validation_arrays(p)
         counts = np.bincount(y, minlength=len(self.task.labels))
         ratios = p.data.get('class_ratios', {})
@@ -158,7 +164,7 @@ class HARHarness:
         records = self.task.train + (self.task.validation if fit else ())
         return tuple(r for r in records if r.dataset in selected)
 
-    def _preprocess(self, p: Pipeline, x: np.ndarray) -> np.ndarray:
+    def _preprocess_stateless(self, p: Pipeline, x: np.ndarray) -> np.ndarray:
         custom = custom_functions(p, 'data')
         if 'preprocess' in custom:
             result = np.asarray(custom['preprocess'](x.copy()), dtype=np.float32)
@@ -167,13 +173,62 @@ class HARHarness:
             return result
         return x
 
+    @staticmethod
+    def _check_preprocessing_state(state):
+        if state is None or isinstance(state, (str, bool, int)):
+            return
+        if isinstance(state, (float, np.number)):
+            if not np.isfinite(state):
+                raise ValueError('Preprocessor state must be finite')
+            return
+        if isinstance(state, np.ndarray):
+            if state.dtype.kind not in 'biuf' or not np.isfinite(state).all():
+                raise ValueError('Preprocessor arrays must be finite numeric arrays')
+            return
+        if isinstance(state, dict) and all(isinstance(k, str) for k in state):
+            for value in state.values():
+                HARHarness._check_preprocessing_state(value)
+            return
+        if isinstance(state, (list, tuple)):
+            for value in state:
+                HARHarness._check_preprocessing_state(value)
+            return
+        raise ValueError('Preprocessor state must contain only numeric arrays and plain serializable values')
+
+    def _fit_preprocessor(self, p: Pipeline, training_x: np.ndarray):
+        custom = custom_functions(p, 'data')
+        has_fit, has_transform = 'fit_preprocessor' in custom, 'transform' in custom
+        if has_fit != has_transform:
+            raise ValueError('Fitted preprocessing requires both fit_preprocessor and transform')
+        if has_fit:
+            x = self._preprocess_stateless(p, training_x)
+            state = custom['fit_preprocessor'](x.copy(), copy.deepcopy(p.data.get('custom_params', {})))
+            self._check_preprocessing_state(state)
+            self._preprocessing_states[self._key(p)] = copy.deepcopy(state)
+
+    def _preprocess(self, p: Pipeline, x: np.ndarray) -> np.ndarray:
+        result = self._preprocess_stateless(p, x)
+        custom = custom_functions(p, 'data')
+        if 'transform' in custom or 'fit_preprocessor' in custom:
+            if 'transform' not in custom or 'fit_preprocessor' not in custom:
+                raise ValueError('Fitted preprocessing requires both fit_preprocessor and transform')
+            if self._key(p) not in self._preprocessing_states:
+                raise ValueError('Preprocessor must be fitted on training data before transform')
+            state = copy.deepcopy(self._preprocessing_states[self._key(p)])
+            result = np.asarray(custom['transform'](result.copy(), state), dtype=np.float32)
+            if result.shape != x.shape or not np.isfinite(result).all():
+                raise ValueError('Fitted preprocessing must preserve finite time/channel tensors')
+        return result
+
     def _augment(self, p, x, rng, labels=None, normalizer=None):
         import torch
         from research.torch_augmentations import augment
         x = torch.as_tensor(x, dtype=torch.float32, device=self.device)
         if p.augmentation['kind'] != 'custom':
             return augment(x, p.augmentation, rng, labels, normalizer, self.task.labels)
-        result = custom_functions(p, 'augmentation')['augment'](x.clone(), rng)
+        custom = custom_functions(p, 'augmentation', {'activity_labels': self.task.labels})
+        result = (custom['augment_labeled'](x.clone(), labels.clone(), rng)
+                  if 'augment_labeled' in custom else custom['augment'](x.clone(), rng))
         if not isinstance(result, torch.Tensor) or result.device != x.device:
             raise ValueError('Custom augmentation must return a PyTorch tensor on the input device')
         if result.shape != x.shape or not torch.isfinite(result).all():
@@ -183,7 +238,7 @@ class HARHarness:
 
     def _training_arrays(self, p: Pipeline, fit: bool):
         records = self._records(p, fit)
-        x, y, _ = windows(records, self.task.labels, p.data['window_seconds'], p.data['overlap'])
+        x, y, _ = windows(records, self.task.labels, p.data['window_seconds'], p.data['overlap'], sampling_hz=self.task.sampling_hz)
         rng = np.random.default_rng(self.seed)
         selected = []
         for i, label in enumerate(self.task.labels):
@@ -191,6 +246,7 @@ class HARHarness:
             count = int(len(indices) * p.data.get('class_ratios', {}).get(label, 1))
             selected.extend(rng.permutation(indices)[:count])
         x, y = x[selected], y[selected]
+        self._fit_preprocessor(p, x)
         x = self._preprocess(p, x)
         # Refit from source train+validation only in final stage.
         normalizer = Normalizer(p.data['normalization']).fit(x)
@@ -198,7 +254,7 @@ class HARHarness:
         for request in p.augmentation['synthetic']:
             if self.generator is None:
                 raise ValueError('Synthetic generation requires an MCP server')
-            generated = self.generator.generate(request, x.shape[1], x.shape[2], self.seed)
+            generated = self.generator.generate(request, x.shape[1], x.shape[2], self.seed, sampling_hz=self.task.sampling_hz)
             generated = self._preprocess(p, generated)
             class_count = int(real_counts[self.task.labels.index(request['label'])])
             count = min(len(generated), int(class_count * request.get('ratio', 1.0)))
@@ -222,6 +278,12 @@ class HARHarness:
         from .optimizers import LasagneRMSprop
         optimizers = {'rmsprop': LasagneRMSprop, 'adam': torch.optim.Adam, 'adamw': torch.optim.AdamW,
                       'nadam': torch.optim.NAdam, 'sgd': torch.optim.SGD}
+        custom = custom_functions(p, 'model')
+        if 'build_optimizer' in custom:
+            optimizer = custom['build_optimizer'](model, copy.deepcopy(p.model))
+            if not isinstance(optimizer, torch.optim.Optimizer):
+                raise ValueError('build_optimizer must return a torch optimizer')
+            return optimizer
         options = {'lr': p.model['learning_rate'], 'weight_decay': p.model['weight_decay']}
         if p.model['optimizer'] != 'sgd':
             options['eps'] = p.model.get('optimizer_eps', 1e-8)
@@ -231,8 +293,16 @@ class HARHarness:
             options['alpha'] = p.model.get('optimizer_alpha', .9)
         return optimizers[p.model['optimizer']](model.parameters(), **options)
 
-    def _fit(self, p: Pipeline, x: np.ndarray, y: np.ndarray, validation=None, epochs=None, normalizer=None):
+    def _fit(self, p: Pipeline, x: np.ndarray, y: np.ndarray, validation=None, epochs=None, normalizer=None, *, uncapped=False, monitor_name='validation_macro_f1', training_monitor=False):
         import torch
+        import time
+        import hashlib
+        if training_monitor:
+            if validation is not None:
+                raise ValueError('Training-loss stopping cannot also monitor a validation/test set')
+            monitor_name = 'training_loss'
+        fit_started = time.monotonic()
+        pipeline_id = hashlib.sha256(self._key(p).encode()).hexdigest()[:12]
         self._seed()
         model = self._build_model(p)
         optimizer = self._optimizer(model, p)
@@ -241,6 +311,13 @@ class HARHarness:
             counts = np.bincount(y, minlength=len(self.task.labels))
             weights = torch.tensor(len(y) / (len(counts) * np.maximum(counts, 1)), dtype=torch.float32, device=self.device)
         criterion = torch.nn.CrossEntropyLoss(weight=weights, label_smoothing=p.model['label_smoothing'])
+        custom = custom_functions(p, 'model')
+        if 'build_loss' in custom:
+            criterion = custom['build_loss'](copy.deepcopy(p.model), weights)
+            if isinstance(criterion, torch.nn.Module):
+                criterion = criterion.to(self.device)
+            if not callable(criterion):
+                raise ValueError('build_loss must return a callable scalar loss')
         rng = torch.Generator(device=self.device).manual_seed(self.seed)
         from .torch_data import batches
         best_score, best_epoch, best_state, stale = -math.inf, 0, None, 0
@@ -248,7 +325,22 @@ class HARHarness:
         schedule_best, schedule_stale = math.inf, 0
         self._last_lr_schedule = []
         replay = self._lr_schedules.get(self._key(p), []) if validation is None else []
-        for epoch in range(1, (epochs or p.model['max_epochs']) + 1):
+        def progress(epoch, validation_score=None):
+            row = {'pipeline_id': pipeline_id, 'architecture': p.model['architecture'],
+                   'stage': ('test_selected' if monitor_name == 'test_macro_f1' else 'source_search') if validation is not None else ('training_selected' if training_monitor else 'final_refit'),
+                   'epoch': epoch, 'max_epochs': None if uncapped else (epochs or p.model['max_epochs']),
+                   'elapsed_seconds': time.monotonic() - fit_started,
+                   monitor_name: validation_score,
+                   'best_' + monitor_name: (-best_score if training_monitor else best_score) if math.isfinite(best_score) else None}
+            with (self.output / 'training-progress.jsonl').open('a') as handle:
+                handle.write(json.dumps(row, allow_nan=False) + '\n')
+            if epoch == 1 or epoch % 10 == 0:
+                print(json.dumps(row), flush=True)
+        if uncapped and validation is None and not training_monitor:
+            raise ValueError('Uncapped training requires an early-stopping monitor')
+        from itertools import count
+        epoch_numbers = count(1) if uncapped else range(1, (epochs or p.model['max_epochs']) + 1)
+        for epoch in epoch_numbers:
             if epoch <= len(replay):
                 for group in optimizer.param_groups:
                     group['lr'] = replay[epoch - 1]
@@ -266,8 +358,31 @@ class HARHarness:
                     raise ValueError('Non-finite training loss')
                 loss.backward()
                 optimizer.step()
+            if training_monitor:
+                # Monitor unaugmented training loss in evaluation mode, avoiding
+                # changes in the random augmentation draw as a stopping signal.
+                model.eval()
+                total_loss, count_samples = 0., 0
+                with torch.no_grad():
+                    for batch, target in batches(x, y, batch_size=batch_size, device=self.device):
+                        value = criterion(model(batch), target)
+                        if not torch.isfinite(value):
+                            raise ValueError('Non-finite monitored training loss')
+                        total_loss += float(value) * len(target)
+                        count_samples += len(target)
+                training_loss = total_loss / count_samples
+                if -training_loss > best_score:
+                    best_score, best_epoch, stale = -training_loss, epoch, 0
+                    best_state = copy.deepcopy(model.state_dict())
+                else:
+                    stale += 1
+                progress(epoch, training_loss)
+                if stale >= p.model['patience']:
+                    break
+                continue
             if validation is None:
                 best_epoch = epoch
+                progress(epoch)
                 continue
             vx, vy, domains = validation
             pred = self._predict(model, vx, batch_size)
@@ -277,6 +392,7 @@ class HARHarness:
                 best_state = copy.deepcopy(model.state_dict())
             else:
                 stale += 1
+            progress(epoch, score)
             if stale >= p.model['patience']:
                 break
             if p.model.get('scheduler') == 'plateau_validation_loss':
@@ -312,7 +428,7 @@ class HARHarness:
 
     def _validation_arrays(self, p: Pipeline):
         arrays = windows(self.task.validation, self.task.labels,
-                         p.data['window_seconds'], p.data['overlap'])
+                         p.data['window_seconds'], p.data['overlap'], sampling_hz=self.task.sampling_hz)
         expected = {r.dataset for r in self.task.validation}
         if set(arrays[2]) != expected:
             raise ValueError('Every fixed source-validation domain must produce windows')
@@ -327,8 +443,20 @@ class HARHarness:
         vx, vy, domains = self._validation_arrays(p)
         vx = normalizer.transform(self._preprocess(p, vx))
         model, epoch = self._fit(p, x, y, (vx, vy, domains), normalizer=normalizer)
-        scores = domain_scores(self._predict(model, vx, p.model['batch_size']), vy,
-                               domains, len(self.task.labels))
+        predictions = self._predict(model, vx, p.model['batch_size'])
+        scores = domain_scores(predictions, vy, domains, len(self.task.labels))
+        confusion = np.zeros((len(self.task.labels), len(self.task.labels)), dtype=int)
+        np.add.at(confusion, (vy, predictions), 1)
+        diagnostics = {'labels': list(self.task.labels), 'confusion_true_rows_predicted_columns': confusion.tolist(),
+                       'training_class_counts': np.bincount(y, minlength=len(self.task.labels)).tolist(),
+                       'validation_class_counts': np.bincount(vy, minlength=len(self.task.labels)).tolist(),
+                       'scope': 'source training and fixed source validation only'}
+        self._validation_diagnostics[self._key(p)] = diagnostics
+        import torch
+        torch.save({'pipeline': p.payload(), 'state': self._preprocessing_states.get(self._key(p)),
+                    'normalization_mean': normalizer.mean, 'normalization_scale': normalizer.scale,
+                    'fit_scope': 'source_training_only'}, self.output / 'preprocessing-state.pt')
+        (self.output / 'validation-diagnostics.json').write_text(json.dumps(diagnostics, indent=2))
         evaluation = Evaluation(float(np.mean(list(scores.values()))), scores, epoch)
         self._evaluations.setdefault(self._key(p), []).append(epoch)
         self._lr_schedules[self._key(p)] = list(self._last_lr_schedule)
@@ -351,7 +479,7 @@ class HARHarness:
         model, _ = self._fit(p, x, y, epochs=fit_epochs, normalizer=normalizer)
         # First access to held-out signal arrays in the entire workflow.
         tx, ty, domains = windows(self.task.test, self.task.labels,
-                                  p.data['window_seconds'], p.data['overlap'])
+                                  p.data['window_seconds'], p.data['overlap'], sampling_hz=self.task.sampling_hz)
         tx = normalizer.transform(self._preprocess(p, tx))
         scores = domain_scores(self._predict(model, tx, p.model['batch_size']), ty,
                                domains, len(self.task.labels))
@@ -361,6 +489,7 @@ class HARHarness:
                   'task_fingerprint': self.task.fingerprint, 'refit_learning_rates': self._last_lr_schedule}
         torch.save({'state_dict': model.state_dict(), 'pipeline': p.payload(),
                     'normalization_mean': normalizer.mean, 'normalization_scale': normalizer.scale,
+                    'preprocessing_state': self._preprocessing_states.get(self._key(p)),
                     'labels': self.task.labels, 'channels': self.task.channels,
                     'framework': getattr(model, 'framework', 'pytorch'),
                     'architecture_provenance': model_provenance(p.model, 'research/components/model.py' in p.code),

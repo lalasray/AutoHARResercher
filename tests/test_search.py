@@ -87,7 +87,7 @@ def test_failed_training_counts_but_invalid_patch_does_not(tmp_path):
     assert any(o.status == 'failed' for o in search.history)
 
 
-@pytest.mark.parametrize('judgment', [Judgment(True, 5, 5), Judgment(2, 2, 5), Judgment(2, 3, 3), Judgment(6, 5, 5)])
+@pytest.mark.parametrize('judgment', [Judgment(True, 5, 5), Judgment(2, 1, 5), Judgment(2, 3, 3), Judgment(6, 5, 5)])
 def test_judge_thresholds(judgment):
     assert not judgment.eligible
 
@@ -132,3 +132,27 @@ def test_single_agent_comparator_uses_same_harness_without_judge(tmp_path):
     assert score.score == .7
     assert selected.model['hidden_dim'] == Pipeline().model['hidden_dim'] + 2
     assert len(harness.calls) == 3
+
+
+def test_exploratory_judge_accepts_coherent_uncertain_hypothesis():
+    assert Judgment(2, 2, 4).eligible
+    assert not Judgment(2, 2, 3).eligible
+
+
+def test_stops_after_target_number_of_improving_rounds(tmp_path):
+    harness = Harness([.5, .6, .7, .65, .64, .63])
+    search = Search(harness, Agents(), tmp_path, rounds=10, budget=30, target_improvements=1)
+    _, score = search.run(Pipeline())
+    assert score.score == .7
+    assert search.improvements == 1
+    assert search.stop_reason == 'target_improvements_reached'
+    assert max(o.round for o in search.history) == 1
+
+
+def test_perfect_validation_stops_unattainable_improvement_target(tmp_path):
+    harness = Harness([1.0])
+    search = Search(harness, Agents(), tmp_path, target_improvements=10)
+    search.run(Pipeline())
+    assert len(harness.calls) == 1
+    assert search.improvements == 0
+    assert search.stop_reason == 'perfect_validation_score_no_further_improvement_possible'

@@ -43,7 +43,7 @@ class BiLSTMAttention(nn.Module):
         super().__init__()
         self.branches=nn.ModuleList([Branch(steps,params.get('kernel_size',3),
             params.get('pool_size',2),params.get('dropout',.2)) for _ in range(channels//3)])
-        self.dropout=nn.Dropout(.5)
+        self.dropout=nn.Dropout(params.get('head_dropout',.5))
         self.output=linear(128*len(self.branches),classes)
         self.norm=BatchNorm(classes)
 
@@ -56,7 +56,7 @@ def build_model(input_dim,num_classes,params):
     channels=params['input_channels']
     steps=input_dim//channels
     fixed={'hidden_dim':64,'conv_channels':[256,128,64,32],'branch_channels':3,
-           'head_dropout':.5,'classifier_batch_norm':True,'norm_eps':.001,'batch_norm_momentum':.99}
+           'classifier_batch_norm':True,'norm_eps':.001,'batch_norm_momentum':.99}
     if channels%3:
         raise ValueError('Author BiLSTM-Attention requires complete sensor triplets')
     for key,value in fixed.items():

@@ -15,7 +15,7 @@ LODO_LABELS = ('walking', 'walking_upstairs', 'walking_downstairs', 'sitting', '
 
 @dataclass
 class Pipeline:
-    # Reference template for explicit configurations; automatic search uses the dataset registry.
+    # Generic starting pipeline shared by every dataset.
     data: dict[str, Any] = field(default_factory=lambda: {
         'sources': [], 'window_seconds': 2.56, 'overlap': 0.5,
         'normalization': 'standard', 'balanced_sampling': False,
@@ -64,7 +64,7 @@ class Judgment:
     def eligible(self) -> bool:
         scores = (self.novelty, self.plausibility, self.compatibility)
         return (all(type(s) is int and 1 <= s <= 5 for s in scores)
-                and self.novelty >= 2 and self.plausibility >= 3
+                and self.novelty >= 2 and self.plausibility >= 2
                 and self.compatibility >= 4)
 
 

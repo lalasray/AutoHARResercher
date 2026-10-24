@@ -87,8 +87,8 @@ def test_lodo_pool_uses_only_source_identity_and_no_target_records():
         def test(self):
             pytest.fail('LODO selection must not access held-out records')
     pool = initial_candidates(Task())
-    assert pool[-1]['id'] == 'lodo/mobilehart/reference'
-    assert all(p['id'].startswith(('uci_har/', 'motion_sense/', 'lodo/')) for p in pool)
+    assert len(pool) == 1 and pool[0]['id'] == 'generic/cnn'
+    assert pool[0]['pipeline']['model']['architecture'] == 'cnn'
     with pytest.raises(ValueError, match='supply --baseline'):
         dataset_candidates('unknown')
 
@@ -132,3 +132,13 @@ def test_cli_dataset_selection_is_source_only_and_records_choice(manifest, tmp_p
     assert metadata['initialization_selected_id'] == report['selected_id']
     assert report['evaluations'] == 4
     assert not (run/'final-test.started').exists()
+
+
+@pytest.mark.parametrize('dataset', LOSO_DATASETS)
+def test_all_datasets_start_from_same_generic_cnn(dataset):
+    pool=initial_candidates(SimpleNamespace(protocol='loso', target=dataset))
+    assert len(pool)==1
+    pipeline=Pipeline.from_dict(pool[0]['pipeline'])
+    assert pipeline.model['architecture']=='cnn'
+    assert pipeline.augmentation['kind']=='none' and not pipeline.code
+    validate_pipeline(pipeline,{dataset})

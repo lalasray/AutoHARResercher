@@ -1,6 +1,6 @@
 # AutoResearcHAR
 
-A reconstruction of the search workflow and evaluation protocol in **AutoResearcHAR: A Multi-Agent Framework for Dataset Adaptive IMU Based Human Activity Recognition**, ISWC 2026, [DOI 10.1145/3830727.3834823](https://doi.org/10.1145/3830727.3834823).
+Search workflow and evaluation protocol in **AutoResearcHAR: A Multi-Agent Framework for Dataset Adaptive IMU Based Human Activity Recognition**, ISWC 2026, [DOI 10.1145/3830727.3834823](https://doi.org/10.1145/3830727.3834823).
 
 The runtime trains sequence models on `[batch, time, channels]` tensors. Search uses source-validation scores, independent proposal review, and MCP-backed text/video generation.
 
@@ -88,21 +88,23 @@ an explicit reconstruction of the unpublished baseline scheduling details.
 
 ## Protocol and search
 
-| Paper requirement | Implementation |
+| Protocol / search aspect | Implementation |
 | --- | --- |
 | Fixed LOSO/LODO protocol | Immutable `Task`; LOSO: one test + one validation person, N−2 training people; LODO: per-source 80/20 subject split |
 | Target isolation | Only documented metadata goes to agents; target arrays are first opened in `finalize` |
 | Harmonization | Fixed channel order/unit conversion and SciPy 50 Hz polyphase FIR resampling |
 | Label space | Predeclared mapping; Macro-F1 includes every fixed class, including absent classes |
-| Data Agent | Eligible source selection, class sampling, normalization, 1–5s windows, 0–75% overlap, bounded preprocessing code |
-| Model Agent | Sequence architecture and bounded model code, optimizer/loss/training settings |
+| Data Agent | Eligible source selection, class sampling, normalization, 0.5–10s windows, 0–95% overlap, preprocessing code |
+| Model Agent | Sequence architecture, activations, model code, custom optimizer/loss hooks and training settings |
 | Augmentation Agent | Training-only transformations and class-specific MCP synthesis requests |
-| Mutation bounds | At most 3 files, 3 changed functions, 8 changed config fields, 120 added/deleted lines per proposal |
-| Judge | Integer 1–5 rubrics; novelty ≥2, plausibility ≥3, compatibility ≥4; malformed responses reject |
+| Mutation bounds | Directed research mode: 3 files, 24 changed functions, 64 configuration fields, 800 changed lines; other modes retain 3 functions / 8 fields / 120 lines |
+| Judge | Integer 1–5 rubrics; novelty ≥2, plausibility ≥2 (exploratory), compatibility ≥4; malformed responses reject |
 | Deterministic checks | Syntax, import availability, ownership, configuration, dependencies, class coverage, tensor shape/finiteness |
 | Composition | Eligible singletons plus Orchestrator-selected compatible subsets, selected before training |
 | Selection | Source-validation Macro-F1; equal source-dataset weighting for LODO; strict improvement only |
 | Final evaluation | Freeze pipeline, refit selected source train+validation, recompute normalization, test once |
+
+`--proposal-mode directed` combines configuration and code edits with a hypothesis-led coverage plan, a concrete experiment ledger, and source-validation confusion matrices/class counts. Its wider edit and window limits are research extensions beyond the paper limits.
 
 Source standardization is fitted before synthetic samples are appended. Validation/test receive neither augmentation nor resampling of subjects. Overlapping windows never cross recording boundaries. Training uses fixed source validation for early stopping; there is no random inner window split.
 
@@ -142,69 +144,20 @@ python -m autohar_researcher.imugpt_mcp --config /absolute/path/to/imugpt-server
 
 ## Starting baseline
 
-Search selects its starting **model + preprocessing/windowing + augmentation**
-combination from a dataset-specific candidate pool. The
-[source registry](research/baseline_registry.json) records primary URLs, pinned
-code revisions, supported settings and explicit adaptations for all ten datasets.
-[Reviewable candidate pools](examples/baseline-pools/) contain complete pipeline
-configurations, including each model's training preset.
+Every dataset starts from the same generic CNN for LOSO and LODO: four
+64-channel temporal convolution layers (kernel size 5), ReLU activations,
+global temporal mean pooling and a linear classifier. The initial pipeline uses
+2.56-second windows, 50% overlap, training-only standardization, natural sampling
+and no augmentation. Training starts with Adam at .001, batch size 64, a maximum
+of 150 epochs and patience 15.
 
-| Dataset | Window durations considered | Architecture candidates |
-|---|---|---|
-| WISDM | 4s, 2s | TinierHAR, TinyHAR |
-| UCI-HAR | 2.56s | BiLSTM-Attention, TinierHAR |
-| UTD-MHAD | 4s, 2s | TinierHAR, DeepConvLSTM |
-| HAPT | 4s, 1s | TinierHAR, BiLSTM-Attention |
-| USC-HAD | 4s, 2s | TinierHAR, DeepConvLSTM |
-| UniMiB-SHAR | 3.02s / 151 samples | TinyHAR, BiLSTM-Attention |
-| MotionSense | 4s, 2.56s | TinierHAR, BiLSTM-Attention |
-| RealLifeHAR | 5s | BiLSTM-Attention, TinyHAR |
-| Hang-Time | 1s | DeepConvLSTM (one 1024-unit recurrent layer), TinyHAR |
-| CAPTURE-24 | 5s | TinyHAR, BiLSTM-Attention |
+The initial fit uses source validation and counts toward the fit budget. Agents
+then optimize the model, preprocessing and augmentation. The default target is
+UCI-HAR; select another dataset with `--target`.
 
-Each LOSO pool has four complete candidates: the first architecture's reference
-configuration, a source-training min-max variant, an augmentation variant, and
-the second architecture. Most reference candidates use source-training channel
-standardization; CAPTURE-24 uses unnormalized physical signals and balanced
-sampling. UniMiB-SHAR and CAPTURE-24 use zero overlap; others use 50%.
-Augmentation candidates use conservative rotation, except CAPTURE-24, whose
-candidate combines time and magnitude warping from its author configuration.
-Different methods, strengths and probabilities remain searchable by the agents.
-
-[TinierHAR's dataset configurations](https://github.com/zhaxidele/TinierHAR/blob/f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f/configs/data.yaml)
-supply several primary window durations. The short comparison windows are local
-hypotheses. [Hang-Time's benchmark](https://ahoelzemann.github.io/hangtime_har/)
-supplies its window/recurrent dimensions.
-[UniMiB-SHAR](https://doi.org/10.3390/app7101101) supplies the event-window geometry.
-[CAPTURE-24](https://github.com/OxWearables/capture24/tree/f861b44f5675cb3e8294cd3d560d7a71a749616f)
-uses 10-second source windows; this pool adapts them to the protected 5-second
-maximum. [RealLifeHAR's correction](https://doi.org/10.3390/s20164650) documents
-20-second source segmentation, also adapted to 5 seconds. These component-based
-candidates are not claims of published optimal combinations or equivalent scores.
-
-Every seed/fold evaluates the compatible candidates on **source validation only**.
-The highest macro-F1 wins; ties keep the first candidate. Failed fits consume
-budget, preflight rejections do not, and the winner is not retrained before agent
-search. All initialization fits count toward the same 300-fit maximum. A budget
-smaller than the planned pool is rejected before fitting; increase `--budget` or
-supply one explicit `--baseline`. Incompatible candidates and failed fits are
-recorded; initialization fails if none succeeds.
-
-For LODO, the pool is the deduplicated union of **source-dataset** candidates plus
-a fixed MobileHART transfer candidate. Target identity, samples, fitted statistics
-and test scores do not determine that pool or its winner. Both search methods use
-the same selection procedure and budget accounting. The selected initialization
-may differ across folds/seeds because validation is different; this is an explicit
-initialization design, not a claim to recover the paper's unpublished starting
-pipeline. Full-dataset results require running these experiments.
-
-Pass `--baseline PATH` to use exactly one supplied pipeline. For example,
-[examples/baseline.json](examples/baseline.json) is the complete BiLSTM-Attention
-configuration, and [examples/baselines](examples/baselines) contains each
-architecture's preset. Its convolution widths are 256/128/64/32, with two residual
-64-unit bidirectional LSTMs, temporal attention and output batch normalization.
-The PyTorch port is checked against pinned author weights; TensorFlow is only an
-optional reference-test dependency.
+Use `--baseline PATH` to override the starting pipeline. The complete default is
+[examples/baseline.json](examples/baseline.json). Other architecture presets and
+source-backed candidate pools remain available as explicit research alternatives.
 
 ## Architecture fidelity
 

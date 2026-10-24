@@ -10,7 +10,7 @@ from autohar_researcher.types import Pipeline
 @pytest.mark.skipif(not torch.cuda.is_available(),reason='CUDA GPU required')
 @pytest.mark.parametrize('architecture',['bilstmattention','hart','mobilehart','tinyhar','tinierhar','deepconvlstm','spectra'])
 def test_cuda_training_inference_and_augmentation(architecture,tmp_path,monkeypatch):
-    task=SimpleNamespace(channels=list(range(6)),labels=['a','b'])
+    task=SimpleNamespace(channels=list(range(6)),labels=['a','b'],sampling_hz=50)
     harness=HARHarness(task,13,tmp_path,device='cuda')
     config=Pipeline.from_dict({'data':{'window_seconds':2.56},
         'model':{'architecture':architecture,'max_epochs':1,'batch_size':4},

@@ -46,7 +46,7 @@ def test_architecture_switch_uses_its_own_defaults():
     assert switched.model == model_defaults('tinierhar')
     assert 'head_dropout' not in switched.model
     assert switched.model['hidden_dim'] == 16 and switched.model['conv_filters'] == 4
-    assert initial.model['architecture'] == 'bilstmattention'
+    assert initial.model['architecture'] == 'cnn'
 
 
 def test_deepconvlstm_peepholes_match_independent_numpy_recurrence():
@@ -172,7 +172,7 @@ def test_lr_schedule_is_replayed_without_validation(manifest, tmp_path):
 def test_torch_port_final_refit_saves_reloadable_original_weights(manifest, tmp_path):
     from autohar_researcher.datasets import make_task
     from autohar_researcher.harness import HARHarness
-    config = Pipeline.from_dict({'data': {'window_seconds': 1}, 'model': {'max_epochs': 1}})
+    config = Pipeline.from_dict({'data': {'window_seconds': 1}, 'model': {'architecture': 'bilstmattention', 'max_epochs': 1}})
     harness = HARHarness(make_task(manifest, 'loso', 'uci_har', '0'), 13, tmp_path, device='cpu')
     harness.evaluate(config)
     result = harness.finalize(config)
@@ -185,3 +185,16 @@ def test_torch_port_final_refit_saves_reloadable_original_weights(manifest, tmp_
     output = model(torch.zeros(2, 50, 6))
     assert torch.isfinite(output).all()
     assert result['refit_learning_rates'] == saved['learning_rates']
+
+
+def test_bilstm_head_dropout_is_tunable_with_author_default():
+    from research.modules.architectures.bilstmattention import build_model
+    params = dict(model_defaults('bilstmattention'), input_channels=6)
+    assert build_model(128 * 6, 5, params).dropout.p == .5
+    model = build_model(128 * 6, 5, dict(params, head_dropout=.3))
+    assert model.dropout.p == .3
+    x = torch.randn(2, 128, 6, requires_grad=True)
+    output = model(x)
+    assert output.shape == (2, 5)
+    output.square().sum().backward()
+    assert torch.isfinite(x.grad).all()

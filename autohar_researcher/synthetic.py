@@ -13,13 +13,13 @@ class MCPGenerator:
     # Configured by the experiment owner; agents cannot edit server/tool identity.
     servers: dict
 
-    def generate(self, request: dict, length: int, channels: int, seed: int = 13) -> np.ndarray:
+    def generate(self, request: dict, length: int, channels: int, seed: int = 13, *, sampling_hz: float = 50) -> np.ndarray:
         kind = request['generator']
         if kind not in self.servers:
             raise ValueError(f'MCP generator {kind!r} is not configured')
         spec = self.servers[kind]
         args = {'label': request['label'], 'count': request['count'],
-                'sampling_hz': 50, 'window_steps': length,
+                'sampling_hz': sampling_hz, 'window_steps': length,
                 'channels': channels, 'seed': seed}
         if kind == 'text':
             args['prompt'] = request['prompt']

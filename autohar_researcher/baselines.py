@@ -1,4 +1,4 @@
-"""Literature-derived initial candidates, selected only through source validation."""
+"""Generic CNN initialization and optional literature-derived candidate catalogs."""
 from copy import deepcopy
 import json
 from pathlib import Path
@@ -38,21 +38,7 @@ def dataset_candidates(dataset):
 
 
 def initial_candidates(task):
-    # LODO pool derives exclusively from eligible SOURCE dataset identities.
-    datasets = [task.target] if task.protocol == 'loso' else sorted({r.dataset for r in task.train})
-    result = []
-    for dataset in datasets:
-        result.extend(dataset_candidates(dataset))
-    if task.protocol == 'lodo':
-        pipeline = Pipeline.from_dict({'model': {'architecture': 'mobilehart'}})
-        result.append({'id': 'lodo/mobilehart/reference', 'pipeline': pipeline.payload(),
-            'evidence': {'sources': {key: registry()['sources'][key] for key in ('hart', 'paper')},
-                         'adaptations': ['Fixed 128-sample/six-channel source-only transfer candidate; target data are not used.']}})
-    unique = {}
-    for item in result:
-        key = json.dumps(item['pipeline'], sort_keys=True)
-        if key in unique:
-            unique[key].setdefault('equivalent_candidates', []).append(item)
-        else:
-            unique[key] = item
-    return list(unique.values())
+    """One generic CNN starting point for every LOSO and LODO experiment."""
+    pipeline = Pipeline.from_dict({'model': {'architecture': 'cnn'}})
+    return [{'id': 'generic/cnn', 'pipeline': pipeline.payload(),
+             'evidence': {'selection': 'Fixed generic CNN initialization for all datasets'}}]

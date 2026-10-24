@@ -28,7 +28,7 @@ Path(sys.argv[sys.argv.index('--output-last-message') + 1]).write_text(json.dump
     result = subprocess.run([sys.executable, '-m', 'autohar_researcher.main', 'search',
             '--manifest', str(manifest), '--protocol', 'loso', '--target', 'uci_har',
             '--subject', '0', '--seeds', '13', '--rounds', '1', '--budget', '2',
-            '--device', 'cpu', '--baseline', str(baseline), '--output', str(output), '--final-test',
+            '--proposal-mode', 'configuration', '--device', 'cpu', '--baseline', str(baseline), '--output', str(output), '--final-test',
             '--backend', 'codex', '--codex-bin', str(backend), '--model', 'test'],
             capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr

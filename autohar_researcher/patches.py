@@ -12,26 +12,28 @@ from research.modules.architectures.presets import model_defaults
 
 OWNED_FILES = {role: f'research/components/{role}.py' for role in ROLES}
 ALLOWED_IMPORTS = {'math', 'numpy', 'torch', 'scipy', 'random'}
-DATA_FIELDS = {'sources', 'window_seconds', 'overlap', 'normalization', 'balanced_sampling', 'class_ratios'}
+DATA_FIELDS = {'sources', 'window_seconds', 'overlap', 'normalization', 'balanced_sampling', 'class_ratios', 'custom_params'}
 MODEL_FIELDS = {'architecture', 'hidden_dim', 'depth', 'dropout', 'optimizer', 'learning_rate',
                 'weight_decay', 'loss', 'label_smoothing', 'batch_size', 'max_epochs', 'patience',
                 'lstm_layers', 'conv_filters', 'attention_mix', 'bidirectional',
                 'conv_channels', 'kernel_size', 'pool_size', 'branch_channels', 'head_dropout',
                 'classifier_batch_norm', 'norm_eps', 'batch_norm_momentum',
-                'optimizer_eps', 'optimizer_beta1', 'optimizer_beta2', 'n_fft', 'stft_hop', 'optimizer_alpha', 'scheduler', 'lr_patience', 'lr_factor'}
-AUGMENTATION_FIELDS = {'kind', 'strength', 'synthetic', 'params', 'probability', 'transforms', 'mixing', 'per_class'}
+                'optimizer_eps', 'optimizer_beta1', 'optimizer_beta2', 'n_fft', 'stft_hop', 'optimizer_alpha', 'scheduler', 'lr_patience', 'lr_factor', 'custom_params'}
+AUGMENTATION_FIELDS = {'kind', 'strength', 'synthetic', 'params', 'probability', 'transforms', 'mixing', 'per_class', 'custom_params'}
 
 
 def validate_pipeline(p: Pipeline, sources: set[str]) -> None:
     for values, fields in ((p.data, DATA_FIELDS), (p.model, MODEL_FIELDS),
                            (p.augmentation, AUGMENTATION_FIELDS)):
+        if 'custom_params' in values and not isinstance(values['custom_params'], dict):
+            raise ValueError('custom_params must be an object')
         if set(values) - fields:
             raise ValueError(f'Unsupported/protected configuration fields: {set(values) - fields}')
     chosen = p.data['sources'] or sorted(sources)
     if not isinstance(chosen, list) or not chosen or not set(chosen) <= sources:
         raise ValueError('Source subset must contain only eligible source datasets')
-    if not 1 <= p.data['window_seconds'] <= 5 or not 0 <= p.data['overlap'] <= .75:
-        raise ValueError('Window/overlap outside paper limits')
+    if not .5 <= p.data['window_seconds'] <= 10 or not 0 <= p.data['overlap'] <= .95:
+        raise ValueError('Window/overlap outside supported 0.5–10s / 0–95% range')
     if p.data['normalization'] not in {'standard', 'minmax', 'none'}:
         raise ValueError('Normalization must be standard, minmax or none')
     ratios = p.data.get('class_ratios', {})
@@ -114,7 +116,7 @@ def _functions(content: str) -> dict[str, str]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
-def check_proposal(base: Pipeline, proposal: Proposal, sources: set[str]) -> dict[str, int]:
+def check_proposal(base: Pipeline, proposal: Proposal, sources: set[str], limits=None) -> dict[str, int]:
     if proposal.role not in ROLES:
         raise ValueError('Unknown specialist')
     if set(proposal.files) - {OWNED_FILES[proposal.role]}:
@@ -123,12 +125,16 @@ def check_proposal(base: Pipeline, proposal: Proposal, sources: set[str]) -> dic
     lines = functions = 0
     for path, new in proposal.files.items():
         old = base.code.get(path, '')
+        if new is None:
+            new = ''
         validate_code(new)
         lines += sum(line.startswith(('+ ', '- ')) for line in difflib.ndiff(old.splitlines(), new.splitlines()))
         old_f, new_f = _functions(old), _functions(new)
         functions += sum(old_f.get(k) != new_f.get(k) for k in old_f.keys() | new_f.keys())
-    if len(proposal.files) > 3 or functions > 3 or changes > 8 or lines > 120:
-        raise ValueError('Mutation exceeds 3 files / 3 functions / 8 fields / 120 changed lines')
+    limits = limits or {'files': 3, 'functions': 3, 'fields': 8, 'lines': 120}
+    size = {'files': len(proposal.files), 'functions': functions, 'fields': changes, 'lines': lines}
+    if any(size[k] > limits[k] for k in size):
+        raise ValueError(f'Mutation exceeds {limits}')
     if not changes and not lines:
         raise ValueError('Duplicate baseline proposal')
     if set(proposal.dependencies) - set(ROLES):
@@ -152,6 +158,11 @@ def compose(base: Pipeline, proposals: list[Proposal], check_dependencies: bool 
         touched.update(p.files)
         if p.role == 'model' and p.changes.get('architecture', result.model['architecture']) != result.model['architecture']:
             result.model = model_defaults(p.changes['architecture'])
+            result.code.pop(OWNED_FILES['model'], None)
         getattr(result, p.role).update(copy.deepcopy(p.changes))
-        result.code.update(p.files)
+        for path, source in p.files.items():
+            if source is None:
+                result.code.pop(path, None)
+            else:
+                result.code[path] = source
     return result

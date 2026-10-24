@@ -25,7 +25,7 @@ PRESETS = {
 GENERIC = ('cnn', 'cnn_gru', 'gru', 'bilstm', 'tiny_transformer')
 
 
-def model_defaults(architecture='bilstmattention'):
+def model_defaults(architecture='cnn'):
     if architecture not in PRESETS and architecture not in GENERIC:
         raise ValueError(f'Unknown architecture: {architecture}')
     return deepcopy(dict(COMMON, architecture=architecture, **PRESETS.get(architecture, {})))

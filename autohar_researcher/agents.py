@@ -26,9 +26,19 @@ class Agents(Protocol):
 
 class Search:
     def __init__(self, harness, agents: Agents, output: Path, rounds: int = 100,
-                 budget: int = 300):
-        if not 1 <= rounds <= 100 or not 1 <= budget <= 300:
+                 budget: int = 300, target_improvements: int | None = None, exploration: bool = False):
+        if type(rounds) is not int or type(budget) is not int or rounds < 1 or budget < 1:
+            raise ValueError('Rounds and empirical evaluation budget must be positive integers')
+        if not exploration and (rounds > 100 or budget > 300):
             raise ValueError('Paper limits are 100 rounds and 300 empirical evaluations')
+        if target_improvements is not None and (type(target_improvements) is not int or target_improvements < 1):
+            raise ValueError('target_improvements must be a positive integer')
+        self.exploration = exploration
+        self.experiment_ledger = []
+        self.stagnant_rounds = 0
+        self.target_improvements = target_improvements
+        self.improvements = 0
+        self.stop_reason = None
         self.harness, self.agents, self.output = harness, agents, output
         self.rounds, self.budget = rounds, budget
         self.evaluated = 0
@@ -45,11 +55,21 @@ class Search:
 
     @staticmethod
     def _key(p: Pipeline):
-        return json.dumps(p.payload(), sort_keys=True)
+        import ast
+        payload = p.payload()
+        payload['code'] = {path: ast.dump(ast.parse(source), include_attributes=False)
+                           for path, source in payload['code'].items()}
+        return json.dumps(payload, sort_keys=True)
 
     def _context(self, baseline: Pipeline, score: Evaluation, round_id: int) -> dict:
         from research.augmentations import catalog
-        return {'starting_point_evidence': getattr(self, 'starting_point_evidence', {}), 'augmentation_catalog': catalog(), 'task': self.harness.task.public_metadata(), 'round': round_id,
+        from pathlib import Path
+        name = baseline.model['architecture']
+        source = Path(__file__).resolve().parents[1] / 'research/modules/architectures' / f'{name}.py'
+        model_source = source.read_text() if name.isidentifier() and source.is_file() else ''
+        from .exploration import summarize
+        from research.modules.architectures.presets import PRESETS
+        return {'source_validation_diagnostics': self.harness._validation_diagnostics.get(self.harness._key(baseline), {}) if hasattr(self.harness, '_validation_diagnostics') else {}, 'architecture_presets': PRESETS, 'model_operation_source': (source.parent / 'torch_author.py').read_text() if self.exploration else '', 'exploration': summarize(self.experiment_ledger, self.stagnant_rounds) if self.exploration else None, 'previous_search_history': getattr(self, 'previous_search_history', []), 'model_source_context': model_source, 'starting_point_evidence': getattr(self, 'starting_point_evidence', {}), 'augmentation_catalog': catalog(), 'task': self.harness.task.public_metadata(), 'round': round_id,
                 'baseline': baseline.payload(), 'baseline_validation': asdict(score),
                 'remaining_evaluations': self.budget - self.evaluated,
                 'history': [asdict(o) for o in self.history[-20:]],
@@ -63,11 +83,30 @@ class Search:
         proposal = self.agents.propose(role, copy.deepcopy(context), copy.deepcopy(plan))
         if proposal.role != role:
             raise ValueError('Specialist returned the wrong role')
-        size = check_proposal(base, proposal, self.harness.sources)
+        from .exploration import LIMITS
+        size = check_proposal(base, proposal, self.harness.sources, limits=LIMITS if self.exploration else None)
+        failed = context.get('exploration', {}).get('failed_ideas', []) if context.get('exploration') else []
+        if failed and hasattr(self.agents, 'review_repeat'):
+            review = self.agents.review_repeat(proposal, copy.deepcopy(context))
+            (self.output / f'repeat-review-{context["round"]:03d}-{role}.json').write_text(json.dumps(review, indent=2))
+            if review['repeat']:
+                raise ValueError('Repeated failed idea: ' + review['reason'])
         judgment = self.agents.judge(proposal, copy.deepcopy(context), copy.deepcopy(plan), size)
         if not judgment.eligible:
             return proposal, judgment, size, False
         return proposal, judgment, size, True
+
+    def _evaluate_batch(self, pipelines):
+        workers = getattr(self.harness, 'candidate_workers', 1)
+        if workers > 1:
+            from .parallel import evaluate_many
+            yield from evaluate_many(self.harness, pipelines, workers, self.harness.worker_threads)
+        else:
+            for pipeline in pipelines:
+                try:
+                    yield self.harness.evaluate(pipeline)
+                except Exception as exc:
+                    yield exc
 
     def _initialize(self, initial):
         explicit = isinstance(initial, Pipeline)
@@ -83,6 +122,7 @@ class Search:
         def persist():
             (self.output / 'initialization.json').write_text(json.dumps(report, indent=2, allow_nan=False))
         persist()
+        pending = []
         for item in items:
             row = copy.deepcopy(item)
             report['candidates'].append(row)
@@ -105,8 +145,11 @@ class Search:
             self.evaluated += 1
             row['status'] = 'training'
             persist()
+            pending.append((item, row, candidate))
+        for (item, row, candidate), score in zip(pending, self._evaluate_batch([x[2] for x in pending])):
             try:
-                score = self.harness.evaluate(candidate)
+                if isinstance(score, Exception):
+                    raise score
                 if not math.isfinite(score.score):
                     raise ValueError('Non-finite baseline score')
             except Exception as exc:
@@ -135,11 +178,21 @@ class Search:
     def run(self, initial) -> tuple[Pipeline, Evaluation]:
         baseline, score = self._initialize(initial)
         for round_id in range(1, self.rounds + 1):
+            if self.target_improvements is not None and self.improvements >= self.target_improvements:
+                self.stop_reason = 'target_improvements_reached'
+                break
+            if self.target_improvements is not None and score.score >= 1.0:
+                self.stop_reason = 'perfect_validation_score_no_further_improvement_possible'
+                break
             if self.evaluated >= self.budget:
+                self.stop_reason = 'fit_budget_exhausted'
                 break
             print(f'Round {round_id}: validation={score.score:.6f}, evaluations={self.evaluated}/{self.budget}', flush=True)
             context = self._context(baseline, score, round_id)
             plan = self.agents.plan(copy.deepcopy(context))
+            if self.exploration:
+                from .exploration import validate_plan
+                validate_plan(plan, context['exploration'])
             eligible = {}
             reviews = {}
             with ThreadPoolExecutor(max_workers=3) as pool:
@@ -149,6 +202,13 @@ class Search:
                     try:
                         proposal, judgment, size, accepted = future.result()
                         reviews[role] = {'proposal': asdict(proposal), 'judgment': asdict(judgment), 'size': size}
+                        if self.exploration:
+                            from .exploration import entry
+                            row = entry(round_id, role, proposal, baseline, plan['hypotheses'][role]['family'])
+                            row['baseline_score'] = score.score
+                            row['baseline_signature'] = hashlib.sha256(json.dumps(baseline.payload(),sort_keys=True).encode()).hexdigest()
+                            row['status'] = 'eligible' if accepted else 'judge_rejected'
+                            self.experiment_ledger.append(row)
                         if accepted:
                             eligible[role] = proposal
                         else:
@@ -171,6 +231,7 @@ class Search:
             (self.output / f'round-{round_id:03d}.json').write_text(json.dumps(
                 {'plan': plan, 'reviews': reviews, 'subsets': subsets}, indent=2))
             candidates = []
+            pending = []
             for subset in subsets:
                 if self.evaluated >= self.budget:
                     break
@@ -185,30 +246,52 @@ class Search:
                     continue
                 self._seen.add(key)
                 self.evaluated += 1  # Failed training attempts still consume budget.
+                pending.append((candidate, subset))
+            for (candidate, subset), result in zip(pending, self._evaluate_batch([x[0] for x in pending])):
                 try:
-                    result = self.harness.evaluate(candidate)
+                    if isinstance(result, Exception):
+                        raise result
                     if not math.isfinite(result.score):
                         raise ValueError('Non-finite validation score')
                     candidates.append((candidate, result, subset))
                     self._record(Outcome(round_id, subset, 'evaluated', candidate.payload(), result))
                 except Exception as exc:
                     self._record(Outcome(round_id, subset, 'failed', candidate.payload(), reason=str(exc)))
+            self.stagnant_rounds += 1
             if candidates:
                 candidate, result, origin = max(candidates, key=lambda item: item[1].score)
                 if result.score > score.score:
                     baseline, score = candidate, result
+                    self.improvements += 1
+                    self.stagnant_rounds = 0
                     self._record(Outcome(round_id, origin, 'promoted', baseline.payload(), score))
+            if self.exploration:
+                for row in self.experiment_ledger:
+                    if row['round'] != round_id or row.get('historical'):
+                        continue
+                    outcomes = [o for o in self.history if o.round == round_id and o.origin == (row['role'],)]
+                    if outcomes:
+                        outcome = outcomes[-1]
+                        row.update(status=outcome.status, score=outcome.evaluation.score if outcome.evaluation else None,
+                                   reason=outcome.reason)
+                (self.output / 'experiment-ledger.json').write_text(json.dumps(self.experiment_ledger, indent=2))
             # Neither a tie nor a failed/rejected candidate replaces b_r.
             self._save(baseline, score, round_id)
+        if self.stop_reason is None:
+            self.stop_reason = ('target_improvements_reached' if self.target_improvements is not None and self.improvements >= self.target_improvements
+                                else 'fit_budget_exhausted' if self.evaluated >= self.budget else 'round_limit_reached')
         self._save(baseline, score, min(self.rounds, max(o.round for o in self.history)))
         return baseline, score
 
     def _save(self, baseline: Pipeline, score: Evaluation, round_id: int):
+        from .exploration import failure_memory
+        (self.output / 'failure-memory.json').write_text(json.dumps(failure_memory(self.experiment_ledger), indent=2))
         (self.output / 'selected.json').write_text(json.dumps({
             'pipeline': baseline.payload(), 'validation': asdict(score),
             'architecture_provenance': model_provenance(baseline.model, 'research/components/model.py' in baseline.code),
             'augmentation_provenance': policy_provenance(baseline.augmentation),
             'round': round_id, 'evaluations': self.evaluated,
+            'improvements': self.improvements, 'target_improvements': self.target_improvements, 'stop_reason': self.stop_reason,
             'task_fingerprint': self.harness.task.fingerprint,
         }, indent=2))
 

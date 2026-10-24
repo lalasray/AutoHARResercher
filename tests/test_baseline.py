@@ -14,20 +14,17 @@ from research.modules.architectures.bilstmattention import build_model
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_default_and_example_use_the_selected_author_configuration():
+def test_default_and_example_use_generic_cnn():
     config = Pipeline()
     assert json.loads((ROOT / 'examples/baseline.json').read_text()) == config.payload()
-    evidence = json.loads((ROOT / 'examples/defaults-provenance.json').read_text())['baseline_selection']
-    calculated = {name: float(np.mean(values)) for name, values in evidence['published_real_only_scores_percent'].items()}
-    assert max(calculated, key=calculated.get) == config.model['architecture'] == evidence['selected']
-    assert calculated['bilstmattention'] == pytest.approx(76.27)
+    assert config.model['architecture'] == 'cnn'
     validate_pipeline(config, {'uci_har'})
 
 
 @pytest.mark.parametrize('channels,steps', [(3, 50), (6, 128), (9, 128), (6, 250)])
 def test_reference_model_handles_fixed_sensor_layouts_and_search_windows(channels, steps):
     torch.set_num_threads(1)
-    params = dict(Pipeline().model, input_channels=channels)
+    params = dict(Pipeline.from_dict({'model': {'architecture': 'bilstmattention'}}).model, input_channels=channels)
     model = build_model(steps * channels, 5, params)
     assert len(model.branches) == channels // 3
     x = np.random.default_rng(13).normal(size=(2, steps, channels)).astype('float32')
@@ -45,7 +42,7 @@ def test_reference_model_handles_fixed_sensor_layouts_and_search_windows(channel
 
 
 def test_author_optimizer_is_used_and_singleton_batches_work():
-    config = Pipeline()
+    config = Pipeline.from_dict({'model': {'architecture': 'bilstmattention'}})
     model = build_model(128 * 3, 5, dict(config.model, input_channels=3))
     optimizer = HARHarness._optimizer(model, config)
     assert isinstance(optimizer, torch.optim.NAdam)

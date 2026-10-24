@@ -27,13 +27,13 @@ class Recording:
     channels: tuple[str, ...]
     scales: tuple[float, ...]
 
-    def load(self) -> np.ndarray:
+    def load(self, target_hz: float = 50) -> np.ndarray:
         from scipy.signal import resample_poly
         x = np.load(self.path, allow_pickle=False)
         if x.ndim != 2 or x.shape[1] != len(self.channels) or not np.isfinite(x).all():
             raise ValueError(f'Invalid time × channel recording: {self.path}')
         x = x.astype(np.float64) * np.asarray(self.scales)
-        ratio = Fraction(50 / self.hz).limit_denominator(10000)
+        ratio = Fraction(target_hz / self.hz).limit_denominator(10000)
         # scipy uses a zero-phase low-pass FIR with a Kaiser window.
         return resample_poly(x, ratio.numerator, ratio.denominator, axis=0).astype(np.float32)
 
@@ -49,11 +49,12 @@ class Task:
     test: tuple[Recording, ...]
     split_seed: int
     fingerprint: str
+    sampling_hz: float = 50
 
     def public_metadata(self) -> dict:
         # Never expose target paths, samples, counts, or fitted statistics to agents.
         return {'protocol': self.protocol, 'target': self.target, 'labels': self.labels,
-                'channels': self.channels, 'sampling_hz': 50, 'fingerprint': self.fingerprint,
+                'channels': self.channels, 'sampling_hz': self.sampling_hz, 'fingerprint': self.fingerprint,
                 'source_datasets': sorted({r.dataset for r in self.train})}
 
     def split_manifest(self) -> dict:
@@ -99,6 +100,9 @@ def load_manifest(path: Path) -> tuple[dict, tuple[Recording, ...]]:
 def make_task(path: Path, protocol: str, target: str, subject: str | None = None,
               split_seed: int = 13) -> Task:
     raw, recordings = load_manifest(path)
+    sampling_hz = raw.get('processing_hz', 50)
+    if type(sampling_hz) not in (int, float) or not np.isfinite(sampling_hz) or sampling_hz <= 0:
+        raise ValueError('processing_hz must be a finite positive number')
     if protocol == 'loso':
         if target not in LOSO_DATASETS or subject is None:
             raise ValueError('LOSO requires a benchmark dataset and held-out subject')
@@ -156,20 +160,22 @@ def make_task(path: Path, protocol: str, target: str, subject: str | None = None
     fingerprint = hashlib.sha256(path.read_bytes() +
         f'person-cycle-v2:{protocol}:{target}:{subject}:{split_seed}'.encode()).hexdigest()
     return Task(protocol, target, labels, channels, tuple(train), tuple(validation),
-                tuple(test), split_seed, fingerprint)
+                tuple(test), split_seed, fingerprint, sampling_hz)
 
 
 def windows(records: tuple[Recording, ...] | list[Recording], labels: tuple[str, ...],
-            seconds: float, overlap: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    if not 1 <= seconds <= 5 or not 0 <= overlap <= 0.75:
-        raise ValueError('Windows must be 1–5 seconds with 0–75% overlap')
-    length = round(seconds * 50)
+            seconds: float, overlap: float, *, sampling_hz: float = 50) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if not .5 <= seconds <= 10 or not 0 <= overlap <= 0.95:
+        raise ValueError('Windows must be 0.5–10 seconds with 0–95% overlap')
+    if type(sampling_hz) not in (int, float) or not np.isfinite(sampling_hz) or sampling_hz <= 0:
+        raise ValueError('sampling_hz must be a finite positive number')
+    length = round(seconds * sampling_hz)
     stride = max(1, round(length * (1 - overlap)))
     xs, ys, domains = [], [], []
     for r in records:
         if r.label not in labels:
             continue
-        x = r.load()
+        x = r.load(sampling_hz)
         for start in range(0, len(x) - length + 1, stride):
             xs.append(x[start:start + length])
             ys.append(labels.index(r.label))
