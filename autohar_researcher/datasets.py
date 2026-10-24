@@ -163,6 +163,28 @@ def make_task(path: Path, protocol: str, target: str, subject: str | None = None
                 tuple(test), split_seed, fingerprint, sampling_hz)
 
 
+def make_fixed_validation_task(path: Path, target: str, subject: str | None = None,
+                               split_seed: int = 13) -> Task:
+    """Search once using one validation person and all other people for training."""
+    raw, recordings = load_manifest(path)
+    people = sorted({r.subject for r in recordings if r.dataset == target})
+    if target not in LOSO_DATASETS or len(people) < 3:
+        raise ValueError('Fixed validation requires a benchmark dataset with at least three people')
+    if subject is None:
+        np.random.default_rng(split_seed).shuffle(people)
+        subject = people[0]
+    if str(subject) not in people:
+        raise ValueError('Unknown validation subject')
+    # Reuse all manifest/schema validation; move every non-validation person
+    # into training and leave no test partition during search.
+    base = make_task(path, 'loso', target, str(subject), split_seed)
+    fingerprint = hashlib.sha256(path.read_bytes() +
+        f'fixed-validation-v1:{target}:{subject}:{split_seed}'.encode()).hexdigest()
+    return Task('fixed-validation', target, base.labels, base.channels,
+                base.train + base.validation, base.test, (), split_seed,
+                fingerprint, base.sampling_hz)
+
+
 def windows(records: tuple[Recording, ...] | list[Recording], labels: tuple[str, ...],
             seconds: float, overlap: float, *, sampling_hz: float = 50) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     if not .5 <= seconds <= 10 or not 0 <= overlap <= 0.95:

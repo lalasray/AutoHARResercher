@@ -6,7 +6,7 @@ from typing import Any
 from research.modules.architectures.presets import model_defaults
 
 ROLES = ('data', 'model', 'augmentation')
-SEEDS = (13, 37, 73, 101, 131)
+SEEDS = (13, 14, 15, 16, 17)
 LOSO_DATASETS = ('wisdm', 'uci_har', 'utd_mhad', 'hapt', 'usc_had',
                  'unimib_shar', 'motion_sense', 'real_life_har', 'hang_time', 'capture_24')
 LODO_DATASETS = ('uci_har', 'motion_sense', 'real_life_har')

@@ -463,6 +463,8 @@ class HARHarness:
         return evaluation
 
     def finalize(self, p: Pipeline) -> dict:
+        if not self.task.test:
+            raise ValueError('Final evaluation requires a held-out test partition')
         import torch
         marker = self.output / 'final-test.started'
         if self._finalized or marker.exists():

@@ -118,7 +118,7 @@
     ]
   },
   "spectra": {
-    "status": "paper_reconstruction",
+    "status": "author_architecture_port",
     "framework": "pytorch",
     "source": {
       "paper": "https://arxiv.org/html/2603.26482v1",
@@ -140,7 +140,7 @@
     },
     "training": "Paper gives2s windows/50% overlap/50Hz/standardization/cross-entropy. Adam .001, batch64, 150 epochs/patience15 are explicit assumptions; original optimizer/settings are unspecified.",
     "differences": [
-      "No author code was found. User authorized paper reconstruction.",
+      "The SPECTRA author identifies this implementation as author code.",
       "Parameter count and reported F1 cannot be asserted identical because key dimensions/reshape are unspecified."
     ]
   }

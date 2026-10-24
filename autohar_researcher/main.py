@@ -11,7 +11,7 @@ import numpy as np
 
 from .agents import Search, SingleAgentSearch
 from .baselines import initial_candidates
-from .datasets import load_manifest, make_task
+from .datasets import load_manifest, make_task, make_fixed_validation_task
 from .harness import HARHarness
 from .planner import CodexBackend, LLMAgents, OpenCodeBackend
 from .synthetic import MCPGenerator
@@ -28,7 +28,9 @@ def main() -> None:
     parser.add_argument('--target', default='uci_har', help='Dataset target (default: uci_har)')
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--subject', help='Held-out LOSO subject')
-    group.add_argument('--all-subjects', action='store_true', help='Run every LOSO person fold (default unless --subject is given)')
+    group.add_argument('--all-subjects', action='store_true', help='Run an independent search for every LOSO person fold')
+    parser.add_argument('--search-mode', choices=['fixed-validation', 'loso'], help='LOSO search scope (default: fixed-validation)')
+    parser.add_argument('--validation-subject', help='Fixed validation person; default: deterministic choice using split seed')
     parser.add_argument('--split-seed', type=int, default=13, help='Fixed across search seeds')
     parser.add_argument('--seeds', type=int, nargs='+', default=list(SEEDS))
     parser.add_argument('--method', choices=['multi-agent', 'single-agent', 'fixed'], default='multi-agent')
@@ -49,13 +51,24 @@ def main() -> None:
     args = parser.parse_args()
     if args.protocol == 'lodo' and (args.subject or args.all_subjects):
         parser.error('LODO holds out a dataset, not a subject')
+    if args.protocol == 'lodo' and (args.search_mode or args.validation_subject is not None):
+        parser.error('Search mode and validation subject apply only to LOSO')
+    mode = args.search_mode or ('loso' if args.subject is not None or args.all_subjects else 'fixed-validation')
+    if args.protocol == 'loso' and mode == 'fixed-validation' and (args.subject is not None or args.all_subjects):
+        parser.error('Use --validation-subject with fixed-validation search')
+    if mode == 'loso' and args.validation_subject is not None:
+        parser.error('--validation-subject requires --search-mode fixed-validation')
     if len(set(args.seeds)) != len(args.seeds):
         parser.error('Search seeds must be unique')
     _, records = load_manifest(args.manifest)
     subjects = sorted({r.subject for r in records if r.dataset == args.target}) if args.protocol == 'loso' and args.subject is None else [args.subject]
     if not subjects:
         parser.error('No people found for the requested dataset')
-    tasks = [make_task(args.manifest, args.protocol, args.target, subject, args.split_seed) for subject in subjects]
+    if args.protocol == 'loso' and mode == 'fixed-validation':
+        tasks = [make_fixed_validation_task(args.manifest, args.target, args.validation_subject, args.split_seed)]
+        subjects = [None]
+    else:
+        tasks = [make_task(args.manifest, args.protocol, args.target, subject, args.split_seed) for subject in subjects]
     if args.command == 'splits':
         print(json.dumps([task.split_manifest() for task in tasks], indent=2))
         return
@@ -71,7 +84,7 @@ def main() -> None:
     summaries = []
     for seed in args.seeds:
         for subject, task in zip(subjects, tasks):
-            output = args.output / f'seed-{seed}' / (f'subject-{quote(str(subject), safe="")}' if subject is not None else args.target)
+            output = args.output / f'seed-{seed}' / (f'subject-{quote(str(subject), safe="")}' if subject is not None else ('fixed-validation' if task.protocol == 'fixed-validation' else args.target))
             harness = HARHarness(task, seed, output, args.device, generator)
             harness.candidate_workers = args.candidate_workers
             harness.worker_threads = args.threads
@@ -81,7 +94,7 @@ def main() -> None:
                                   exploration=args.proposal_mode == 'directed' and args.method == 'multi-agent')
             (output / 'splits.json').write_text(json.dumps(task.split_manifest(), indent=2))
             (output / 'run.json').write_text(json.dumps({
-                'seed': seed, 'split_seed': args.split_seed, 'rounds': args.rounds,
+                'seed': seed, 'split_seed': args.split_seed, 'rounds': args.rounds, 'search_mode': task.protocol,
                 'proposal_mode': args.proposal_mode, 'candidate_workers': args.candidate_workers, 'worker_threads': args.threads,
                 'budget': search.budget, 'method': args.method, 'backend': args.backend, 'model': args.model, 'llm_scope': 'local' if args.backend == 'opencode' else 'remote',
                 'temperature': .2 if args.backend == 'opencode' else None,
@@ -113,7 +126,20 @@ def main() -> None:
                       'validation_subjects': sorted({r.subject for r in task.validation}), 'validation_macro_f1': evaluation.score,
                       'evaluations': search.evaluated}
             if args.final_test:
-                report.update(harness.finalize(selected))
+                if task.protocol == 'fixed-validation':
+                    folds = []
+                    for person in sorted({r.subject for r in records if r.dataset == args.target}):
+                        fold_task = make_task(args.manifest, 'loso', args.target, person, args.split_seed)
+                        fold_output = output / 'final-loso' / f'subject-{quote(person, safe="")}'
+                        final = HARHarness(fold_task, seed, fold_output, args.device, generator)
+                        final._evaluations[final._key(selected)] = list(harness._evaluations[harness._key(selected)])
+                        final._lr_schedules[final._key(selected)] = list(harness._lr_schedules[harness._key(selected)])
+                        (fold_output / 'splits.json').write_text(json.dumps(fold_task.split_manifest(), indent=2))
+                        folds.append({'subject': person, **final.finalize(selected)})
+                    report.update(test_macro_f1=float(np.mean([f['test_macro_f1'] for f in folds])),
+                                  final_loso=folds, evaluation_scope='shared-pipeline exploratory LOSO; people participated in search')
+                else:
+                    report.update(harness.finalize(selected))
             summaries.append(report)
             print(json.dumps(report), flush=True)
     summary = {'runs': summaries}

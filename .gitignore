@@ -8,3 +8,6 @@ data/
 artifacts/
 build/
 dist/
+
+# Local reproducibility bundles and reference checkpoints
+standalone/
