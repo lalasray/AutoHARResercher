@@ -161,6 +161,12 @@ def test_parallel_fits_match_serial_and_preserve_refit_evidence(manifest, tmp_pa
     assert parallel._evaluations == serial._evaluations
     assert parallel._lr_schedules == serial._lr_schedules
     assert parallel._validation_diagnostics == serial._validation_diagnostics
+    for pipeline in pipelines:
+        sequential_snapshot = serial.load_validation_preprocessing(pipeline)
+        parallel_snapshot = parallel.load_validation_preprocessing(pipeline)
+        assert sequential_snapshot['pipeline_id'] == parallel_snapshot['pipeline_id']
+        np.testing.assert_array_equal(sequential_snapshot['normalization_mean'], parallel_snapshot['normalization_mean'])
+        np.testing.assert_array_equal(sequential_snapshot['normalization_scale'], parallel_snapshot['normalization_scale'])
     report = parallel.finalize(pipelines[0])
     assert report['refit_epochs'] == actual[0].best_epoch
     with pytest.raises(RuntimeError, match='closed'):

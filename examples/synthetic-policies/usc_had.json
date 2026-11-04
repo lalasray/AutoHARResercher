@@ -1,0 +1,92 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "walking_forward",
+        "count": 200,
+        "ratio": 0.35,
+        "prompt": "An adult walks forward on level ground at a natural pace with alternating steps. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "walking_left",
+        "count": 200,
+        "ratio": 0.3,
+        "prompt": "An adult walks forward along a counterclockwise circular path, continuously turning left. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "walking_right",
+        "count": 75,
+        "ratio": 0.35,
+        "prompt": "An adult walks forward along a clockwise circular path, continuously turning right. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "walking_upstairs",
+        "count": 100,
+        "ratio": 0.15,
+        "prompt": "An adult continuously walks up a staircase, lifting each foot onto the next step. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "walking_downstairs",
+        "count": 100,
+        "ratio": 0.05,
+        "prompt": "An adult continuously walks down a staircase with controlled alternating foot contacts. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "running_forward",
+        "count": 150,
+        "ratio": 0.4,
+        "prompt": "An adult runs forward with alternating strides, brief airborne phases and natural arm swing. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "jumping_up",
+        "count": 25,
+        "ratio": 0.45,
+        "prompt": "An adult repeatedly jumps vertically from both feet and lands with bent knees. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "sitting",
+        "count": 150,
+        "ratio": 0.4,
+        "prompt": "An adult remains seated upright on a chair with small natural posture adjustments. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "standing",
+        "count": 175,
+        "ratio": 0.35,
+        "prompt": "An adult stands in place with slight postural sway and occasional small arm movements. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "sleep",
+        "count": 100,
+        "ratio": 0.2,
+        "prompt": "An adult sleeps lying on a bed, remaining mostly still with occasional slow repositioning of the arm and torso. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "elevator_up",
+        "count": 25,
+        "ratio": 0.45,
+        "prompt": "An adult stands upright inside an elevator as it accelerates upward, travels upward and comes to a stop. Inertial sensor placement: right hip."
+      },
+      {
+        "generator": "text",
+        "label": "elevator_down",
+        "count": 200,
+        "ratio": 0.45,
+        "prompt": "An adult stands upright inside an elevator as it accelerates downward, travels downward and comes to a stop. Inertial sensor placement: right hip."
+      }
+    ]
+  }
+}

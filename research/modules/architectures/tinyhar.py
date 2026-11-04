@@ -1,6 +1,6 @@
 """Author TinyHAR implementation with only a [B,T,C] → [B,1,T,C] adapter."""
 from torch import nn
-from research.vendor.tinyhar import TinyHAR_Model
+from .author_tinyhar import TinyHAR_Model
 from .common import as_sequence
 
 

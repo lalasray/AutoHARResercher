@@ -1,0 +1,91 @@
+{
+  "datasets": {
+    "capture_24": {
+      "raw_dir": "../data/whar/capture_24/data",
+      "sampling_hz": 100,
+      "source_columns": [
+        "x",
+        "y",
+        "z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665
+      ],
+      "placement": "wrist",
+      "labels": [
+        "sleep",
+        "sitting",
+        "standing",
+        "walking",
+        "bicycling",
+        "vehicle_travel",
+        "household_chores",
+        "sports",
+        "computer_use",
+        "watching_tv",
+        "stairs_ascent_descent",
+        "light_activity"
+      ],
+      "label_map": {
+        "sleep": "sleep",
+        "sitting": "sitting",
+        "standing": "standing",
+        "walking": "walking",
+        "bicycling": "bicycling",
+        "vehicle_travel": "vehicle_travel",
+        "household_chores": "household_chores",
+        "sports": "sports",
+        "computer_use": "computer_use",
+        "watching_tv": "watching_tv",
+        "stairs_ascent_descent": "stairs_ascent_descent",
+        "light_activity": "light_activity"
+      },
+      "adapter": "capture24_12",
+      "annotation_overrides": {},
+      "loso_groups": [
+        [
+          "P001",
+          "P005",
+          "P011",
+          "P013",
+          "P019"
+        ],
+        [
+          "P023",
+          "P031",
+          "P032",
+          "P034",
+          "P040"
+        ],
+        [
+          "P045",
+          "P046",
+          "P054",
+          "P071",
+          "P074"
+        ],
+        [
+          "P077",
+          "P078",
+          "P081",
+          "P084",
+          "P091"
+        ]
+      ],
+      "loso_selection_provenance": {
+        "source": "https://github.com/OxWearables/capture24/blob/master/train_deep_models.py",
+        "data_config": "https://github.com/OxWearables/capture24/blob/master/conf/data/default.yaml",
+        "seed_config": "https://github.com/OxWearables/capture24/blob/master/conf/config.yaml",
+        "recipe": "np.random.RandomState(42).choice(P001..P100, size=20, replace=False), then sort and split into four groups of five",
+        "scope": "Locally reproduced validation selection from upstream defaults; grouped LOSO is a local adaptation, not the official evaluation protocol"
+      }
+    }
+  }
+}

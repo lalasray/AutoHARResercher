@@ -4,7 +4,7 @@ This is explicitly the TECO benchmark variant, not an assertion that it is
 Murahari & Ploetz's original implementation.
 """
 from torch import nn
-from research.vendor.deepconvlstmattention import DeepConvLSTM_ATTN
+from .author_deepconvlstmattention import DeepConvLSTM_ATTN
 from .common import as_sequence
 
 

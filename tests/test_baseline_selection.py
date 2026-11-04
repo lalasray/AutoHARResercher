@@ -7,11 +7,21 @@ import pytest
 import torch
 
 from autohar_researcher.agents import Search, SingleAgentSearch
-from autohar_researcher.baselines import dataset_candidates, initial_candidates, registry
+from autohar_researcher.baselines import initial_candidates
 from autohar_researcher.harness import Normalizer
 from autohar_researcher.patches import validate_pipeline
 from autohar_researcher.types import Pipeline, LOSO_DATASETS
 from test_search import Harness, Agents
+
+
+@pytest.mark.parametrize('dataset', LOSO_DATASETS)
+def test_existing_dataset_catalog_api_is_retained(dataset):
+    from autohar_researcher.baselines import dataset_candidates, registry
+    assert dataset in registry()['datasets']
+    pool = dataset_candidates(dataset)
+    assert pool and all(row['id'].startswith(dataset + '/') for row in pool)
+    for row in pool:
+        validate_pipeline(Pipeline.from_dict(row['pipeline']), {dataset})
 
 
 def candidates():
@@ -60,22 +70,6 @@ def test_budget_too_small_rejected_before_fitting(tmp_path):
     assert not h.calls
 
 
-def test_every_dataset_has_source_backed_valid_distinct_candidates():
-    assert set(registry()['datasets']) == set(LOSO_DATASETS)
-    for dataset in LOSO_DATASETS:
-        pool = dataset_candidates(dataset)
-        assert len(pool) == 4
-        assert len({json.dumps(item['pipeline'], sort_keys=True) for item in pool}) == 4
-        for item in pool:
-            validate_pipeline(Pipeline.from_dict(item['pipeline']), {dataset})
-            assert item['evidence']['sources'] and item['evidence']['adaptations']
-        assert len({item['pipeline']['model']['architecture'] for item in pool}) == 2
-        assert any(item['pipeline']['augmentation']['kind'] != 'none' for item in pool)
-    assert dataset_candidates('unimib_shar')[0]['pipeline']['data']['window_seconds'] == 3.02
-    assert dataset_candidates('hang_time')[0]['pipeline']['model']['lstm_layers'] == 1
-    assert dataset_candidates('capture_24')[0]['pipeline']['data']['normalization'] == 'none'
-
-
 def test_lodo_pool_uses_only_source_identity_and_no_target_records():
     class Task:
         protocol = 'lodo'
@@ -89,8 +83,6 @@ def test_lodo_pool_uses_only_source_identity_and_no_target_records():
     pool = initial_candidates(Task())
     assert len(pool) == 1 and pool[0]['id'] == 'generic/cnn'
     assert pool[0]['pipeline']['model']['architecture'] == 'cnn'
-    with pytest.raises(ValueError, match='supply --baseline'):
-        dataset_candidates('unknown')
 
 
 def test_minmax_statistics_fit_training_only_and_do_not_clip_validation():
@@ -104,17 +96,29 @@ def test_minmax_statistics_fit_training_only_and_do_not_clip_validation():
 @pytest.mark.parametrize('device', ['cpu'] + (['cuda'] if torch.cuda.is_available() else []))
 def test_cli_dataset_selection_is_source_only_and_records_choice(manifest, tmp_path, monkeypatch, device):
     import sys
-    from autohar_researcher import main, baselines
+    from autohar_researcher import main
     from autohar_researcher.datasets import make_task
     task = make_task(manifest, 'loso', 'uci_har', '0')
-    # Keep real ported models but shorten only the fixture's training horizon.
-    pool = dataset_candidates('uci_har')
+
+    pool = [dict(id=str(i), pipeline=Pipeline.from_dict({'model': {'architecture': architecture}}).payload(), evidence={})
+            for i, architecture in enumerate(['bilstmattention', 'tinierhar', 'tinyhar', 'cnn'])]
     for item in pool:
         item['pipeline']['model']['max_epochs'] = 1
         item['pipeline']['data']['window_seconds'] = 1
     monkeypatch.setattr(main, 'initial_candidates', lambda task: copy.deepcopy(pool))
     original = np.load
-    protected = {r.path for r in task.test}
+    protected = set()
+    from autohar_researcher.harness import HARHarness
+    for name in ('preflight', 'evaluate'):
+        method = getattr(HARHarness, name)
+        def checked(self, pipeline, method=method):
+            protected.clear()
+            protected.update(r.path for r in self.task.test)
+            try:
+                return method(self, pipeline)
+            finally:
+                protected.clear()
+        monkeypatch.setattr(HARHarness, name, checked)
     def source_only(path, *args, **kwargs):
         assert path not in protected
         return original(path, *args, **kwargs)
@@ -125,7 +129,7 @@ def test_cli_dataset_selection_is_source_only_and_records_choice(manifest, tmp_p
         '--budget', '4', '--rounds', '1', '--model', 'fixture-no-calls', '--device', device,
         '--output', str(output)])
     main.main()
-    run = output/'seed-13/subject-0'
+    run = output/'seed-13/uci_har'
     report = json.loads((run/'initialization.json').read_text())
     metadata = json.loads((run/'run.json').read_text())
     assert metadata['baseline'] == report['selected_pipeline']

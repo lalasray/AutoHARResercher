@@ -19,7 +19,7 @@
     "label_smoothing": 0.0,
     "batch_size": 100,
     "max_epochs": 300,
-    "patience": 300,
+    "patience": 15,
     "scheduler": "none",
     "architecture": "deepconvlstm",
     "conv_filters": 64,

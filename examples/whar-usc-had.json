@@ -1,0 +1,91 @@
+{
+  "datasets": {
+    "usc_had": {
+      "raw_dir": "../data/whar/usc_had/data",
+      "sampling_hz": 100,
+      "source_columns": [
+        "Ax",
+        "Ay",
+        "Az",
+        "GyroX",
+        "GyroY",
+        "GyroZ"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az",
+        "gx",
+        "gy",
+        "gz"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665,
+        0.017453292519943295,
+        0.017453292519943295,
+        0.017453292519943295
+      ],
+      "placement": "right hip",
+      "labels": [
+        "walking_forward",
+        "walking_left",
+        "walking_right",
+        "walking_upstairs",
+        "walking_downstairs",
+        "running_forward",
+        "jumping_up",
+        "sitting",
+        "standing",
+        "sleep",
+        "elevator_up",
+        "elevator_down"
+      ],
+      "label_map": {
+        "Walking Forward": "walking_forward",
+        "Walking Left": "walking_left",
+        "Walking Right": "walking_right",
+        "Walking Upstairs": "walking_upstairs",
+        "Walking Downstairs": "walking_downstairs",
+        "Running Forward": "running_forward",
+        "Jumping Up": "jumping_up",
+        "Sitting": "sitting",
+        "Standing": "standing",
+        "Sleeping": "sleep",
+        "Elevator Up": "elevator_up",
+        "Elevator Down": "elevator_down"
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1"
+        ],
+        [
+          "2",
+          "3"
+        ],
+        [
+          "4",
+          "5"
+        ],
+        [
+          "6",
+          "7"
+        ],
+        [
+          "8",
+          "9"
+        ],
+        [
+          "10",
+          "11"
+        ],
+        [
+          "12",
+          "13"
+        ]
+      ]
+    }
+  }
+}

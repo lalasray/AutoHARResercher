@@ -1,0 +1,85 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "clap",
+        "count": 200,
+        "ratio": 0.1,
+        "prompt": "An adult brings both hands together in front of the chest for a clap and separates them again. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "throw",
+        "count": 25,
+        "ratio": 0.4,
+        "prompt": "An adult throws a ball forward with the right arm, drawing the arm back and following through after release. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "basketball_shoot",
+        "count": 150,
+        "ratio": 0.35,
+        "prompt": "An adult raises a basketball and shoots toward a basket with a coordinated arm extension and right-wrist follow-through. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "count": 100,
+        "ratio": 0.2,
+        "label": "drawing",
+        "prompt": "An adult draws an X, a clockwise or counterclockwise circle, or a triangle in the air using the right hand. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "boxing",
+        "count": 125,
+        "ratio": 0.4,
+        "prompt": "An adult performs alternating straight punches in front of the body with hands returning to a guard position. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "baseball_swing",
+        "count": 200,
+        "ratio": 0.5,
+        "prompt": "An adult performs a two-handed baseball batting swing from the right side, rotating the torso and following through. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "tennis_swing",
+        "count": 100,
+        "ratio": 0.35,
+        "prompt": "An adult performs a right-handed tennis forehand swing across the body with a smooth follow-through. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "two_hand_push",
+        "count": 150,
+        "ratio": 0.25,
+        "prompt": "An adult pushes both hands forward from chest height, extending the elbows together. Inertial sensor placement: right wrist."
+      },
+      {
+        "generator": "text",
+        "label": "jogging",
+        "count": 100,
+        "ratio": 0.2,
+        "prompt": "An adult jogs with alternating leg strides. Inertial sensor placement: right thigh."
+      },
+      {
+        "generator": "text",
+        "label": "walking",
+        "count": 100,
+        "ratio": 0.2,
+        "prompt": "An adult walks forward with alternating steps. Inertial sensor placement: right thigh."
+      },
+      {
+        "generator": "text",
+        "label": "squat",
+        "count": 100,
+        "ratio": 0.2,
+        "prompt": "An adult bends the hips and knees into a squat and returns upright. Inertial sensor placement: right thigh."
+      }
+    ]
+  }
+}

@@ -56,16 +56,15 @@
       },
       "adaptations": [
         "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
-        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors\u2019 CNN/RNN implementations.",
         "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
         "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }
@@ -127,16 +126,15 @@
       },
       "adaptations": [
         "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
-        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors\u2019 CNN/RNN implementations.",
         "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
         "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }
@@ -214,16 +212,15 @@
       },
       "adaptations": [
         "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
-        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors\u2019 CNN/RNN implementations.",
         "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
         "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }
@@ -298,17 +295,14 @@
       },
       "adaptations": [
         "10-second source windows are adapted to the protected maximum of 5 seconds; no sequence smoothing or upstream shift augmentation is claimed.",
-        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors’ CNN/RNN implementations.",
+        "Neural architectures are the supplied benchmark families, not the CAPTURE-24 authors\u2019 CNN/RNN implementations.",
         "No fitted normalization is the primary candidate; source-only min-max is a separately evaluated adaptation.",
         "Warp mechanisms are adapted to the shared PyTorch implementation; magnitudes use the manifest physical units, and original benchmark scores are not transferable."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
         "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-        "file": "bilstmattention.py",
-        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
       }
     }
   }

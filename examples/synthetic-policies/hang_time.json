@@ -1,0 +1,71 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "dribbling",
+        "count": 175,
+        "ratio": 0.4,
+        "prompt": "An adult repeatedly bounces a basketball with one hand, using rhythmic downward wrist and forearm pushes. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "shot",
+        "count": 25,
+        "ratio": 0.2,
+        "prompt": "A basketball player lifts the ball, extends the shooting arm toward the basket, and snaps the wrist on release. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "pass",
+        "count": 25,
+        "ratio": 0.35,
+        "prompt": "A basketball player makes a two-handed chest pass, extending both arms rapidly to send the ball forward. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "rebound",
+        "count": 100,
+        "ratio": 0.45,
+        "prompt": "A basketball player jumps, reaches both hands upward to catch a rebounding ball, and lands with flexed knees. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "layup",
+        "count": 200,
+        "ratio": 0.15,
+        "prompt": "A basketball player gathers the ball, takes two approach steps, jumps from one foot, and releases a one-handed layup. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "walking",
+        "count": 150,
+        "ratio": 0.5,
+        "prompt": "An adult walks forward on level ground at a natural pace with alternating steps and natural arm swing. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "running",
+        "count": 25,
+        "ratio": 0.4,
+        "prompt": "An adult runs forward briskly with rhythmic strides, brief flight phases, and vigorous arm swing. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "standing",
+        "count": 100,
+        "ratio": 0.35,
+        "prompt": "An adult stands in place with slight postural sway and occasional small arm movements. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "sitting",
+        "count": 50,
+        "ratio": 0.5,
+        "prompt": "An adult remains seated upright on a chair with small natural posture adjustments. Inertial sensor placement: wrist."
+      }
+    ]
+  }
+}

@@ -1,0 +1,2 @@
+# Preserve pinned source bytes so checksums survive checkout on every platform.
+research/modules/architectures/author_*.py -text

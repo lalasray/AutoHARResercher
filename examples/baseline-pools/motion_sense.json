@@ -72,12 +72,11 @@
         "Model settings use the pinned architecture presets; channel count follows the fixed task.",
         "The second architecture uses a local 2.56-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/zhaxidele/TinierHAR",
         "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
         "source": "models/TinierHAR.py",
-        "file": "tinierhar.py",
+        "file": "author_tinierhar.py",
         "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
       }
     }
@@ -155,12 +154,11 @@
         "Model settings use the pinned architecture presets; channel count follows the fixed task.",
         "The second architecture uses a local 2.56-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/zhaxidele/TinierHAR",
         "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
         "source": "models/TinierHAR.py",
-        "file": "tinierhar.py",
+        "file": "author_tinierhar.py",
         "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
       }
     }
@@ -242,12 +240,11 @@
         "Model settings use the pinned architecture presets; channel count follows the fixed task.",
         "The second architecture uses a local 2.56-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/zhaxidele/TinierHAR",
         "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
         "source": "models/TinierHAR.py",
-        "file": "tinierhar.py",
+        "file": "author_tinierhar.py",
         "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
       }
     }
@@ -334,13 +331,10 @@
         "Model settings use the pinned architecture presets; channel count follows the fixed task.",
         "The second architecture uses a local 2.56-second comparison window to test temporal context and accommodate shorter recordings; this is not an author-reported optimum."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
         "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-        "file": "bilstmattention.py",
-        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
       }
     }
   }

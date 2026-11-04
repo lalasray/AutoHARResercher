@@ -1,4 +1,3 @@
-"""MCP-backed generation. No simulated text/video-to-IMU fallback."""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +9,7 @@ import numpy as np
 
 @dataclass
 class MCPGenerator:
-    # Configured by the experiment owner; agents cannot edit server/tool identity.
+
     servers: dict
 
     def generate(self, request: dict, length: int, channels: int, seed: int = 13, *, sampling_hz: float = 50) -> np.ndarray:
@@ -29,7 +28,26 @@ class MCPGenerator:
                 raise ValueError('Video not in predefined source video pool')
             args['videos'] = videos
             args['selection'] = request.get('selection', 'all')
+        if spec.get('dataset_profiles', False):
+            if not request.get('source_dataset') or not request.get('channel_names'):
+                raise ValueError('Dataset-aware generation requires source_dataset and channel_names')
+            args['dataset'] = request['source_dataset']
+            args['channel_names'] = request['channel_names']
         payload = asyncio.run(asyncio.wait_for(self._call(spec, args), timeout=spec.get('timeout_seconds', 600)))
+        if kind == 'video':
+            provenance = payload.get('provenance') or {}
+            if not isinstance(provenance, dict):
+                raise ValueError('Video generation provenance must be an object')
+            if (payload.get('coordinate_mode') == 'hip-relative'
+                    or payload.get('implementation') == 'imutube-inspired-mediapipe'
+                    or provenance.get('coordinate_mode') == 'hip-relative'
+                    or payload.get('training_eligible') is False
+                    or payload.get('physically_complete_imu') is False
+                    or payload.get('diagnostic_only') is True
+                    or provenance.get('training_eligible') is False
+                    or provenance.get('physically_complete_imu') is False
+                    or provenance.get('diagnostic_only') is True):
+                raise ValueError('Video generator returned incomplete or diagnostic-only signals; these cannot be used as IMU training measurements')
         samples = np.asarray(payload['samples'], dtype=np.float32)
         if samples.shape != (request['count'], length, channels) or not np.isfinite(samples).all():
             raise ValueError('MCP response violates sample count/shape/finiteness contract')

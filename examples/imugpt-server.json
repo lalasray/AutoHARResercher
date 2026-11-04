@@ -47,7 +47,9 @@
     }
   ],
   "body_scale": 1.096774193548387,
-  "max_count": 100,
+  "max_count": 200,
   "attempts_per_sample": 10,
-  "timeout_seconds": 3600
+  "timeout_seconds": 3600,
+  "default_dataset": "uci_har",
+  "dataset_profiles": {}
 }

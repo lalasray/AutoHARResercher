@@ -1,4 +1,3 @@
-"""Deterministic proposal checks, ownership, and compatibility composition."""
 from __future__ import annotations
 
 import ast
@@ -41,7 +40,7 @@ def validate_pipeline(p: Pipeline, sources: set[str]) -> None:
         raise ValueError('Class sampling ratios must be in (0, 1]')
     if type(p.data['balanced_sampling']) is not bool:
         raise ValueError('balanced_sampling must be boolean')
-    if p.model['optimizer'] not in {'adam', 'adamw', 'nadam', 'sgd', 'rmsprop'}:
+    if p.model['optimizer'] not in {'adam', 'adamw', 'nadam', 'sgd', 'rmsprop', 'custom'}:
         raise ValueError('Unsupported optimizer')
     if p.model.get('scheduler', 'none') not in {'none', 'plateau_validation_loss'}:
         raise ValueError('Unsupported learning-rate scheduler')
@@ -50,7 +49,7 @@ def validate_pipeline(p: Pipeline, sources: set[str]) -> None:
             raise ValueError('lr_patience must be a positive integer')
         if not 0 < p.model.get('lr_factor', 0) < 1:
             raise ValueError('lr_factor must be in (0,1)')
-    if p.model['loss'] not in {'cross_entropy', 'weighted_cross_entropy'}:
+    if p.model['loss'] not in {'cross_entropy', 'weighted_cross_entropy', 'custom'}:
         raise ValueError('Unsupported loss')
     for key in ('batch_size', 'max_epochs', 'patience', 'hidden_dim'):
         if type(p.model[key]) is not int or p.model[key] < 1:
@@ -87,6 +86,20 @@ def validate_pipeline(p: Pipeline, sources: set[str]) -> None:
             raise ValueError('Synthetic count must be positive')
         if not math.isfinite(request.get('ratio', 1)) or not 0 <= request.get('ratio', 1) <= 1:
             raise ValueError('Synthetic mixing ratio must be in [0, 1]')
+    model_functions = _functions(p.code.get(OWNED_FILES['model'], ''))
+    for field, hook in [('architecture', 'build_model'), ('optimizer', 'build_optimizer'), ('loss', 'build_loss')]:
+        if p.model[field] == 'custom' and hook not in model_functions:
+            raise ValueError(f'custom {field} requires {hook}')
+    from research.comparisons import METHODS
+    if p.model['architecture'] in METHODS:
+        from research.comparisons.settings import settings
+        settings(p.model['architecture'], p.model.get('custom_params', {}))
+        if (p.code or p.augmentation['kind'] != 'none' or p.augmentation['synthetic']
+                or p.augmentation.get('mixing') or p.augmentation.get('per_class')
+                or p.data['balanced_sampling'] or p.model.get('scheduler', 'none') != 'none'
+                or p.model['loss'] != 'cross_entropy' or p.model['optimizer'] == 'custom'
+                or p.model['batch_size'] < 2):
+            raise ValueError('Comparison methods own their training stages, sampling, loss and augmentation; incompatible overrides')
     if set(p.code) - set(OWNED_FILES.values()):
         raise ValueError('Protected executable file')
     for content in p.code.values():

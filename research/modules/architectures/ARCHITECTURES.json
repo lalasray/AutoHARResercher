@@ -6,7 +6,7 @@
       "repository": "https://github.com/teco-kit/ISWC22-HAR",
       "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
       "source": "models/TinyHAR.py",
-      "file": "tinyhar.py",
+      "file": "author_tinyhar.py",
       "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
     },
     "architecture": "Original TinyHAR_Model; transformer/FC/LSTM/tnaive configuration, 20 shared filters. Adapter inserts one dimension only.",
@@ -23,7 +23,7 @@
       "repository": "https://github.com/zhaxidele/TinierHAR",
       "revision": "f2f1bbd7305689c374fb38cbb7ce853e7cefbb3f",
       "source": "models/TinierHAR.py",
-      "file": "tinierhar.py",
+      "file": "author_tinierhar.py",
       "sha256": "f6f30898c300e8a9f12af4cb949251f63ddb560141e6d5a75d5ffeb9638b4c04"
     },
     "architecture": "Original TinierHAR_Model and configs/model.yaml: 2 pooling blocks + 4 additional residual blocks, 4 initial filters, bidirectional GRU with 16 units per direction, dropout .3.",
@@ -39,14 +39,12 @@
     "source": {
       "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
       "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-      "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-      "file": "bilstmattention.py",
-      "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+      "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
     },
     "architecture": "PyTorch port of the pinned author architecture; see research/modules/architectures/torch_author.py and bilstmattention.py.",
     "training": "Published preset hyperparameters with PyTorch optimizers and source-validation checkpoint selection.",
     "differences": [
-      "PyTorch execution, initialization RNG, dropout RNG and optimizer implementation replace TensorFlow. Numerical forward/gradient parity is tested after transferring author weights; this does not establish benchmark reproduction.",
+      "PyTorch execution, initialization, dropout and optimizers differ from upstream. Reference-graph parity tests are not bundled; this does not establish benchmark reproduction.",
       "Source-only evaluation, fixed ontology and resampling follow the project protocol."
     ]
   },
@@ -56,14 +54,12 @@
     "source": {
       "repository": "https://github.com/getalp/Lightweight-Transformer-Models-For-HAR-on-Mobile-Devices",
       "revision": "0b8b39bbf615c252b9a79a8b121b0665e071dcd4",
-      "source": "model.py",
-      "file": "hart.py",
-      "sha256": "9ec62f3c8b0d7944b0f80d31de37aaa11d41c711c8d31a29e4108a6aad2b340b"
+      "source": "model.py"
     },
     "architecture": "PyTorch port of the pinned author architecture; see research/modules/architectures/torch_author.py and bilstmattention.py.",
     "training": "Published preset hyperparameters with PyTorch optimizers and source-validation checkpoint selection.",
     "differences": [
-      "PyTorch execution, initialization RNG, dropout RNG and optimizer implementation replace TensorFlow. Numerical forward/gradient parity is tested after transferring author weights; this does not establish benchmark reproduction.",
+      "PyTorch execution, initialization, dropout and optimizers differ from upstream. Reference-graph parity tests are not bundled; this does not establish benchmark reproduction.",
       "Source-only evaluation, fixed ontology and resampling follow the project protocol."
     ]
   },
@@ -73,14 +69,12 @@
     "source": {
       "repository": "https://github.com/getalp/Lightweight-Transformer-Models-For-HAR-on-Mobile-Devices",
       "revision": "0b8b39bbf615c252b9a79a8b121b0665e071dcd4",
-      "source": "model.py",
-      "file": "hart.py",
-      "sha256": "9ec62f3c8b0d7944b0f80d31de37aaa11d41c711c8d31a29e4108a6aad2b340b"
+      "source": "model.py"
     },
     "architecture": "PyTorch port of the pinned author architecture; see research/modules/architectures/torch_author.py and bilstmattention.py.",
     "training": "Published preset hyperparameters with PyTorch optimizers and source-validation checkpoint selection.",
     "differences": [
-      "PyTorch execution, initialization RNG, dropout RNG and optimizer implementation replace TensorFlow. Numerical forward/gradient parity is tested after transferring author weights; this does not establish benchmark reproduction.",
+      "PyTorch execution, initialization, dropout and optimizers differ from upstream. Reference-graph parity tests are not bundled; this does not establish benchmark reproduction.",
       "Source-only evaluation, fixed ontology and resampling follow the project protocol."
     ]
   },
@@ -91,7 +85,7 @@
       "repository": "https://github.com/teco-kit/ISWC22-HAR",
       "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
       "source": "models/deepconvlstm_attn.py",
-      "file": "deepconvlstmattention.py",
+      "file": "author_deepconvlstmattention.py",
       "sha256": "912c563cf4c2eb1e7a0cab48a4df2df3a1d0a32ce8ca6b2a862167135a72743c"
     },
     "architecture": "Original TECO benchmark DeepConvLSTM_ATTN; no claim that TECO is the original attention paper author.",
@@ -101,19 +95,20 @@
     ]
   },
   "deepconvlstm": {
-    "status": "framework_port",
+    "status": "fused_lstm_adaptation",
     "framework": "pytorch",
     "source": {
       "repository": "https://github.com/STRCWearlab/DeepConvLSTM",
       "revision": "ea25e34da3a48b151a97bd3502802db547523b7f",
-      "file": "DeepConvLSTM.ipynb"
+      "file": "author_DeepConvLSTM.ipynb"
     },
-    "architecture": "Four valid5x1/64-filter convolutions, two128-unit peephole LSTMs, last-time-step classifier; cell/gate equations from Lasagne recurrent.py revision5d3c63cb315c50b1cbd27a6bc8664b406f34dd99.",
+    "architecture": "Four valid 5x1 convolutions followed by configurable stacked standard PyTorch nn.LSTM layers and last-time-step classification. CUDA uses the fused cuDNN recurrent implementation when available.",
     "training": "Paper batch100, RMSProp rho.9, learning rate literally printed 10e-3 (=.01), orthogonal matrix initialization and .5 dropout on dense-layer inputs. Lasagne epsilon1e-6 inside sqrt. Max300 epochs is an explicit reconstruction assumption.",
     "differences": [
-      "Original Theano/Lasagne runtime unavailable in modern environment; recurrence port checked independently against NumPy equations.",
+      "Standard fused LSTM replaces the reference peephole recurrence to avoid Python loops over time steps. This is an architecture adaptation, not an exact reproduction of the Lasagne graph.",
       "Inference notebook omits dropout; paper training dropout is applied before final dense layer.",
-      "Exact original training script/seed and framework version not released. Per-gate orthogonal initialization and normal(.1) peephole initialization explicitly combine paper and Lasagne defaults.",
+      "Per-gate orthogonal input/recurrent weights and zero biases are used. There are no peephole parameters. Recurrent-layer dropout is zero; configured dropout is applied before the classifier.",
+      "Checkpoints from the earlier PeepholeLSTM model use a different state-dict layout and are not directly loadable.",
       "No claim of bit-identical optimizer/kernel results or pretrained-checkpoint compatibility."
     ]
   },
@@ -142,6 +137,63 @@
     "differences": [
       "The SPECTRA author identifies this implementation as author code.",
       "Parameter count and reported F1 cannot be asserted identical because key dimensions/reshape are unspecified."
+    ]
+  },
+  "contratsc": {
+    "status": "independent_method_adaptation",
+    "framework": "pytorch"
+  },
+  "sdmix": {
+    "status": "independent_method_adaptation",
+    "framework": "pytorch"
+  },
+  "crosshar": {
+    "status": "independent_method_adaptation",
+    "framework": "pytorch"
+  },
+  "feature_mlp": {
+    "status": "local_experimental",
+    "framework": "pytorch",
+    "source": {
+      "file": "feature_mlp.py",
+      "origin": "Local experimental feature-MLP implementation; no author-paper reproduction claimed"
+    },
+    "architecture": "Fixed per-window statistics, quantiles, autocorrelation and native-rate FFT features; source-fitted feature scaling; 256/128-unit SiLU MLP with LayerNorm and dropout.",
+    "training": "AdamW 1e-3, weight decay .003, batch 256, label smoothing .03; max 100 epochs and validation patience 15. Feature statistics refit only on the current training partition.",
+    "differences": [
+      "Torch-native feature frontend is not checkpoint-compatible with the earlier NumPy-feature reproduction variants.",
+      "The task supplies channel names and native sampling rate. No task sampling rate, labels, splits or channel ordering are changed.",
+      "No offline target-person clustering, posture heuristics or target-fitted normalization is included."
+    ]
+  },
+  "motion_statistics": {
+    "status": "local_experimental",
+    "framework": "pytorch",
+    "source": {
+      "file": "motion_statistics.py",
+      "origin": "Local MotionAndStatistics implementation"
+    },
+    "architecture": "Raw, centered and bounded-standardized signal branches; 48/64-filter CNN; bidirectional 48-unit GRU with attention; 64-unit statistics branch and fused classifier.",
+    "training": "Adam 1e-3, batch 32, weight decay 1e-4, label smoothing .05, max 80 epochs, patience 15; validation-loss plateau LR schedule.",
+    "differences": [
+      "Default first convolution stride is 2; custom_params.initial_stride=1 selects a higher temporal-resolution variant.",
+      "Defaults describe actual GRU/filter sizes rather than unused legacy custom-pipeline hidden_dim metadata.",
+      "Dataset windows, labels, preprocessing, class-weighted losses and ensembles remain separate experiment choices."
+    ]
+  },
+  "motion_slope": {
+    "status": "local_experimental",
+    "framework": "pytorch",
+    "source": {
+      "file": "motion_slope.py",
+      "origin": "Local slope-statistics extension; shares motion_statistics.py implementation"
+    },
+    "architecture": "MotionAndStatistics with 8 statistics per channel, including early and late quarter-to-quarter slopes; first convolution stride 1 by default.",
+    "training": "Shared MotionAndStatistics preset; original experiment-specific loss and LR replay are not implicitly enabled.",
+    "differences": [
+      "This is an individual architecture; ensembles and their weights are configured separately.",
+      "Epoch counts and selection policies remain experiment settings, not architecture defaults.",
+      "Matching widths and stride preserve the original implementation parameter names and shapes."
     ]
   }
 }

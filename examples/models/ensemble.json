@@ -1,0 +1,8 @@
+{
+  "model": {
+    "architecture": "cnn"
+  },
+  "code": {
+    "research/components/model.py": "import torch\nfrom torch import nn\n\nclass Ensemble(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.members = nn.ModuleList([\n            build_registered_model('cnn', {'hidden_dim': 32, 'depth': 2}),\n            build_registered_model('gru', {'hidden_dim': 32}),\n        ])\n        self.weights = nn.Parameter(torch.zeros(2))\n\n    def forward(self, x):\n        logits = torch.stack([member(x) for member in self.members], dim=0)\n        weights = self.weights.softmax(dim=0).view(-1, 1, 1)\n        return (logits * weights).sum(dim=0)\n\ndef build_model(input_dim, num_classes, params):\n    return Ensemble()\n"
+  }
+}

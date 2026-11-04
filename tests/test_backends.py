@@ -2,44 +2,58 @@ import json
 import sys
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 from autohar_researcher.planner import CodexBackend, OpenCodeBackend
 from autohar_researcher.synthetic import MCPGenerator
 
 
+@pytest.mark.parametrize('role', ['data', 'model', 'augmentation', 'orchestrator', 'judge'])
 @pytest.mark.parametrize('response', ['{"ok": true}', '[]', 'not json'])
-def test_codex_transport_and_fail_closed(monkeypatch, response):
+def test_codex_transport_and_fail_closed(monkeypatch, response, role):
     from pathlib import Path
     def run(command, **kwargs):
         assert command[:2] == ['codex', 'exec']
         assert '--ignore-user-config' in command and '--ephemeral' in command
-        assert command[command.index('--sandbox') + 1] == 'read-only'
+        assert command[command.index('--sandbox') + 1] == 'workspace-write'
         assert command[-1] == '-'
-        assert 'Role: judge' in kwargs['input']
+        assert 'Role: ' + role in kwargs['input']
+        assert 'web_search="live"' in command
+        assert 'sandbox_workspace_write.network_access=true' in command
+        enabled = [command[i + 1] for i, value in enumerate(command[:-1]) if value == '--enable']
+        assert 'shell_tool' in enabled and 'unified_exec' in enabled
+        assert 'All roles may use internet search' in kwargs['input']
         assert 'features' not in kwargs
         Path(command[command.index('--output-last-message') + 1]).write_text(response)
     monkeypatch.setattr('subprocess.run', run)
     if response.startswith('{'):
-        assert CodexBackend('explicit-model')('judge', 'test')['ok']
+        assert CodexBackend('explicit-model')(role, 'test')['ok']
     else:
         with pytest.raises(ValueError):
-            CodexBackend('explicit-model')('judge', 'test')
+            CodexBackend('explicit-model')(role, 'test')
 
 
-def test_opencode_uses_isolated_denied_tool_agent(monkeypatch):
+@pytest.mark.parametrize('role', ['data', 'model', 'augmentation', 'orchestrator', 'judge'])
+def test_opencode_research_tools_for_every_role(monkeypatch, role):
     def run(command, **kwargs):
         config = json.loads(kwargs['env']['OPENCODE_CONFIG_CONTENT'])
         agent = config['agent']['autohar']
-        assert agent['permission'] == {'*': 'deny'}
+        assert agent['permission']['websearch'] == 'allow'
+        assert agent['permission']['webfetch'] == 'allow'
+        assert agent['permission']['bash'] == 'allow'
+        assert agent['steps'] > 1
+        assert config['permission'] == agent['permission']
+        assert kwargs['env']['OPENCODE_ENABLE_EXA'] == 'true'
         assert agent['temperature'] == .2 and agent['top_p'] == .9
         assert agent['maxTokens'] == 4096
         assert '--pure' in command
         assert 'autohar-llm-' in command[command.index('--dir') + 1]
-        return SimpleNamespace(stdout=json.dumps({'type': 'text', 'part': {'text': '{"ok": true}'}}))
+        return SimpleNamespace(stdout='\n'.join(json.dumps(event) for event in [
+            {'type': 'text', 'part': {'text': 'Looking up reference material.'}},
+            {'type': 'tool_use', 'part': {'tool': 'websearch'}},
+            {'type': 'text', 'part': {'text': '{"ok": true}'}}]))
     monkeypatch.setattr('subprocess.run', run)
-    assert OpenCodeBackend('local/model')('judge', 'test')['ok']
+    assert OpenCodeBackend('local/model')(role, 'test')['ok']
 
 
 def test_real_stdio_mcp_transport(tmp_path):

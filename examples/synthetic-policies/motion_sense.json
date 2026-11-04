@@ -1,0 +1,50 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "walking",
+        "count": 50,
+        "ratio": 0.45,
+        "prompt": "An adult walks forward on level ground at a natural pace with alternating steps and natural arm swing. Inertial sensor placement: front trouser pocket."
+      },
+      {
+        "generator": "text",
+        "label": "walking_upstairs",
+        "count": 200,
+        "ratio": 0.1,
+        "prompt": "An adult continuously walks up a staircase, lifting each foot onto the next step. Inertial sensor placement: front trouser pocket."
+      },
+      {
+        "generator": "text",
+        "label": "walking_downstairs",
+        "count": 125,
+        "ratio": 0.45,
+        "prompt": "An adult continuously walks down a staircase with controlled alternating foot contacts. Inertial sensor placement: front trouser pocket."
+      },
+      {
+        "generator": "text",
+        "label": "sitting",
+        "count": 75,
+        "ratio": 0.35,
+        "prompt": "An adult remains seated upright on a chair with small natural posture adjustments. Inertial sensor placement: front trouser pocket."
+      },
+      {
+        "generator": "text",
+        "label": "standing",
+        "count": 200,
+        "ratio": 0.4,
+        "prompt": "An adult stands in place with slight postural sway and occasional small arm movements. Inertial sensor placement: front trouser pocket."
+      },
+      {
+        "generator": "text",
+        "label": "jogging",
+        "count": 25,
+        "ratio": 0.25,
+        "prompt": "An adult jogs forward at an easy steady pace, with alternating foot impacts and rhythmic arm swing. Inertial sensor placement: front trouser pocket."
+      }
+    ]
+  }
+}

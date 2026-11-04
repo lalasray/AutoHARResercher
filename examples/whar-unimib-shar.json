@@ -1,0 +1,98 @@
+{
+  "datasets": {
+    "unimib_shar": {
+      "raw_dir": "../data/whar/unimib_shar/data",
+      "sampling_hz": 50,
+      "source_columns": [
+        "acc_x",
+        "acc_y",
+        "acc_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az"
+      ],
+      "unit_scales": [
+        1,
+        1,
+        1
+      ],
+      "placement": "front trouser pocket (left or right)",
+      "labels": [
+        "sit_to_stand",
+        "lie_to_stand",
+        "walking",
+        "running",
+        "walking_upstairs",
+        "jumping",
+        "walking_downstairs",
+        "stand_to_lie",
+        "stand_to_sit"
+      ],
+      "label_map": {
+        "StandingUpFS": "sit_to_stand",
+        "StandingUpFL": "lie_to_stand",
+        "Walking": "walking",
+        "Running": "running",
+        "GoingUpS": "walking_upstairs",
+        "Jumping": "jumping",
+        "GoingDownS": "walking_downstairs",
+        "LyingDownFS": "stand_to_lie",
+        "SittingDown": "stand_to_sit",
+        "FallingForw": null,
+        "FallingRight": null,
+        "FallingBack": null,
+        "HittingObstacle": null,
+        "FallingWithPS": null,
+        "FallingBackSC": null,
+        "Syncope": null,
+        "FallingLeft": null
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        [
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        [
+          "10",
+          "11",
+          "12",
+          "13",
+          "14"
+        ],
+        [
+          "15",
+          "16",
+          "17",
+          "18",
+          "19"
+        ],
+        [
+          "20",
+          "21",
+          "22",
+          "23",
+          "24"
+        ],
+        [
+          "25",
+          "26",
+          "27",
+          "28",
+          "29"
+        ]
+      ]
+    }
+  }
+}

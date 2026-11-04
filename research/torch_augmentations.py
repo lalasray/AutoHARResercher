@@ -83,6 +83,34 @@ def transform(x,name,p,generator,labels=None,normalizer=None):
         return x+normal(b,t,c)*p['sigma']
     if name=='scaling':
         return x*(1+normal(b,1,c)*p['sigma'])
+    if name=='gravity_tilt':
+        if c%3:
+            raise ValueError('Gravity tilt requires an acceleration XYZ triplet followed by complete XYZ triplets')
+        mean,scale=(0,1) if normalizer is None else (
+            torch.as_tensor(normalizer.mean,device=dev,dtype=x.dtype),
+            torch.as_tensor(normalizer.scale,device=dev,dtype=x.dtype))
+        raw=x*scale+mean
+        gravity=raw[:,:,:3].mean(1)
+        length=gravity.norm(dim=1,keepdim=True)
+        gravity=gravity/length.clamp_min(1e-6)
+        axis=p['axis']
+        transverse=gravity.clone();transverse[:,axis]=0
+        transverse_length=transverse.norm(dim=1,keepdim=True)
+        fallback=torch.zeros_like(gravity);fallback[:,(axis+1)%3]=1
+        transverse=torch.where(transverse_length>1e-6,transverse/transverse_length.clamp_min(1e-6),fallback)
+        angle=(p['min_degrees']+rand(b)*(p['max_degrees']-p['min_degrees']))*(math.pi/180)
+        target=transverse*angle.sin()[:,None]
+        target[:,axis]=torch.where(gravity[:,axis]>=0,1.,-1.)*angle.cos()
+        cross=torch.linalg.cross(gravity,target)
+        dot=(gravity*target).sum(1)
+        skew=torch.zeros(b,3,3,device=dev,dtype=x.dtype)
+        skew[:,0,1],skew[:,0,2]=-cross[:,2],cross[:,1]
+        skew[:,1,0],skew[:,1,2]=cross[:,2],-cross[:,0]
+        skew[:,2,0],skew[:,2,1]=-cross[:,1],cross[:,0]
+        rotation=torch.eye(3,device=dev,dtype=x.dtype)[None]+skew+(skew@skew)/(1+dot[:,None,None]).clamp_min(1e-6)
+        rotated=torch.einsum('bij,btgj->btgi',rotation,raw.reshape(b,t,c//3,3)).reshape_as(x)
+        rotated=torch.where((length>1e-6)[:,None,:],rotated,raw)
+        return (rotated-mean)/scale
     if name=='rotation':
         if c%3:
             raise ValueError('Rotation requires complete consecutive XYZ triplets')

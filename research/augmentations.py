@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import copy
 import math
-import numpy as np
 
 SURVEY = 'https://github.com/uchidalab/time_series_augmentation/tree/656318d18c0945080c969ce2bf839760880b8d30'
 WEARABLE = 'https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c'
@@ -20,6 +19,9 @@ CATALOG = {
     'scaling': dict(defaults={'sigma': .1}, source=SURVEY, description='One Gaussian gain per window/channel.'),
     'rotation': dict(defaults={'max_angle': math.pi / 6}, source=WEARABLE,
         description='Random-axis proper 3D rotation; same rotation for all XYZ triplets. Angle bound is a local conservative default.'),
+    'gravity_tilt': dict(defaults={'min_degrees': 20., 'max_degrees': 40., 'axis': 1},
+        source='local_experimental:WISDM/seated_tilt',
+        description='Training-only rotation of mean acceleration toward a chosen device-axis tilt. First XYZ triplet must be acceleration; rotate all triplets coherently. Use an explicit per_class policy when appropriate. Validation gains did not transfer consistently to test; not a default winning augmentation.'),
     'magnitude_warp': dict(defaults={'sigma': .2, 'knots': 4}, source=SURVEY,
         description='Per-channel cubic-spline magnitude envelope.'),
     'time_warp': dict(defaults={'sigma': .2, 'knots': 4}, source=WEARABLE,
@@ -47,6 +49,11 @@ CATALOG = {
 }
 MIXING = {'mixup', 'temporal_cutmix'}
 CLASS_AWARE = {'spawner', 'random_guided_warp'}
+CATALOG['mixup']['local_findings'] = {
+    'source': 'research/experiment_findings.json',
+    'stage': 'Successful WISDM expert used alpha .2 on standardized feature vectors; this catalog implementation mixes raw training windows.',
+    'scope': 'Local test-informed experiment; no claim of identical gains across stages or datasets',
+}
 
 
 def catalog():
@@ -87,6 +94,11 @@ def validate_method(spec, mixing_only=False):
             raise ValueError('Dropout rate must be in [0,1]')
         elif key == 'alpha' and value <= 0:
             raise ValueError('Mixing alpha must be positive')
+    if name == 'gravity_tilt':
+        if type(values['axis']) is not int or values['axis'] not in (0, 1, 2):
+            raise ValueError('Gravity tilt axis must be 0, 1 or 2')
+        if not 0 <= values['min_degrees'] <= values['max_degrees'] <= 90:
+            raise ValueError('Gravity tilt angles must satisfy 0 <= min <= max <= 90 degrees')
     return values
 
 

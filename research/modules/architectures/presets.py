@@ -1,4 +1,3 @@
-"""Per-architecture initial configurations; see examples/architecture-provenance.json."""
 from copy import deepcopy
 
 COMMON = dict(hidden_dim=64, dropout=0., optimizer='adam', learning_rate=.001,
@@ -6,6 +5,18 @@ COMMON = dict(hidden_dim=64, dropout=0., optimizer='adam', learning_rate=.001,
               weight_decay=0., loss='cross_entropy', label_smoothing=0.,
               batch_size=64, max_epochs=150, patience=15, scheduler='none')
 PRESETS = {
+    'motion_statistics': dict(hidden_dim=48, conv_filters=48, dropout=.3, batch_size=32,
+        weight_decay=.0001, label_smoothing=.05, max_epochs=80,
+        scheduler='plateau_validation_loss', lr_patience=7, lr_factor=.1),
+    'motion_slope': dict(hidden_dim=48, conv_filters=48, dropout=.3, batch_size=32,
+        weight_decay=.0001, label_smoothing=.05, max_epochs=80,
+        scheduler='plateau_validation_loss', lr_patience=7, lr_factor=.1),
+    'feature_mlp': dict(hidden_dim=256, dropout=.3, batch_size=256, optimizer='adamw',
+                        weight_decay=.003, label_smoothing=.03, max_epochs=100),
+    'contratsc': dict(learning_rate=3e-4, optimizer_beta2=.99, weight_decay=3e-4,
+                     batch_size=128, max_epochs=40, patience=15),
+    'sdmix': dict(learning_rate=.01, batch_size=32, max_epochs=150, patience=15),
+    'crosshar': dict(learning_rate=.001, batch_size=512, max_epochs=100, patience=15),
     'bilstmattention': dict(hidden_dim=64, conv_channels=[256, 128, 64, 32], kernel_size=3,
         pool_size=2, branch_channels=3, dropout=.2, head_dropout=.5,
         classifier_batch_norm=True, norm_eps=.001, batch_norm_momentum=.99,
@@ -16,13 +27,13 @@ PRESETS = {
         lr_patience=7, lr_factor=.1),
     'deepconvlstm': dict(hidden_dim=128, conv_filters=64, lstm_layers=2, dropout=.5,
         optimizer='rmsprop', learning_rate=.01, optimizer_eps=1e-6, optimizer_alpha=.9,
-        batch_size=100, max_epochs=300, patience=300),
+        batch_size=100, max_epochs=300, patience=15),
     'deepconvlstmattention': dict(hidden_dim=128, conv_filters=64, lstm_layers=2, dropout=.5),
     'spectra': dict(hidden_dim=16, conv_filters=16, kernel_size=3, n_fft=32, stft_hop=16, dropout=.3),
     'hart': dict(hidden_dim=192, dropout=.3, learning_rate=.005, optimizer_eps=1e-7, max_epochs=200, patience=200, label_smoothing=.1),
     'mobilehart': dict(hidden_dim=144, dropout=.3, learning_rate=.005, optimizer_eps=1e-7, max_epochs=200, patience=200, label_smoothing=.1),
 }
-GENERIC = ('cnn', 'cnn_gru', 'gru', 'bilstm', 'tiny_transformer')
+GENERIC = ('cnn', 'cnn_gru', 'gru', 'bilstm', 'tiny_transformer', 'custom')
 
 
 def model_defaults(architecture='cnn'):

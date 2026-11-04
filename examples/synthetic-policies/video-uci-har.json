@@ -1,0 +1,18 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "video",
+        "label": "walking",
+        "count": 25,
+        "ratio": 0.15,
+        "videos": [
+          "walking-01"
+        ],
+        "selection": "all"
+      }
+    ]
+  }
+}

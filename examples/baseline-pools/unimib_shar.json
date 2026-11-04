@@ -56,14 +56,14 @@
       },
       "adaptations": [
         "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
-        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors\u2019 neural baselines.",
+        "Uses the standard ADL-9 subset in declared activity order; all eight fall activities are excluded."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }
@@ -125,14 +125,14 @@
       },
       "adaptations": [
         "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
-        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors\u2019 neural baselines.",
+        "Uses the standard ADL-9 subset in declared activity order; all eight fall activities are excluded."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }
@@ -198,14 +198,14 @@
       },
       "adaptations": [
         "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
-        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors\u2019 neural baselines.",
+        "Uses the standard ADL-9 subset in declared activity order; all eight fall activities are excluded."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }
@@ -280,15 +280,13 @@
       },
       "adaptations": [
         "151 samples at 50 Hz preserve released event windows when the manifest keeps each event separate; overlap is zero.",
-        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors’ neural baselines."
+        "Model families come from the supplied benchmark; normalization and rotation combinations are explicit local hypotheses, not the dataset authors\u2019 neural baselines.",
+        "Uses the standard ADL-9 subset in declared activity order; all eight fall activities are excluded."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
         "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-        "file": "bilstmattention.py",
-        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
       }
     }
   }
