@@ -1,0 +1,98 @@
+{
+  "datasets": {
+    "wisdm": {
+      "raw_dir": "../data/whar/wisdm/data",
+      "sampling_hz": 20,
+      "source_columns": [
+        "accel_x",
+        "accel_y",
+        "accel_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az"
+      ],
+      "unit_scales": [
+        1,
+        1,
+        1
+      ],
+      "placement": "front trouser pocket",
+      "labels": [
+        "walking",
+        "jogging",
+        "walking_upstairs",
+        "walking_downstairs",
+        "sitting",
+        "standing"
+      ],
+      "label_map": {
+        "Walking": "walking",
+        "Jogging": "jogging",
+        "Upstairs": "walking_upstairs",
+        "Downstairs": "walking_downstairs",
+        "Sitting": "sitting",
+        "Standing": "standing"
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        [
+          "4",
+          "5",
+          "6",
+          "7"
+        ],
+        [
+          "8",
+          "9",
+          "10",
+          "11"
+        ],
+        [
+          "12",
+          "13",
+          "14",
+          "15"
+        ],
+        [
+          "16",
+          "17",
+          "18",
+          "19"
+        ],
+        [
+          "20",
+          "21",
+          "22",
+          "23"
+        ],
+        [
+          "24",
+          "25",
+          "26"
+        ],
+        [
+          "27",
+          "28",
+          "29"
+        ],
+        [
+          "30",
+          "31",
+          "32"
+        ],
+        [
+          "33",
+          "34",
+          "35"
+        ]
+      ]
+    }
+  }
+}

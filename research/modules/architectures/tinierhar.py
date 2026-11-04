@@ -1,6 +1,6 @@
 """Author TinierHAR implementation, including residual Conv2d and bidirectional GRU."""
 from torch import nn
-from research.vendor.tinierhar import TinierHAR_Model
+from .author_tinierhar import TinierHAR_Model
 from .common import as_sequence
 
 

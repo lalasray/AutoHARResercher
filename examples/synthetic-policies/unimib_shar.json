@@ -1,0 +1,71 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "sit_to_stand",
+        "count": 100,
+        "ratio": 0.45,
+        "prompt": "An adult leans forward from a chair and extends the knees and hips to stand upright. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "lie_to_stand",
+        "count": 125,
+        "ratio": 0.35,
+        "prompt": "An adult moves from lying on a bed through sitting and then stands upright. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "walking",
+        "count": 25,
+        "ratio": 0.1,
+        "prompt": "An adult walks forward on level ground at a natural pace with alternating steps and natural arm swing. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "running",
+        "count": 50,
+        "ratio": 0.3,
+        "prompt": "An adult runs forward briskly with rhythmic strides, brief flight phases, and vigorous arm swing. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "walking_upstairs",
+        "count": 175,
+        "ratio": 0.15,
+        "prompt": "An adult continuously walks up a staircase, lifting each foot onto the next step. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "jumping",
+        "count": 25,
+        "ratio": 0.25,
+        "prompt": "An adult repeatedly jumps off the ground and lands with flexed knees, keeping balance with the arms. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "walking_downstairs",
+        "count": 150,
+        "ratio": 0.1,
+        "prompt": "An adult continuously walks down a staircase with controlled alternating foot contacts. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "stand_to_lie",
+        "count": 75,
+        "ratio": 0.1,
+        "prompt": "An adult moves from standing beside a bed to lying horizontally on the bed. Inertial sensor placement: front trouser pocket (left or right)."
+      },
+      {
+        "generator": "text",
+        "label": "stand_to_sit",
+        "count": 150,
+        "ratio": 0.25,
+        "prompt": "An adult bends the knees and hips and lowers from standing into a seated position on a chair. Inertial sensor placement: front trouser pocket (left or right)."
+      }
+    ]
+  }
+}

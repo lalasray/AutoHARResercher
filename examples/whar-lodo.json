@@ -1,0 +1,251 @@
+{
+  "datasets": {
+    "uci_har": {
+      "raw_dir": "../data/whar/uci_har/data",
+      "sampling_hz": 50,
+      "source_columns": [
+        "total_acc_x",
+        "total_acc_y",
+        "total_acc_z",
+        "body_gyro_x",
+        "body_gyro_y",
+        "body_gyro_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az",
+        "gx",
+        "gy",
+        "gz"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665,
+        1,
+        1,
+        1
+      ],
+      "placement": "waist",
+      "labels": [
+        "walking",
+        "walking_upstairs",
+        "walking_downstairs",
+        "sitting",
+        "standing",
+        "lying"
+      ],
+      "label_map": {
+        "Walking": "walking",
+        "Walking Upstairs": "walking_upstairs",
+        "Walking Downstairs": "walking_downstairs",
+        "Sitting": "sitting",
+        "Standing": "standing",
+        "Laying": "lying"
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1",
+          "2"
+        ],
+        [
+          "3",
+          "4",
+          "5"
+        ],
+        [
+          "6",
+          "7",
+          "8"
+        ],
+        [
+          "9",
+          "10",
+          "11"
+        ],
+        [
+          "12",
+          "13",
+          "14"
+        ],
+        [
+          "15",
+          "16",
+          "17"
+        ],
+        [
+          "18",
+          "19",
+          "20"
+        ],
+        [
+          "21",
+          "22",
+          "23"
+        ],
+        [
+          "24",
+          "25",
+          "26"
+        ],
+        [
+          "27",
+          "28",
+          "29"
+        ]
+      ]
+    },
+    "motion_sense": {
+      "raw_dir": "../data/whar/motion_sense/data",
+      "sampling_hz": 50,
+      "source_columns": [
+        "accel_x",
+        "accel_y",
+        "accel_z",
+        "gyro_x",
+        "gyro_y",
+        "gyro_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az",
+        "gx",
+        "gy",
+        "gz"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665,
+        1,
+        1,
+        1
+      ],
+      "placement": "front trouser pocket",
+      "labels": [
+        "walking",
+        "walking_upstairs",
+        "walking_downstairs",
+        "sitting",
+        "standing",
+        "jogging"
+      ],
+      "label_map": {
+        "walking": "walking",
+        "upstairs": "walking_upstairs",
+        "downstairs": "walking_downstairs",
+        "sitting": "sitting",
+        "standing": "standing",
+        "jogging": "jogging"
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        [
+          "4",
+          "5",
+          "6",
+          "7"
+        ],
+        [
+          "8",
+          "9",
+          "10",
+          "11"
+        ],
+        [
+          "12",
+          "13",
+          "14",
+          "15"
+        ],
+        [
+          "16",
+          "17",
+          "18",
+          "19"
+        ],
+        [
+          "20",
+          "21",
+          "22",
+          "23"
+        ]
+      ]
+    },
+    "real_life_har": {
+      "raw_dir": "../data/whar/real_life_har/data",
+      "sampling_hz": 20,
+      "source_columns": [
+        "acc_x",
+        "acc_y",
+        "acc_z",
+        "gyro_x",
+        "gyro_y",
+        "gyro_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az",
+        "gx",
+        "gy",
+        "gz"
+      ],
+      "unit_scales": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "placement": "variable smartphone placement; carried sessions only",
+      "labels": [
+        "sitting",
+        "standing",
+        "walking"
+      ],
+      "label_map": {
+        "Inactive": null,
+        "Active": "standing",
+        "Walking": "walking",
+        "Driving": "sitting"
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1",
+          "2",
+          "3"
+        ],
+        [
+          "4",
+          "5",
+          "6",
+          "7"
+        ],
+        [
+          "8",
+          "9",
+          "10",
+          "11"
+        ],
+        [
+          "12",
+          "13",
+          "14",
+          "15",
+          "16"
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "backend": "external",
+  "external_command": [
+    "/absolute/path/to/licensed-environment/bin/python",
+    "/absolute/path/to/your/imutube_adapter.py"
+  ],
+  "implementation": "licensed-imutube",
+  "default_dataset": "uci_har",
+  "video_pool": {
+    "walking-01": {
+      "path": "/absolute/path/to/curated-walking.mp4",
+      "labels": [
+        "walking"
+      ]
+    }
+  },
+  "max_count": 200,
+  "timeout_seconds": 3600,
+  "dataset_profiles": {}
+}

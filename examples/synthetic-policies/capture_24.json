@@ -1,0 +1,92 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "sleep",
+        "count": 125,
+        "ratio": 0.35,
+        "prompt": "An adult sleeps lying on a bed, remaining mostly still with occasional slow repositioning of the arm and torso. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "sitting",
+        "count": 25,
+        "ratio": 0.3,
+        "prompt": "An adult remains seated upright on a chair with small natural posture adjustments. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "standing",
+        "count": 150,
+        "ratio": 0.3,
+        "prompt": "An adult stands in place with slight postural sway and occasional small arm movements. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "walking",
+        "count": 125,
+        "ratio": 0.5,
+        "prompt": "An adult walks forward on level ground at a natural pace with alternating steps and natural arm swing. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "bicycling",
+        "count": 150,
+        "ratio": 0.4,
+        "prompt": "An adult rides a bicycle at a steady pace, pedaling rhythmically with hands resting on the handlebars. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "vehicle_travel",
+        "count": 50,
+        "ratio": 0.25,
+        "prompt": "An adult sits as a passenger in a moving vehicle, with occasional small arm adjustments and gentle vehicle vibration. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "household_chores",
+        "count": 125,
+        "ratio": 0.15,
+        "prompt": "An adult washes dishes at a sink, using repeated scrubbing, rinsing, and reaching movements of the hands and arms. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "sports",
+        "count": 25,
+        "ratio": 0.3,
+        "prompt": "An adult performs a short exercise routine of jumping jacks, with coordinated leg separation and overhead arm raises. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "computer_use",
+        "count": 150,
+        "ratio": 0.45,
+        "prompt": "An adult sits at a desk typing on a keyboard and occasionally moving a mouse with small hand and wrist movements. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "watching_tv",
+        "count": 150,
+        "ratio": 0.2,
+        "prompt": "An adult sits watching television with arms resting, occasionally adjusting posture or using a remote control. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "stairs_ascent_descent",
+        "count": 75,
+        "ratio": 0.25,
+        "prompt": "An adult traverses a flight of stairs with rhythmic steps; each generated sample contains either ascent or descent. Inertial sensor placement: wrist."
+      },
+      {
+        "generator": "text",
+        "label": "light_activity",
+        "count": 75,
+        "ratio": 0.3,
+        "prompt": "An adult performs light personal-care activity at a sink, slowly reaching for toiletries and adjusting clothing. Inertial sensor placement: wrist."
+      }
+    ]
+  }
+}

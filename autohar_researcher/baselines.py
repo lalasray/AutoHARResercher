@@ -32,8 +32,8 @@ def dataset_candidates(dataset):
             candidates.append({'id': f'{dataset}/{name}/{variant}', 'pipeline': pipeline.payload(),
                 'evidence': {'dataset': dataset, 'variant': variant,
                     'sources': {key: book['sources'][key] for key in profile['sources']},
-                    'adaptations': profile['adaptations'], 'researched_on': book['researched_on'],
-                    'architecture_source': json.loads((Path(__file__).parents[1] / 'research/vendor/ARCHITECTURES.json').read_text())[name].get('source', {})}})
+                    'adaptations': profile['adaptations'],
+                    'architecture_source': json.loads((Path(__file__).parents[1] / 'research/modules/architectures/ARCHITECTURES.json').read_text())[name].get('source', {})}})
     return candidates
 
 

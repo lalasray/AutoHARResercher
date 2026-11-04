@@ -15,7 +15,7 @@ LODO_LABELS = ('walking', 'walking_upstairs', 'walking_downstairs', 'sitting', '
 
 @dataclass
 class Pipeline:
-    # Generic starting pipeline shared by every dataset.
+
     data: dict[str, Any] = field(default_factory=lambda: {
         'sources': [], 'window_seconds': 2.56, 'overlap': 0.5,
         'normalization': 'standard', 'balanced_sampling': False,
@@ -24,7 +24,7 @@ class Pipeline:
     augmentation: dict[str, Any] = field(default_factory=lambda: {
         'kind': 'none', 'strength': 0.02, 'synthetic': [],
     })
-    # Candidate-owned executable files; never edits the evaluator's checkout.
+
     code: dict[str, str] = field(default_factory=dict)
 
     def payload(self) -> dict[str, Any]:

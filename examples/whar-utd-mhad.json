@@ -1,0 +1,85 @@
+{
+  "datasets": {
+    "utd_mhad": {
+      "raw_dir": "../data/whar/utd_mhad/data",
+      "sampling_hz": 50,
+      "source_columns": [
+        "Ax",
+        "Ay",
+        "Az",
+        "GyroX",
+        "GyroY",
+        "GyroZ"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az",
+        "gx",
+        "gy",
+        "gz"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665,
+        0.017453292519943295,
+        0.017453292519943295,
+        0.017453292519943295
+      ],
+      "placement": "right wrist",
+      "labels": [
+        "clap",
+        "throw",
+        "basketball_shoot",
+        "drawing",
+        "boxing",
+        "baseball_swing",
+        "tennis_swing",
+        "two_hand_push",
+        "jogging",
+        "walking",
+        "squat"
+      ],
+      "label_map": {
+        "Swipe Left": null,
+        "Swipe Right": null,
+        "Wave": null,
+        "Clap": "clap",
+        "Throw": "throw",
+        "Arm Cross": null,
+        "Basketball Shoot": "basketball_shoot",
+        "Draw X": "drawing",
+        "Draw Circle Clockwise": "drawing",
+        "Draw Circle Counterclockwise": "drawing",
+        "Draw Triangle": "drawing",
+        "Bowling": null,
+        "Boxing": "boxing",
+        "Baseball Swing": "baseball_swing",
+        "Tennis Swing": "tennis_swing",
+        "Arm Curl": null,
+        "Tennis Serve": null,
+        "Two-Hand Push": "two_hand_push",
+        "Knock": null,
+        "Catch": null,
+        "Pick Up and Throw": null,
+        "Jog": "jogging",
+        "Walk": "walking",
+        "Sit to Stand": null,
+        "Stand to Sit": null,
+        "Lunge": null,
+        "Squat": "squat"
+      },
+      "subjects": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    }
+  }
+}

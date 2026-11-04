@@ -1,15 +1,14 @@
-"""Persistent experimental memory and evidence-directed coverage across families."""
+from .context_summary import compact
 from collections import Counter
 import difflib
 import hashlib
-import json
 
 FAMILIES = {
-    'data': ['window_stride', 'fitted_normalization', 'normalization', 'sampling', 'filtering'],
-    'model': ['activation', 'architecture', 'representation', 'optimization', 'regularization'],
-    'augmentation': ['transform_family', 'magnitude', 'per_class', 'mixing'],
+    'data': ['window_stride', 'fitted_normalization', 'normalization', 'sampling', 'filtering', 'custom'],
+    'model': ['activation', 'architecture', 'representation', 'optimization', 'regularization', 'ensemble', 'cascade', 'custom'],
+    'augmentation': ['transform_family', 'magnitude', 'per_class', 'mixing', 'custom'],
 }
-LIMITS = {'files': 3, 'functions': 24, 'fields': 64, 'lines': 800}
+LIMITS = {'files': 3, 'functions': 128, 'fields': 64, 'lines': 4096}
 
 
 def family(role, changes, source, rationale=''):
@@ -52,11 +51,14 @@ def summarize(ledger, stagnation):
         minimum = min(counts.get(f, 0) for f in families)
         untried = [f for f in families if counts.get(f, 0) == 0]
         options[role] = untried or ([f for f in families if counts.get(f, 0) == minimum] if stagnation >= 3 else families)
-    # Preserve concrete changes and code diffs for older experiments, not just hashes.
-    compact = [{**e, 'code_diff': e['code_diff'][:1600], 'code_diff_truncated': len(e['code_diff']) > 1600} for e in ledger]
-    return {'stagnant_rounds': stagnation, 'coverage': coverage, 'allowed_focus': options,
-            'experiment_ledger': compact, 'failed_ideas': failure_memory(ledger), 'mutation_limits': LIMITS,
-            'policy': 'Test an evidence-backed mechanism from an allowed family. Refine successes; after stagnation prioritize least-covered families. One coherent mechanism per candidate; coordinated edits may support it.'}
+
+    recent = [{key: compact(value) for key,value in e.items()
+               if key != 'baseline_context'} for e in ledger[-12:]]
+    failures = [{key: compact(value) for key,value in e.items()
+                 if key != 'baseline_context'} for e in failure_memory(ledger)[-12:]]
+    return {'stagnant_rounds': stagnation, 'coverage': coverage, 'allowed_focus': FAMILIES, 'preferred_focus': options,
+            'experiment_ledger': recent, 'ledger_total': len(ledger), 'failed_ideas': failures, 'mutation_limits': LIMITS,
+            'policy': 'Use any coherent mechanism, including custom hooks. Family coverage is advisory; after stagnation prefer less-covered families when justified. One coherent mechanism per candidate; coordinated edits may support it.'}
 
 
 def validate_plan(plan, exploration):
@@ -70,37 +72,7 @@ def validate_plan(plan, exploration):
                 raise ValueError(f'{role} plan requires {key}')
 
 
-def import_history(directory):
-    """Recover concrete hypotheses and outcomes from a completed/interrupted search."""
-    from .types import Pipeline, Proposal
-    history = [json.loads(line) for line in (directory / 'history.jsonl').read_text().splitlines()]
-    baseline_rows = [r for r in history if r['status'] == 'baseline']
-    if not baseline_rows:
-        raise ValueError('History has no validated baseline')
-    baseline = Pipeline.from_dict(baseline_rows[0]['pipeline'])
-    baseline_score = baseline_rows[0]['evaluation']['score']
-    ledger = []
-    for path in sorted(directory.glob('round-*.json')):
-        round_id = int(path.stem.split('-')[-1])
-        report = json.loads(path.read_text())
-        for role, review in report.get('reviews', {}).items():
-            proposal = Proposal(**review['proposal'])
-            row = entry(round_id, role, proposal, baseline)
-            row.update(baseline_score=baseline_score, baseline_signature=hashlib.sha256(json.dumps(baseline.payload(),sort_keys=True).encode()).hexdigest())
-            outcomes = [r for r in history if r['round'] == round_id and r['origin'] == [role]]
-            row.update(historical=True, source=str(directory),
-                       status=outcomes[-1]['status'] if outcomes else 'interrupted_or_not_evaluated',
-                       score=outcomes[-1]['evaluation']['score'] if outcomes and outcomes[-1].get('evaluation') else None)
-            ledger.append(row)
-        promoted = [r for r in history if r['round'] == round_id and r['status'] == 'promoted']
-        if promoted:
-            baseline = Pipeline.from_dict(promoted[-1]['pipeline'])
-            baseline_score = promoted[-1]['evaluation']['score']
-    return history, ledger
-
-
 def failure_memory(ledger):
-    """Concrete unsuccessful experiments, kept separately from untested rejections."""
     failed = []
     for row in ledger:
         status, score = row.get('status'), row.get('score')

@@ -8,6 +8,22 @@
       "/absolute/path/to/imugpt-server.json"
     ],
     "tool": "generate_imu",
-    "timeout_seconds": 3700
+    "timeout_seconds": 3700,
+    "dataset_profiles": true
+  },
+  "video": {
+    "command": "/absolute/path/to/AutoHARResercher/.venv/bin/python",
+    "args": [
+      "-m",
+      "autohar_researcher.imutube_mcp",
+      "--config",
+      "/absolute/path/to/imutube-server.json"
+    ],
+    "tool": "generate_imu",
+    "timeout_seconds": 3700,
+    "dataset_profiles": true,
+    "allowed_videos": [
+      "walking-01"
+    ]
   }
 }

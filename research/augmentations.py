@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import copy
 import math
-import numpy as np
 
 SURVEY = 'https://github.com/uchidalab/time_series_augmentation/tree/656318d18c0945080c969ce2bf839760880b8d30'
 WEARABLE = 'https://github.com/terryum/Data-Augmentation-For-Wearable-Sensor-Data/tree/e5b28e6c884ba5b1fc656f39ba452390cd786b8c'

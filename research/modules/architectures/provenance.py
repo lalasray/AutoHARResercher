@@ -9,7 +9,7 @@ from .presets import model_defaults
 def model_provenance(config, custom=False):
     if custom:
         return {'status': 'custom_candidate', 'architecture': config['architecture']}
-    root = Path(__file__).parents[2] / 'vendor'
+    root = Path(__file__).resolve().parent
     entries = json.loads((root / 'ARCHITECTURES.json').read_text())
     result = copy.deepcopy(entries.get(config['architecture'], {'status': 'generic_experimental', 'framework': 'pytorch'}))
     result['architecture_name'] = config['architecture']

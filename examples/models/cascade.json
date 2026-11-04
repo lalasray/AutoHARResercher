@@ -1,0 +1,8 @@
+{
+  "model": {
+    "architecture": "cnn"
+  },
+  "code": {
+    "research/components/model.py": "import torch\nfrom torch import nn\n\nclass Cascade(nn.Module):\n    def __init__(self, num_classes):\n        super().__init__()\n        self.coarse = build_registered_model('cnn', {'hidden_dim': 16, 'depth': 1})\n        self.detail = build_registered_model('gru', {'hidden_dim': 32})\n        self.refine = nn.Linear(2 * num_classes, num_classes)\n\n    def forward(self, x):\n        coarse = self.coarse(x)\n        detail = self.detail(x)\n        correction = self.refine(torch.cat([coarse, detail], dim=1))\n        return coarse + correction\n\ndef build_model(input_dim, num_classes, params):\n    return Cascade(num_classes)\n"
+  }
+}

@@ -86,9 +86,9 @@ def test_duplicate_recording_cannot_leak_between_subjects(manifest):
         make_task(manifest, 'loso', 'uci_har', '0')
 
 
-def test_loso_cycles_every_person_in_both_held_out_roles(manifest):
+def test_loso_holds_out_every_person_once(manifest):
     from collections import Counter
-    test_counts, val_counts = Counter(), Counter()
+    test_counts = Counter()
     people = {str(i) for i in range(6)}
     for person in people:
         task = make_task(manifest, 'loso', 'uci_har', person)
@@ -101,20 +101,21 @@ def test_loso_cycles_every_person_in_both_held_out_roles(manifest):
         assert not (train & val or train & test or val & test)
         assert train | val | test == people
         test_counts.update(test)
-        val_counts.update(val)
-    assert test_counts == val_counts == Counter({p: 1 for p in people})
+    assert test_counts == Counter({p: 1 for p in people})
 
 
-def test_loso_one_validation_person_even_with_many_people(manifest):
+def test_loso_80_20_source_subject_split(manifest):
     value = json.loads(manifest.read_text())
     template = value['recordings'][0]
     for person in range(6, 20):
+        np.save(manifest.parent / f'unopened-{person}.npy', np.zeros((100, 6), dtype=np.float32))
         value['recordings'].append(dict(template, subject=str(person),
             session=f'{person}-0', path=f'unopened-{person}.npy'))
     manifest.write_text(json.dumps(value))
     task = make_task(manifest, 'loso', 'uci_har', '0')
-    assert len(subjects(task.validation)) == 1
-    assert len(subjects(task.train)) == 18
+    assert len(subjects(task.validation)) == 4
+    assert len(subjects(task.train)) == 15
+    assert not subjects(task.test) & subjects(task.train + task.validation)
 
 
 def test_loso_needs_three_people(manifest):
@@ -123,3 +124,65 @@ def test_loso_needs_three_people(manifest):
     manifest.write_text(json.dumps(value))
     with pytest.raises(ValueError, match='at least three'):
         make_task(manifest, 'loso', 'uci_har', '0')
+
+
+@pytest.mark.parametrize('target', ['uci_har', 'motion_sense', 'real_life_har'])
+def test_lodo_all_targets_with_three_class_real_life(manifest, target):
+    value = json.loads(manifest.read_text())
+    supported = ['walking', 'sitting', 'standing']
+    value['datasets']['real_life_har']['labels'] = supported
+    value['recordings'] = [r for r in value['recordings']
+        if r['dataset'] != 'real_life_har' or r['label'] in {'0', '3', '4'}]
+    manifest.write_text(json.dumps(value))
+    task = make_task(manifest, 'lodo', target)
+    assert len(task.labels) == 5
+    assert {r.dataset for r in task.test} == {target}
+    assert {r.dataset for r in task.train} == set(value['datasets']) - {target}
+    assert not subjects(task.train) & subjects(task.validation)
+    for name in set(value['datasets']) - {target}:
+        assert len({r.subject for r in task.validation if r.dataset == name}) == 2
+
+    assert macro_f1(np.array([0, 3, 4]), np.array([0, 3, 4]), 5) == pytest.approx(.6)
+
+
+def test_lodo_requires_complete_manifest(manifest):
+    value = json.loads(manifest.read_text())
+    del value['datasets']['real_life_har']
+    value['recordings'] = [r for r in value['recordings'] if r['dataset'] != 'real_life_har']
+    manifest.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match='all three datasets'):
+        make_task(manifest, 'lodo', 'uci_har')
+
+
+def test_real_life_loso_defaults_to_three_classes(manifest):
+    from autohar_researcher.datasets import make_fixed_validation_task
+
+    task = make_task(manifest, 'loso', 'real_life_har', '0')
+    assert task.labels == ('sitting', 'standing', 'walking')
+    for partition in (task.train, task.validation, task.test):
+        assert {r.label for r in partition} == set(task.labels)
+    fixed = make_fixed_validation_task(manifest, 'real_life_har', '0')
+    assert fixed.labels == task.labels
+    assert {r.label for r in fixed.train + fixed.validation} == set(task.labels)
+    assert len(make_task(manifest, 'lodo', 'real_life_har').labels) == 5
+    assert macro_f1(np.arange(3), np.arange(3), len(task.labels)) == 1.0
+
+
+@pytest.mark.parametrize('target,count', [('wisdm', 6), ('hang_time', 9), ('capture_24', 12), ('utd_mhad', 11)])
+def test_requested_loso_class_spaces_are_fixed(manifest, target, count):
+    from autohar_researcher.benchmark_data import LOSO_LABELS
+    value = json.loads(manifest.read_text())
+    spec = value['datasets'].pop('uci_har')
+    labels = LOSO_LABELS[target]
+    spec['labels'] = list(labels) + ['excluded']
+    spec['label_map'] = {str(i): labels[i] for i in range(5)}
+    value['datasets'][target] = spec
+    for row in value['recordings']:
+        if row['dataset'] == 'uci_har':
+            row['dataset'] = target
+    manifest.write_text(json.dumps(value))
+    task = make_task(manifest, 'loso', target, '0')
+    assert len(task.labels) == count
+    assert 'excluded' not in task.labels
+    assert not subjects(task.train) & subjects(task.validation)
+    assert not subjects(task.train + task.validation) & subjects(task.test)

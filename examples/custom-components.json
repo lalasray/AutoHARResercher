@@ -1,0 +1,36 @@
+{
+  "data": {
+    "sources": [],
+    "window_seconds": 1,
+    "overlap": 0,
+    "normalization": "none",
+    "balanced_sampling": false
+  },
+  "model": {
+    "hidden_dim": 64,
+    "dropout": 0.0,
+    "optimizer": "custom",
+    "learning_rate": 0.001,
+    "optimizer_eps": 1e-08,
+    "optimizer_beta1": 0.9,
+    "optimizer_beta2": 0.999,
+    "weight_decay": 0.0,
+    "loss": "custom",
+    "label_smoothing": 0.0,
+    "batch_size": 64,
+    "max_epochs": 150,
+    "patience": 15,
+    "scheduler": "none",
+    "architecture": "custom"
+  },
+  "augmentation": {
+    "kind": "custom",
+    "strength": 0.02,
+    "synthetic": []
+  },
+  "code": {
+    "research/components/model.py": "import torch\nclass Network(torch.nn.Module):\n    def __init__(self, channels, classes):\n        super().__init__()\n        self.head = torch.nn.Linear(channels, classes)\n    def forward(self, x):\n        return self.head(x.mean(dim=1))\ndef build_model(input_dim, num_classes, params):\n    return Network(params['input_channels'], num_classes)\ndef build_optimizer(model, params):\n    return torch.optim.SGD(model.parameters(), lr=params['learning_rate'])\ndef build_loss(params, class_weights):\n    return torch.nn.CrossEntropyLoss()\n",
+    "research/components/data.py": "import numpy as np\ndef sample_indices(x, y, rng):\n    return np.concatenate([rng.permutation(len(y)), np.arange(len(y))])\ndef fit_preprocessor(x, params):\n    return {'center': np.median(x, axis=(0, 1), keepdims=True)}\ndef transform(x, state):\n    return x - state['center']\n",
+    "research/components/augmentation.py": "import torch\ndef augment_labeled(x, labels, rng):\n    return x + 0.001 * torch.randn(x.shape, generator=rng, device=x.device)\n"
+  }
+}

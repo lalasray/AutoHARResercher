@@ -1,0 +1,26 @@
+{
+  "python": "/absolute/path/to/video-environment/bin/python",
+  "pose_model": "/absolute/path/to/pose_landmarker_lite.task",
+  "default_dataset": "uci_har",
+  "diagnostic_only": false,
+  "video_pool": {
+    "walking-01": {
+      "path": "/absolute/path/to/curated-walking.mp4",
+      "labels": [
+        "walking"
+      ]
+    }
+  },
+  "confidence": 0.7,
+  "smoothing_seconds": 0.2,
+  "gravity": [
+    0,
+    9.80665,
+    0
+  ],
+  "max_center_jump": 0.15,
+  "max_count": 200,
+  "max_frames": 54000,
+  "timeout_seconds": 3600,
+  "dataset_profiles": {}
+}

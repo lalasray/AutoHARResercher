@@ -1,0 +1,83 @@
+{
+  "datasets": {
+    "hang_time": {
+      "raw_dir": "../data/whar/hang_time/data",
+      "sampling_hz": 50,
+      "source_columns": [
+        "acc_x",
+        "acc_y",
+        "acc_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665
+      ],
+      "placement": "wrist",
+      "labels": [
+        "dribbling",
+        "shot",
+        "pass",
+        "rebound",
+        "layup",
+        "walking",
+        "running",
+        "standing",
+        "sitting"
+      ],
+      "label_map": {
+        "dribbling": "dribbling",
+        "shot": "shot",
+        "pass": "pass",
+        "rebound": "rebound",
+        "layup": "layup",
+        "walking": "walking",
+        "running": "running",
+        "standing": "standing",
+        "sitting": "sitting"
+      },
+      "adapter": "hangtime_9",
+      "timestamp_column": "timestamp",
+      "timestamp_unit": "ms",
+      "loso_groups": [
+        [
+          "05d8_eu",
+          "0846_eu",
+          "0846_na",
+          "10f0_eu",
+          "10f0_na",
+          "2dd9_eu",
+          "2dd9_na"
+        ],
+        [
+          "4991_eu",
+          "4d70_eu",
+          "4d70_na",
+          "9bd4_eu",
+          "9bd4_na"
+        ],
+        [
+          "a0da_eu",
+          "a0da_na",
+          "ac59_eu",
+          "ac59_na",
+          "b512_eu",
+          "b512_na"
+        ],
+        [
+          "c6f3_na",
+          "ce9d_eu",
+          "ce9d_na",
+          "e90f_eu",
+          "f2ad_eu",
+          "f2ad_na"
+        ]
+      ]
+    }
+  }
+}

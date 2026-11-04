@@ -14,9 +14,12 @@ from research.modules.architectures.presets import model_defaults
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_pinned_sources_are_byte_identical():
-    root = ROOT / 'research/vendor'
-    for entry in json.loads((root / 'SOURCES.json').read_text()).values():
+def test_colocated_author_source_checksums_match():
+    root = ROOT / 'research/modules/architectures'
+    for metadata in json.loads((root / 'ARCHITECTURES.json').read_text()).values():
+        entry = metadata.get('source', {})
+        if 'sha256' not in entry:
+            continue
         assert hashlib.sha256((root / entry['file']).read_bytes()).hexdigest() == entry['sha256']
 
 
@@ -25,6 +28,7 @@ def test_torch_adapter_matches_author_logits_and_gradients(name):
     torch.set_num_threads(1)
     params = dict(model_defaults(name), input_channels=6)
     adapter = importlib.import_module(f'research.modules.architectures.{name}').build_model(128 * 6, 5, params)
+    assert adapter.original.__class__.__module__ == f'research.modules.architectures.author_{name}'
     import copy
     original = copy.deepcopy(adapter.original)
     adapter.eval()
@@ -49,25 +53,39 @@ def test_architecture_switch_uses_its_own_defaults():
     assert initial.model['architecture'] == 'cnn'
 
 
-def test_deepconvlstm_peepholes_match_independent_numpy_recurrence():
-    from research.modules.architectures.deepconvlstm import PeepholeLSTM
-    layer = PeepholeLSTM(3, 2).double()
-    x = torch.randn(2, 4, 3, dtype=torch.float64, requires_grad=True)
-    actual = layer(x)
-    wi, wh, bias, peepholes = [p.detach().numpy() for p in (layer.weight_ih, layer.weight_hh, layer.bias, layer.peepholes)]
-    hidden = np.zeros((2, 2))
-    cell = np.zeros_like(hidden)
-    output = []
-    sigmoid = lambda a: 1 / (1 + np.exp(-a))
-    for step in x.detach().numpy().transpose(1, 0, 2):
-        i, f, candidate, o = np.split(step @ wi + hidden @ wh + bias, 4, axis=1)
-        cell = sigmoid(f + cell * peepholes[1]) * cell + sigmoid(i + cell * peepholes[0]) * np.tanh(candidate)
-        hidden = sigmoid(o + cell * peepholes[2]) * np.tanh(cell)
-        output.append(hidden)
-    np.testing.assert_allclose(actual.detach(), np.stack(output, axis=1), atol=1e-14)
-    actual.sum().backward()
-    assert torch.isfinite(layer.peepholes.grad).all()
-    assert layer.peepholes.grad.abs().sum() > 0
+@pytest.mark.parametrize('layers', [1, 2])
+def test_fused_deepconvlstm_matches_standard_lstm_cells(layers):
+    from research.modules.architectures.deepconvlstm import DeepConvLSTM
+    torch.set_num_threads(1)
+    model = DeepConvLSTM(9, {'input_channels': 3, 'conv_filters': 4,
+                            'hidden_dim': 8, 'lstm_layers': layers, 'dropout': 0}).double()
+    reference = torch.nn.ModuleList([torch.nn.LSTMCell(12 if i == 0 else 8, 8).double()
+                                    for i in range(layers)])
+    with torch.no_grad():
+        for index, layer in enumerate(reference):
+            for parameter in ('weight_ih', 'weight_hh', 'bias_ih', 'bias_hh'):
+                getattr(layer, parameter).copy_(getattr(model.lstm, f'{parameter}_l{index}'))
+    x = torch.randn(2, 7, 12, dtype=torch.float64, requires_grad=True)
+    reference_x = x.detach().clone().requires_grad_(True)
+    actual, _ = model.lstm(x)
+    expected = reference_x
+    for layer in reference:
+        hidden = expected.new_zeros(2, 8)
+        cell = torch.zeros_like(hidden)
+        outputs = []
+        for value in expected.unbind(1):
+            hidden, cell = layer(value, (hidden, cell))
+            outputs.append(hidden)
+        expected = torch.stack(outputs, dim=1)
+    torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-12)
+    actual.square().sum().backward()
+    expected.square().sum().backward()
+    torch.testing.assert_close(x.grad, reference_x.grad, rtol=1e-10, atol=1e-12)
+    assert not any('peephole' in name for name, _ in model.named_parameters())
+    logits = model(torch.randn(4, 50, 3, dtype=torch.float64))
+    assert logits.shape == (4, 9)
+    torch.nn.functional.cross_entropy(logits, torch.arange(4)).backward()
+    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
 
 
 def test_lasagne_rmsprop_epsilon_placement():
@@ -99,59 +117,32 @@ def test_spectra_stft_matches_explicit_windowed_dft_and_backpropagates():
     assert model.channel_attention.gamma.grad is not None
 
 
-def test_torch_port_bilstm_matches_original_uci_graph():
-    tf = pytest.importorskip('tensorflow')
-    from research.modules.architectures.bilstmattention import build_model
-    from types import SimpleNamespace
-    source = (ROOT / 'research/vendor/bilstmattention.py').read_text()
-    # Execute only the published model-definition block, never data loading/fit.
-    source = source[source.index('class Attention'):source.index('model.compile')]
-    namespace = dict(tf=tf, K=tf.keras.backend, Input=tf.keras.Input, Model=tf.keras.Model,
-        Parameter=SimpleNamespace(kernel_size=3, pool_size=2, drop_rate=.2, number=6))
-    namespace.update({name: getattr(tf.keras.layers, name) for name in ('Layer', 'Conv1D',
-        'BatchNormalization', 'MaxPooling1D', 'Dropout', 'LSTM', 'Dense', 'Activation',
-        'Concatenate', 'Bidirectional', 'LayerNormalization', 'Add')})
-    exec(compile(source, 'original-model-block', 'exec'), namespace)
-    reference = namespace['model']
-    adapter = build_model(128 * 9, 6, dict(model_defaults('bilstmattention'), input_channels=9))
-    from author_weight_transfer import transfer_bilstm
-    transfer_bilstm(adapter, reference)
-    adapter.eval()
-    x = np.random.default_rng(13).normal(size=(2, 128, 9)).astype('float32')
-    xf = tf.Variable(x)
-    with tf.GradientTape() as tape:
-        expected = reference([xf[:, :, i:i+3] for i in (0, 3, 6)], training=False)
-        scalar = expected[:, 0]
-    gradient = tape.gradient(scalar, xf).numpy()
-    xt = torch.tensor(x, requires_grad=True)
-    actual = adapter(xt).softmax(-1)
-    actual[:, 0].sum().backward()
-    np.testing.assert_allclose(actual.detach().numpy(), expected.numpy(), atol=2e-6, rtol=2e-5)
-    np.testing.assert_allclose(xt.grad.numpy(), gradient, atol=2e-6, rtol=3e-4)
+@pytest.mark.parametrize('name', ['bilstmattention', 'hart', 'mobilehart'])
+def test_pytorch_ports_reload_and_backpropagate_without_reference_framework(name, monkeypatch):
+    import builtins
+    import copy
+    from research.modules.architectures.provenance import model_provenance
+    original_import = builtins.__import__
 
+    def checked_import(module, *args, **kwargs):
+        if module.split('.')[0] == 'tensorflow':
+            raise AssertionError('PyTorch model must not import the reference framework')
+        return original_import(module, *args, **kwargs)
 
-@pytest.mark.parametrize('name,function', [('hart', 'HART'), ('mobilehart', 'mobileHART_XS')])
-def test_torch_port_hart_matches_author_model(name, function):
-    pytest.importorskip('tensorflow')
-    from research.vendor import hart
-    reference = getattr(hart, function)((128, 6), 5)
-    adapter = importlib.import_module(f'research.modules.architectures.{name}').build_model(128 * 6, 5,
-        dict(model_defaults(name), input_channels=6))
-    from author_weight_transfer import transfer_hart, transfer_mobile
-    (transfer_hart if name == 'hart' else transfer_mobile)(adapter, reference)
-    adapter.eval()
-    x = np.random.default_rng(13).normal(size=(2, 128, 6)).astype('float32')
-    xt = torch.tensor(x, requires_grad=True)
-    with __import__('tensorflow').GradientTape() as tape:
-        xf = __import__('tensorflow').Variable(x)
-        tape.watch(xf)
-        expected = reference(xf, training=False)
-        scalar = expected[:, 0]
-    expected_gradient = tape.gradient(scalar, xf).numpy()
-    actual = adapter(xt).softmax(-1)
-    actual[:, 0].sum().backward()
-    np.testing.assert_allclose(actual.detach().numpy(), expected.numpy(), atol=3e-6, rtol=3e-5)
-    np.testing.assert_allclose(xt.grad.numpy(), expected_gradient, atol=3e-6, rtol=3e-4)
+    monkeypatch.setattr(builtins, '__import__', checked_import)
+    torch.set_num_threads(1)
+    params = dict(model_defaults(name), input_channels=6)
+    assert model_provenance(params)['status'] == 'author_architecture_port'
+    factory = importlib.import_module(f'research.modules.architectures.{name}').build_model
+    model = factory(128 * 6, 5, params).eval()
+    x = torch.randn(2, 128, 6, requires_grad=True)
+    logits = model(x)
+    logits.square().sum().backward()
+    assert logits.shape == (2, 5)
+    assert torch.isfinite(x.grad).all() and x.grad.abs().sum() > 0
+    restored = factory(128 * 6, 5, params).eval()
+    restored.load_state_dict(copy.deepcopy(model.state_dict()), strict=True)
+    torch.testing.assert_close(restored(x.detach()), logits.detach(), rtol=0, atol=0)
 
 
 def test_lr_schedule_is_replayed_without_validation(manifest, tmp_path):

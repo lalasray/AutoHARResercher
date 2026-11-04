@@ -1,12 +1,14 @@
-"""Planning, concurrent specialist/Judge calls, and sequential hill climbing."""
 from __future__ import annotations
 
 from research.modules.architectures.provenance import model_provenance
 from research.augmentations import policy_provenance
 
+from .context_summary import diagnostic_summary, history_summary, outcome_summary
+
 import copy
 import json
 import math
+import time
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
@@ -47,6 +49,8 @@ class Search:
         if (self.output / 'history.jsonl').exists():
             raise ValueError('Use a fresh output directory; resuming requires an audited checkpoint')
         self._seen = set()
+        if hasattr(agents, 'inspect_evaluation'):
+            agents.inspect_evaluation = self._inspect_evaluation
 
     def _record(self, outcome: Outcome):
         self.history.append(outcome)
@@ -61,6 +65,65 @@ class Search:
                            for path, source in payload['code'].items()}
         return json.dumps(payload, sort_keys=True)
 
+    def _inspect_evaluation(self, query):
+        diagnostics = getattr(self.harness, '_validation_diagnostics', {})
+        if query.get('list'):
+            offset = query.get('offset', 0)
+            if type(offset) is not int or offset < 0:
+                raise ValueError('Catalog offset must be nonnegative')
+            entries = list(reversed(list(diagnostics.items())))
+            return {'total': len(entries), 'entries': [{'pipeline_id': hashlib.sha256(key.encode()).hexdigest(), 'validation_macro_f1': value.get('mean_validation_macro_f1', value.get('validation_macro_f1')), 'sections': list(value)} for key,value in entries[offset:offset+20]], 'next_offset': offset+20 if offset+20 < len(entries) else None}
+        key = next((key for key in diagnostics
+                    if hashlib.sha256(key.encode()).hexdigest() == query.get('pipeline_id')), None)
+        if key is None:
+            outcome = next((row for row in reversed(self.history) if row.pipeline and
+                hashlib.sha256(json.dumps(row.pipeline, sort_keys=True).encode()).hexdigest() == query.get('pipeline_id')), None)
+            if outcome is None:
+                raise ValueError('Unknown evaluated pipeline ID')
+            result = {'pipeline': outcome.pipeline, 'status': outcome.status, 'reason': outcome.reason,
+                      'validation_macro_f1': outcome.evaluation.score if outcome.evaluation else None}
+        else:
+            result = {**diagnostics[key], 'pipeline': json.loads(key)}
+        if query.get('subject') is not None:
+            result = next((fold['diagnostics'] for fold in result.get('folds', [])
+                           if fold['subject'] == str(query['subject'])), None)
+            if result is None:
+                raise ValueError('Unknown diagnostic fold')
+        sections = query.get('sections')
+        if sections is not None:
+            if not isinstance(sections, list) or any(section not in result for section in sections):
+                raise ValueError('Unknown diagnostic sections')
+            result = {section: result[section] for section in sections}
+        if sections is None:
+            return diagnostic_summary(result)
+        text = json.dumps(result)
+        if len(text) > 32000 or 'offset' in query:
+            offset = query.get('offset', 0)
+            if type(offset) is not int or offset < 0:
+                raise ValueError('Diagnostic page offset must be nonnegative')
+            return {'detail_page': text[offset:offset+32000], 'offset': offset, 'total_characters': len(text), 'next_offset': offset+32000 if offset+32000 < len(text) else None, 'encoding': 'JSON text; request next_offset to continue'}
+        return copy.deepcopy(result)
+
+    def _diagnostic_context(self, baseline):
+        diagnostics = getattr(self.harness, '_validation_diagnostics', {})
+        baseline_key = (self.harness._key(baseline) if hasattr(self.harness, '_key')
+                        else json.dumps(baseline.payload(), sort_keys=True))
+        current = diagnostics.get(baseline_key, {})
+        return {'source_validation_diagnostics': diagnostic_summary(current),
+                'baseline_pipeline_id': hashlib.sha256(baseline_key.encode()).hexdigest(),
+                'evaluation_diagnostics_index': [
+                    {'pipeline_id': hashlib.sha256(key.encode()).hexdigest(),
+                     'sections': list(value) + ['pipeline'],
+                     'architecture': json.loads(key)['model']['architecture'],
+                     'validation_macro_f1': value.get('mean_validation_macro_f1', value.get('validation_macro_f1')),
+                     'outcomes': [{'round': o.round, 'status': o.status, 'origin': o.origin}
+                                  for o in self.history if o.pipeline and json.dumps(o.pipeline, sort_keys=True) == key][-5:],
+                     'subjects': [fold['subject'] for fold in value.get('folds', [])],
+                     'fold_sections': list(value.get('folds', [{}])[0].get('diagnostics', {}))}
+                    for key, value in list(diagnostics.items())[-20:]],
+                'diagnostic_catalog_total': len(diagnostics),
+                'diagnostic_access': 'Return {"inspect": {"pipeline_id": "ID", "subject": "optional fold", "sections": ["section"]}} to inspect any evaluated run. Omit sections for a compact summary. Explicit sections return details, paginated with offset/next_offset when large. Use {"list":true,"offset":0} to page through older candidate IDs.'}
+
     def _context(self, baseline: Pipeline, score: Evaluation, round_id: int) -> dict:
         from research.augmentations import catalog
         from pathlib import Path
@@ -69,14 +132,11 @@ class Search:
         model_source = source.read_text() if name.isidentifier() and source.is_file() else ''
         from .exploration import summarize
         from research.modules.architectures.presets import PRESETS
-        return {'source_validation_diagnostics': self.harness._validation_diagnostics.get(self.harness._key(baseline), {}) if hasattr(self.harness, '_validation_diagnostics') else {}, 'architecture_presets': PRESETS, 'model_operation_source': (source.parent / 'torch_author.py').read_text() if self.exploration else '', 'exploration': summarize(self.experiment_ledger, self.stagnant_rounds) if self.exploration else None, 'previous_search_history': getattr(self, 'previous_search_history', []), 'model_source_context': model_source, 'starting_point_evidence': getattr(self, 'starting_point_evidence', {}), 'augmentation_catalog': catalog(), 'task': self.harness.task.public_metadata(), 'round': round_id,
+        return {**self._diagnostic_context(baseline), 'architecture_presets': PRESETS, 'model_operation_source': (source.parent / 'torch_author.py').read_text() if self.exploration else '', 'exploration': summarize(self.experiment_ledger, self.stagnant_rounds) if self.exploration else None, 'previous_search_history': history_summary(getattr(self, 'previous_search_history', [])), 'model_source_context': model_source, 'starting_point_evidence': getattr(self, 'starting_point_evidence', {}), 'augmentation_catalog': catalog(), 'task': self.harness.task.public_metadata(), 'round': round_id,
                 'baseline': baseline.payload(), 'baseline_validation': asdict(score),
                 'remaining_evaluations': self.budget - self.evaluated,
-                'history': [asdict(o) for o in self.history[-20:]],
-                'earlier_history': [{'round': o.round, 'origin': o.origin, 'status': o.status,
-                    'score': o.evaluation.score if o.evaluation else None,
-                    'pipeline_sha256': hashlib.sha256(json.dumps(o.pipeline, sort_keys=True).encode()).hexdigest(),
-                    'reason': o.reason} for o in self.history[:-20]],
+                'history': [outcome_summary(asdict(o)) for o in self.history[-10:]],
+                'history_summary': history_summary([asdict(o) for o in self.history]),
                 'available_generators': sorted(self.harness.generator.servers) if getattr(self.harness, 'generator', None) else []}
 
     def _proposal(self, role: str, base: Pipeline, context: dict, plan: dict):
@@ -84,7 +144,7 @@ class Search:
         if proposal.role != role:
             raise ValueError('Specialist returned the wrong role')
         from .exploration import LIMITS
-        size = check_proposal(base, proposal, self.harness.sources, limits=LIMITS if self.exploration else None)
+        size = check_proposal(base, proposal, self.harness.sources, limits=LIMITS)
         failed = context.get('exploration', {}).get('failed_ideas', []) if context.get('exploration') else []
         if failed and hasattr(self.agents, 'review_repeat'):
             review = self.agents.review_repeat(proposal, copy.deepcopy(context))
@@ -175,17 +235,21 @@ class Search:
         self._record(Outcome(0, ('baseline',), 'baseline', best[0].payload(), best[1]))
         return best
 
+    def _limit_stop_reason(self, score: Evaluation):
+        if self.target_improvements is not None and self.improvements >= self.target_improvements:
+            return 'target_improvements_reached'
+        if self.target_improvements is not None and score.score >= 1.0:
+            return 'perfect_validation_score_no_further_improvement_possible'
+        if self.evaluated >= self.budget:
+            return 'fit_budget_exhausted'
+        return None
+
     def run(self, initial) -> tuple[Pipeline, Evaluation]:
         baseline, score = self._initialize(initial)
         for round_id in range(1, self.rounds + 1):
-            if self.target_improvements is not None and self.improvements >= self.target_improvements:
-                self.stop_reason = 'target_improvements_reached'
-                break
-            if self.target_improvements is not None and score.score >= 1.0:
-                self.stop_reason = 'perfect_validation_score_no_further_improvement_possible'
-                break
-            if self.evaluated >= self.budget:
-                self.stop_reason = 'fit_budget_exhausted'
+            round_started, evaluated_before = time.monotonic(), self.evaluated
+            self.stop_reason = self._limit_stop_reason(score)
+            if self.stop_reason is not None:
                 break
             print(f'Round {round_id}: validation={score.score:.6f}, evaluations={self.evaluated}/{self.budget}', flush=True)
             context = self._context(baseline, score, round_id)
@@ -215,21 +279,36 @@ class Search:
                             self._record(Outcome(round_id, (role,), 'rejected', reason=judgment.rationale or 'Judge rubric threshold'))
                     except Exception as exc:
                         self._record(Outcome(round_id, (role,), 'rejected', reason=str(exc)))
-            # Composition is decided before any candidate is empirically scored.
-            selected = self.agents.compose(eligible, copy.deepcopy(context), copy.deepcopy(plan)) if eligible else []
+
+            selected = []
+            composition = {'status': 'skipped' if not eligible else 'completed', 'rejected_subset_indices': []}
+            if eligible:
+                try:
+                    recommendations = self.agents.compose(copy.deepcopy(eligible), copy.deepcopy(context), copy.deepcopy(plan))
+                    if not isinstance(recommendations, list):
+                        raise ValueError('Composer recommendations must be a list of role subsets')
+                    selected = recommendations
+                except Exception as exc:
+                    composition.update(status='failed', error_type=type(exc).__name__, reason=str(exc))
+                    self._record(Outcome(round_id, ('orchestrator',), 'failed',
+                                         reason=f'Composer failed ({type(exc).__name__}): {exc}'))
             priority = plan.get('priority', list(ROLES))
             if not isinstance(priority, list) or len(priority) != 3 or set(priority) != set(ROLES):
                 raise ValueError('Orchestrator priority must be a permutation of specialist roles')
             subsets = [(role,) for role in priority if role in eligible]
-            for subset in selected:
-                if not isinstance(subset, list) or not subset or len(set(subset)) != len(subset) or not set(subset) <= eligible.keys():
+            for index, subset in enumerate(selected):
+                if (not isinstance(subset, list) or not subset or not all(isinstance(role, str) for role in subset)
+                        or len(set(subset)) != len(subset) or not set(subset) <= eligible.keys()):
+                    composition['rejected_subset_indices'].append(index)
                     self._record(Outcome(round_id, ('orchestrator',), 'rejected', reason='Invalid composition subset'))
                     continue
                 key = tuple(role for role in ROLES if role in subset)
                 if key not in subsets:
                     subsets.append(key)
+            if composition['rejected_subset_indices']:
+                composition['status'] = 'invalid_subsets_rejected'
             (self.output / f'round-{round_id:03d}.json').write_text(json.dumps(
-                {'plan': plan, 'reviews': reviews, 'subsets': subsets}, indent=2))
+                {'plan': plan, 'reviews': reviews, 'composition': composition, 'subsets': subsets}, indent=2))
             candidates = []
             pending = []
             for subset in subsets:
@@ -245,7 +324,7 @@ class Search:
                     self._record(Outcome(round_id, subset, 'rejected', reason=str(exc)))
                     continue
                 self._seen.add(key)
-                self.evaluated += 1  # Failed training attempts still consume budget.
+                self.evaluated += 1
                 pending.append((candidate, subset))
             for (candidate, subset), result in zip(pending, self._evaluate_batch([x[0] for x in pending])):
                 try:
@@ -275,8 +354,11 @@ class Search:
                         row.update(status=outcome.status, score=outcome.evaluation.score if outcome.evaluation else None,
                                    reason=outcome.reason)
                 (self.output / 'experiment-ledger.json').write_text(json.dumps(self.experiment_ledger, indent=2))
-            # Neither a tie nor a failed/rejected candidate replaces b_r.
+
             self._save(baseline, score, round_id)
+            with (self.output / 'round-timings.jsonl').open('a') as handle:
+                handle.write(json.dumps({'round': round_id, 'elapsed_seconds': time.monotonic() - round_started,
+                                         'candidate_evaluations': self.evaluated - evaluated_before}) + '\n')
         if self.stop_reason is None:
             self.stop_reason = ('target_improvements_reached' if self.target_improvements is not None and self.improvements >= self.target_improvements
                                 else 'fit_budget_exhausted' if self.evaluated >= self.budget else 'round_limit_reached')
@@ -288,34 +370,38 @@ class Search:
         (self.output / 'failure-memory.json').write_text(json.dumps(failure_memory(self.experiment_ledger), indent=2))
         (self.output / 'selected.json').write_text(json.dumps({
             'pipeline': baseline.payload(), 'validation': asdict(score),
+            'validation_preprocessing': (self.harness.validation_preprocessing_artifacts(baseline)
+                                         if hasattr(self.harness, 'validation_preprocessing_artifacts') else None),
             'architecture_provenance': model_provenance(baseline.model, 'research/components/model.py' in baseline.code),
             'augmentation_provenance': policy_provenance(baseline.augmentation),
             'round': round_id, 'evaluations': self.evaluated,
             'improvements': self.improvements, 'target_improvements': self.target_improvements, 'stop_reason': self.stop_reason,
             'task_fingerprint': self.harness.task.fingerprint,
+            'data_identity': (self.harness.task.identity_metadata()
+                               if hasattr(self.harness.task, 'identity_metadata') else {'fingerprint_scheme': 'legacy_or_unspecified'}),
         }, indent=2))
 
 
 class SingleAgentSearch(Search):
-    """Controlled AutoResearch-style comparator: no specialists or Judge.
-
-One generalist proposes each candidate against the current best. It gets the
-same protected harness, initial pipeline, tools, edit limits, and fit budget.
-Three sequential proposals per round provide the same maximum 300-fit budget.
-"""
     def run(self, initial) -> tuple[Pipeline, Evaluation]:
         baseline, score = self._initialize(initial)
         for round_id in range(1, self.rounds + 1):
+            round_started, evaluated_before = time.monotonic(), self.evaluated
+            self.stop_reason = self._limit_stop_reason(score)
+            if self.stop_reason is not None:
+                break
             for _ in range(3):
-                if self.evaluated >= self.budget:
+                self.stop_reason = self._limit_stop_reason(score)
+                if self.stop_reason is not None:
                     break
                 try:
                     context = self._context(baseline, score, round_id)
                     patches = self.agents.generalist(context)
-                    sizes = [check_proposal(baseline, p, self.harness.sources) for p in patches]
+                    from .exploration import LIMITS
+                    sizes = [check_proposal(baseline, p, self.harness.sources, limits=LIMITS) for p in patches]
                     if not sizes:
                         raise ValueError('Empty generalist proposal')
-                    limits = {'files': 3, 'functions': 3, 'fields': 8, 'lines': 120}
+                    limits = LIMITS
                     if any(sum(size[key] for size in sizes) > limit for key, limit in limits.items()):
                         raise ValueError('Generalist mutation exceeds shared bounds')
                     candidate = compose(baseline, patches)
@@ -335,10 +421,18 @@ Three sequential proposals per round provide the same maximum 300-fit budget.
                     self._record(Outcome(round_id, ('generalist',), 'evaluated', candidate.payload(), result))
                     if result.score > score.score:
                         baseline, score = candidate, result
+                        self.improvements += 1
                         self._record(Outcome(round_id, ('generalist',), 'promoted', baseline.payload(), score))
                 except Exception as exc:
                     self._record(Outcome(round_id, ('generalist',), 'failed', candidate.payload(), reason=str(exc)))
             self._save(baseline, score, round_id)
-            if self.evaluated >= self.budget:
+            with (self.output / 'round-timings.jsonl').open('a') as handle:
+                handle.write(json.dumps({'round': round_id, 'elapsed_seconds': time.monotonic() - round_started,
+                                         'candidate_evaluations': self.evaluated - evaluated_before}) + '\n')
+            if self.stop_reason is not None or self.evaluated >= self.budget:
                 break
+        if self.stop_reason is None:
+            self.stop_reason = ('target_improvements_reached' if self.target_improvements is not None and self.improvements >= self.target_improvements
+                                else 'fit_budget_exhausted' if self.evaluated >= self.budget else 'round_limit_reached')
+        self._save(baseline, score, min(self.rounds, max(o.round for o in self.history)))
         return baseline, score

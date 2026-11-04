@@ -12,7 +12,8 @@ def test_coverage_directs_stagnation_to_untried_families():
     ledger = [{'role': role, 'family': families[-1], 'code_diff': '', 'changes': {}} for role, families in FAMILIES.items()]
     context = summarize(ledger, 8)
     for role, families in FAMILIES.items():
-        assert families[-1] not in context['allowed_focus'][role]
+        assert families[-1] not in context['preferred_focus'][role]
+        assert families[-1] in context['allowed_focus'][role]
         assert families[0] in context['allowed_focus'][role]
     assert context['mutation_limits'] == LIMITS
 

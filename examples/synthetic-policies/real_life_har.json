@@ -1,0 +1,29 @@
+{
+  "augmentation": {
+    "kind": "none",
+    "strength": 0.02,
+    "synthetic": [
+      {
+        "generator": "text",
+        "label": "sitting",
+        "count": 50,
+        "ratio": 0.2,
+        "prompt": "An adult remains seated upright on a chair with small natural posture adjustments. Inertial sensor placement: variable smartphone placement; carried sessions only."
+      },
+      {
+        "generator": "text",
+        "label": "standing",
+        "count": 200,
+        "ratio": 0.25,
+        "prompt": "An adult stands in place with slight postural sway and occasional small arm movements. Inertial sensor placement: variable smartphone placement; carried sessions only."
+      },
+      {
+        "generator": "text",
+        "label": "walking",
+        "count": 125,
+        "ratio": 0.35,
+        "prompt": "An adult walks forward on level ground at a natural pace with alternating steps and natural arm swing. Inertial sensor placement: variable smartphone placement; carried sessions only."
+      }
+    ]
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "datasets": {
+    "hapt": {
+      "raw_dir": "../data/whar/hapt/data",
+      "sampling_hz": 50,
+      "source_columns": [
+        "acc_x",
+        "acc_y",
+        "acc_z",
+        "gyro_x",
+        "gyro_y",
+        "gyro_z"
+      ],
+      "channels": [
+        "ax",
+        "ay",
+        "az",
+        "gx",
+        "gy",
+        "gz"
+      ],
+      "unit_scales": [
+        9.80665,
+        9.80665,
+        9.80665,
+        1,
+        1,
+        1
+      ],
+      "placement": "waist",
+      "labels": [
+        "walking",
+        "walking_upstairs",
+        "walking_downstairs",
+        "sitting",
+        "standing",
+        "lying",
+        "stand_to_sit",
+        "sit_to_stand",
+        "sit_to_lie",
+        "lie_to_sit",
+        "stand_to_lie",
+        "lie_to_stand"
+      ],
+      "label_map": {
+        "WALKING": "walking",
+        "WALKING_UPSTAIRS": "walking_upstairs",
+        "WALKING_DOWNSTAIRS": "walking_downstairs",
+        "SITTING": "sitting",
+        "STANDING": "standing",
+        "LAYING": "lying",
+        "STAND_TO_SIT": "stand_to_sit",
+        "SIT_TO_STAND": "sit_to_stand",
+        "SIT_TO_LIE": "sit_to_lie",
+        "LIE_TO_SIT": "lie_to_sit",
+        "STAND_TO_LIE": "stand_to_lie",
+        "LIE_TO_STAND": "lie_to_stand"
+      },
+      "loso_groups": [
+        [
+          "0",
+          "1",
+          "2"
+        ],
+        [
+          "3",
+          "4",
+          "5"
+        ],
+        [
+          "6",
+          "7",
+          "8"
+        ],
+        [
+          "9",
+          "10",
+          "11"
+        ],
+        [
+          "12",
+          "13",
+          "14"
+        ],
+        [
+          "15",
+          "16",
+          "17"
+        ],
+        [
+          "18",
+          "19",
+          "20"
+        ],
+        [
+          "21",
+          "22",
+          "23"
+        ],
+        [
+          "24",
+          "25",
+          "26"
+        ],
+        [
+          "27",
+          "28",
+          "29"
+        ]
+      ]
+    }
+  }
+}

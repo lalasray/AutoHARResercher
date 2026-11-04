@@ -73,16 +73,13 @@
       },
       "adaptations": [
         "The source SVM benchmark uses 20-second windows; 5 seconds is an explicit adaptation to the protected maximum.",
-        "Uses the manifest’s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
+        "Uses the manifest\u2019s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
         "Model/normalization/rotation combinations are validation hypotheses drawn from the supplied benchmark and cited method sources, not published winning pipelines."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
         "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-        "file": "bilstmattention.py",
-        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
       }
     }
   },
@@ -160,16 +157,13 @@
       },
       "adaptations": [
         "The source SVM benchmark uses 20-second windows; 5 seconds is an explicit adaptation to the protected maximum.",
-        "Uses the manifest’s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
+        "Uses the manifest\u2019s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
         "Model/normalization/rotation combinations are validation hypotheses drawn from the supplied benchmark and cited method sources, not published winning pipelines."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
         "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-        "file": "bilstmattention.py",
-        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
       }
     }
   },
@@ -251,16 +245,13 @@
       },
       "adaptations": [
         "The source SVM benchmark uses 20-second windows; 5 seconds is an explicit adaptation to the protected maximum.",
-        "Uses the manifest’s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
+        "Uses the manifest\u2019s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
         "Model/normalization/rotation combinations are validation hypotheses drawn from the supplied benchmark and cited method sources, not published winning pipelines."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/lyh0625/1DCNN-ResBLSTM-Attention",
         "revision": "b192a743c28b5c1d94a19117d8fce6587d936fcc",
-        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py",
-        "file": "bilstmattention.py",
-        "sha256": "0b9432b8d3e045db8301b9e4320367917c3f6d044016f4d54bcd1275df0f2893"
+        "source": "1DCNN-ResBLSTM-Attention/UCI_HAR/train.py"
       }
     }
   },
@@ -325,15 +316,14 @@
       },
       "adaptations": [
         "The source SVM benchmark uses 20-second windows; 5 seconds is an explicit adaptation to the protected maximum.",
-        "Uses the manifest’s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
+        "Uses the manifest\u2019s fixed ontology and sensor layout; no equivalence to the source four-label benchmark is claimed.",
         "Model/normalization/rotation combinations are validation hypotheses drawn from the supplied benchmark and cited method sources, not published winning pipelines."
       ],
-      "researched_on": "2026-10-21",
       "architecture_source": {
         "repository": "https://github.com/teco-kit/ISWC22-HAR",
         "revision": "b84b89d09f6914fe93e82cde423e294042da2741",
         "source": "models/TinyHAR.py",
-        "file": "tinyhar.py",
+        "file": "author_tinyhar.py",
         "sha256": "1fa19eed5314ae1270b9ee71d6c02ff88829704997d636046eabffd5651cc4ca"
       }
     }

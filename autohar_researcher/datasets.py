@@ -1,19 +1,17 @@
-"""Explicit recording manifests; no target arrays are opened during search.
-
-Adapters (including WHAR exports) must preserve subject/session boundaries and
-provide raw, unnormalized recordings in documented channel order and units.
-"""
 from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
 
+from .benchmark_data import LOSO_LABELS, loso_groups
 from .types import LODO_DATASETS, LODO_LABELS, LOSO_DATASETS
+from .data_identity import (FINGERPRINT_SCHEME, digest_json, file_signature, recording_checksum,
+                            recording_metadata, partition_identity, task_fingerprint)
 
 
 @dataclass(frozen=True)
@@ -26,15 +24,21 @@ class Recording:
     hz: float
     channels: tuple[str, ...]
     scales: tuple[float, ...]
+    content_sha256: str | None = None
+    content_signature: tuple | None = None
 
     def load(self, target_hz: float = 50) -> np.ndarray:
         from scipy.signal import resample_poly
+        if self.content_signature is not None and file_signature(self.path) != self.content_signature:
+            raise ValueError(f'Recording changed after dataset identity verification; reload the dataset snapshot: {self.path}')
         x = np.load(self.path, allow_pickle=False)
+        if self.content_signature is not None and file_signature(self.path) != self.content_signature:
+            raise ValueError(f'Recording changed while loading: {self.path}')
         if x.ndim != 2 or x.shape[1] != len(self.channels) or not np.isfinite(x).all():
             raise ValueError(f'Invalid time × channel recording: {self.path}')
         x = x.astype(np.float64) * np.asarray(self.scales)
         ratio = Fraction(target_hz / self.hz).limit_denominator(10000)
-        # scipy uses a zero-phase low-pass FIR with a Kaiser window.
+
         return resample_poly(x, ratio.numerator, ratio.denominator, axis=0).astype(np.float32)
 
 
@@ -50,11 +54,20 @@ class Task:
     split_seed: int
     fingerprint: str
     sampling_hz: float = 50
+    data_fingerprint: str | None = None
+    split_fingerprint: str | None = None
+    manifest_sha256: str | None = None
+    fingerprint_scheme: str = 'legacy_or_unspecified'
+
+    def identity_metadata(self):
+        return dict(fingerprint_scheme=self.fingerprint_scheme, data_fingerprint=self.data_fingerprint,
+                    split_fingerprint=self.split_fingerprint, manifest_sha256=self.manifest_sha256)
 
     def public_metadata(self) -> dict:
-        # Never expose target paths, samples, counts, or fitted statistics to agents.
+
         return {'protocol': self.protocol, 'target': self.target, 'labels': self.labels,
                 'channels': self.channels, 'sampling_hz': self.sampling_hz, 'fingerprint': self.fingerprint,
+                **self.identity_metadata(),
                 'source_datasets': sorted({r.dataset for r in self.train})}
 
     def split_manifest(self) -> dict:
@@ -66,7 +79,11 @@ class Task:
 
 
 def load_manifest(path: Path) -> tuple[dict, tuple[Recording, ...]]:
-    raw = json.loads(path.read_text())
+    return _parse_manifest(path, path.read_bytes())
+
+
+def _parse_manifest(path, manifest_bytes):
+    raw = json.loads(manifest_bytes)
     records = []
     seen = set()
     sessions = {}
@@ -97,25 +114,96 @@ def load_manifest(path: Path) -> tuple[dict, tuple[Recording, ...]]:
     return raw, tuple(records)
 
 
+@dataclass(frozen=True)
+class DatasetSnapshot:
+    """Run-scoped content verification, shared across task creation only.
+
+    Inputs must remain immutable during the run. A new setup always hashes
+    actual bytes again, including when file size and timestamps are unchanged.
+    """
+    manifest_path: Path
+    manifest_signature: tuple
+    raw: dict
+    recordings: tuple[Recording, ...]
+    data_fingerprint: str
+    manifest_sha256: str
+    checksum_ledger: tuple[dict, ...]
+
+    def provenance(self):
+        return dict(fingerprint_scheme=FINGERPRINT_SCHEME, checksum_algorithm='sha256',
+                    checksum_scope='complete referenced recording file bytes',
+                    verification='streamed once during run setup; inputs must remain immutable',
+                    data_fingerprint=self.data_fingerprint, manifest_sha256=self.manifest_sha256,
+                    recordings=list(self.checksum_ledger))
+
+
+def load_dataset_snapshot(path: Path) -> DatasetSnapshot:
+    path = path.resolve()
+    signature = file_signature(path)
+    manifest_bytes = path.read_bytes()
+    raw, recordings = _parse_manifest(path, manifest_bytes)
+    checked, ledger, content_entries = [], [], []
+    for recording, row in zip(recordings, raw['recordings']):
+        checksum, recording_signature = recording_checksum(recording.path)
+        checked.append(replace(recording, content_sha256=checksum, content_signature=recording_signature))
+        entry = dict(**recording_metadata(recording), sha256=checksum)
+        content_entries.append(entry)
+        ledger.append(dict(**entry, path=row['path'], size_bytes=recording_signature[2]))
+    if file_signature(path) != signature:
+        raise ValueError('Manifest changed during dataset identity verification')
+    if any(file_signature(r.path) != r.content_signature for r in checked):
+        raise ValueError('Recording changed during dataset identity verification')
+    ordered = sorted(content_entries, key=lambda row: json.dumps(row, sort_keys=True))
+    identity = digest_json(dict(scheme='interpreted-recording-collection-v1',
+                                processing_hz=raw.get('processing_hz', 50), recordings=ordered))
+    return DatasetSnapshot(path, signature, raw, tuple(checked), identity,
+                           hashlib.sha256(manifest_bytes).hexdigest(), tuple(ledger))
+
+
+def _snapshot(path, snapshot):
+    if snapshot is None:
+        return load_dataset_snapshot(path)
+    if path.resolve() != snapshot.manifest_path or file_signature(path) != snapshot.manifest_signature:
+        raise ValueError('Dataset snapshot does not match the current manifest; reload it')
+    if any(file_signature(r.path) != r.content_signature for r in snapshot.recordings):
+        raise ValueError('Recording changed after dataset identity verification; reload the dataset snapshot')
+    return snapshot
+
+
 def make_task(path: Path, protocol: str, target: str, subject: str | None = None,
-              split_seed: int = 13) -> Task:
-    raw, recordings = load_manifest(path)
+              split_seed: int = 13, *, grouped: bool = True, snapshot: DatasetSnapshot | None = None) -> Task:
+    snapshot = _snapshot(path, snapshot)
+    raw, recordings = snapshot.raw, snapshot.recordings
     sampling_hz = raw.get('processing_hz', 50)
     if type(sampling_hz) not in (int, float) or not np.isfinite(sampling_hz) or sampling_hz <= 0:
         raise ValueError('processing_hz must be a finite positive number')
     if protocol == 'loso':
         if target not in LOSO_DATASETS or subject is None:
             raise ValueError('LOSO requires a benchmark dataset and held-out subject')
-        rows = [r for r in recordings if r.dataset == target]
-        test = [r for r in rows if r.subject == str(subject)]
-        source = [r for r in rows if r.subject != str(subject)]
-        labels = tuple(raw['datasets'][target]['labels'])
+        labels = LOSO_LABELS.get(target, tuple(raw['datasets'][target]['labels']))
+        rows = [r for r in recordings if r.dataset == target and r.label in labels]
+        spec = raw['datasets'][target]
+        groups = loso_groups({r.subject for r in rows}, spec.get('loso_groups') if grouped else None)
+        held_out = next((group for group in groups if str(subject) in group), [])
+        test = [r for r in rows if r.subject in held_out]
+        source = [r for r in rows if r.subject not in held_out]
+        subject = ','.join(held_out)
     elif protocol == 'lodo':
         if target not in LODO_DATASETS:
             raise ValueError('LODO targets are UCI-HAR, MotionSense, and RealLife-HAR')
         labels = LODO_LABELS
-        # Eligibility is fixed before search. Other datasets in the paper fail
-        # channel, placement, correspondence, or acquisition-overlap criteria.
+        if sampling_hz != 50:
+            raise ValueError('LODO requires processing_hz=50')
+        missing = set(LODO_DATASETS) - set(raw['datasets'])
+        if missing:
+            raise ValueError(f'LODO requires all three datasets; missing: {sorted(missing)}')
+        for name in LODO_DATASETS:
+            declared = set(raw['datasets'][name]['labels'])
+            observed = {r.label for r in recordings if r.dataset == name}
+            if not (set(labels) & declared & observed):
+                raise ValueError(f'LODO dataset {name} has no recordings in the fixed activity vocabulary')
+
+
         rows = [r for r in recordings if r.dataset in LODO_DATASETS and r.label in labels]
         test = [r for r in rows if r.dataset == target]
         source = [r for r in rows if r.dataset != target]
@@ -132,41 +220,33 @@ def make_task(path: Path, protocol: str, target: str, subject: str | None = None
     if any(r.channels != channels for r in source + test):
         raise ValueError('All recordings must use the fixed channel layout')
     train, validation = [], []
-    if protocol == 'loso':
-        # One global cycle: every person is test once and validation once.
-        # Construct it before removing the test person so folds share the cycle.
-        cycle = sorted({r.subject for r in rows})
-        if len(cycle) < 3:
-            raise ValueError('LOSO requires at least three people for train/validation/test')
-        np.random.default_rng(split_seed).shuffle(cycle)
-        validation_person = cycle[(cycle.index(str(subject)) + 1) % len(cycle)]
+    if protocol == 'loso' and len({r.subject for r in rows}) < 3:
+        raise ValueError('LOSO requires at least three people for train/validation/test')
     for dataset in sorted({r.dataset for r in source}):
         subjects = sorted({r.subject for r in source if r.dataset == dataset})
         if len(subjects) < 2:
             raise ValueError(f'{dataset} needs at least two source subjects')
-        if protocol == 'loso':
-            val_subjects = {validation_person}
-        else:
-            # LODO retains the paper's per-source 80/20 subject split.
-            rng = np.random.default_rng(split_seed)
-            rng.shuffle(subjects)
-            n_val = max(1, int(np.ceil(0.2 * len(subjects))))
-            val_subjects = set(subjects[:n_val])
+
+        rng = np.random.default_rng(split_seed)
+        rng.shuffle(subjects)
+        n_val = max(1, int(np.ceil(0.2 * len(subjects))))
+        val_subjects = set(subjects[:n_val])
         for r in source:
             if r.dataset == dataset and r.label in labels:
                 (validation if r.subject in val_subjects else train).append(r)
     if not train or not validation:
         raise ValueError('Fixed source split is empty')
-    fingerprint = hashlib.sha256(path.read_bytes() +
-        f'person-cycle-v2:{protocol}:{target}:{subject}:{split_seed}'.encode()).hexdigest()
+    split = partition_identity(protocol, target, labels, channels, sampling_hz, split_seed, train, validation, test)
+    fingerprint = task_fingerprint(snapshot.data_fingerprint, split, snapshot.manifest_sha256)
     return Task(protocol, target, labels, channels, tuple(train), tuple(validation),
-                tuple(test), split_seed, fingerprint, sampling_hz)
+                tuple(test), split_seed, fingerprint, sampling_hz, snapshot.data_fingerprint,
+                split, snapshot.manifest_sha256, FINGERPRINT_SCHEME)
 
 
 def make_fixed_validation_task(path: Path, target: str, subject: str | None = None,
-                               split_seed: int = 13) -> Task:
-    """Search once using one validation person and all other people for training."""
-    raw, recordings = load_manifest(path)
+                               split_seed: int = 13, *, snapshot: DatasetSnapshot | None = None) -> Task:
+    snapshot = _snapshot(path, snapshot)
+    raw, recordings = snapshot.raw, snapshot.recordings
     people = sorted({r.subject for r in recordings if r.dataset == target})
     if target not in LOSO_DATASETS or len(people) < 3:
         raise ValueError('Fixed validation requires a benchmark dataset with at least three people')
@@ -175,25 +255,27 @@ def make_fixed_validation_task(path: Path, target: str, subject: str | None = No
         subject = people[0]
     if str(subject) not in people:
         raise ValueError('Unknown validation subject')
-    # Reuse all manifest/schema validation; move every non-validation person
-    # into training and leave no test partition during search.
-    base = make_task(path, 'loso', target, str(subject), split_seed)
-    fingerprint = hashlib.sha256(path.read_bytes() +
-        f'fixed-validation-v1:{target}:{subject}:{split_seed}'.encode()).hexdigest()
+
+
+    base = make_task(path, 'loso', target, str(subject), split_seed, grouped=False, snapshot=snapshot)
+    split = partition_identity('fixed-validation', target, base.labels, base.channels,
+                                base.sampling_hz, split_seed, base.train + base.validation, base.test, ())
+    fingerprint = task_fingerprint(snapshot.data_fingerprint, split, snapshot.manifest_sha256)
     return Task('fixed-validation', target, base.labels, base.channels,
                 base.train + base.validation, base.test, (), split_seed,
-                fingerprint, base.sampling_hz)
+                fingerprint, base.sampling_hz, snapshot.data_fingerprint, split,
+                snapshot.manifest_sha256, FINGERPRINT_SCHEME)
 
 
 def windows(records: tuple[Recording, ...] | list[Recording], labels: tuple[str, ...],
-            seconds: float, overlap: float, *, sampling_hz: float = 50) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            seconds: float, overlap: float, *, sampling_hz: float = 50, return_subjects: bool = False) -> tuple[np.ndarray, ...]:
     if not .5 <= seconds <= 10 or not 0 <= overlap <= 0.95:
         raise ValueError('Windows must be 0.5–10 seconds with 0–95% overlap')
     if type(sampling_hz) not in (int, float) or not np.isfinite(sampling_hz) or sampling_hz <= 0:
         raise ValueError('sampling_hz must be a finite positive number')
     length = round(seconds * sampling_hz)
     stride = max(1, round(length * (1 - overlap)))
-    xs, ys, domains = [], [], []
+    xs, ys, domains, subjects = [], [], [], []
     for r in records:
         if r.label not in labels:
             continue
@@ -202,6 +284,9 @@ def windows(records: tuple[Recording, ...] | list[Recording], labels: tuple[str,
             xs.append(x[start:start + length])
             ys.append(labels.index(r.label))
             domains.append(r.dataset)
+            if return_subjects:
+                subjects.append(r.subject)
     if not xs:
         raise ValueError('No complete windows in partition')
-    return np.stack(xs), np.asarray(ys), np.asarray(domains)
+    result = (np.stack(xs), np.asarray(ys), np.asarray(domains))
+    return (*result, np.asarray(subjects)) if return_subjects else result

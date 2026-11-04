@@ -9,18 +9,24 @@ dependencies = ["numpy>=1.24", "scipy>=1.10", "torch>=2.0", "einops>=0.6"]
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 mcp = ["mcp>=1.0"]
+video = ["mediapipe>=0.10.20,<0.11", "opencv-python-headless>=4.8"]
 whar = ["whar-datasets @ git+https://github.com/teco-kit/whar-datasets.git"]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+include-package-data = false
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["autohar_researcher*", "research*"]
+exclude = ["research.vendor", "research.vendor.*"]
 
 [project.scripts]
 autohar = "autohar_researcher.main:main"
+autohar-imutube-mcp = "autohar_researcher.imutube_mcp:main"
 autohar-imugpt-mcp = "autohar_researcher.imugpt_mcp:main"
 
 [tool.pytest.ini_options]
@@ -28,4 +34,4 @@ testpaths = ["tests"]
 
 [tool.setuptools.package-data]
 "research" = ["baseline_registry.json"]
-"research.vendor" = ["*.json", "*.txt"]
+"research.modules.architectures" = ["*.json", "*.txt"]
